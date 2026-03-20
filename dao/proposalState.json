@@ -1,0 +1,24 @@
+{
+  "proposals": [
+    {
+      "amount": "10",
+      "desc": "Proposta A: Investire 10 ETH in Laboratorio AI",
+      "id": "103495775907752093567388512736261752176588601177464036182673965831136895804734"
+    },
+    {
+      "amount": "3",
+      "desc": "Proposta B: Investire 3 ETH in Ricerca Congiunta",
+      "id": "99710556533801549826706096720635996688558466702045070393516423058006094325281"
+    },
+    {
+      "amount": "8",
+      "desc": "Proposta C: Investire 8 ETH in Espansione Campus",
+      "id": "65445478947141037760625368295410258101189047266383314193091787289289591543497"
+    },
+    {
+      "amount": "1",
+      "desc": "Proposta D: Investire 1 ETH in Fondo Sperimentale",
+      "id": "1305351253527721946161372886702069030437453073396227022516391328178462600455"
+    }
+  ]
+}

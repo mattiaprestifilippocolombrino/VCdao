@@ -1,0 +1,22 @@
+# Dipendenze Node
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+
+# Database locale Veramo (contiene chiavi private — NON pushare MAI!)
+database.sqlite
+database.sqlite-journal
+
+# Credenziali generate (contengono dati sensibili)
+credentials/*.json
+!credentials/.gitkeep
+
+# Variabili d'ambiente (contengono segreti!)
+.env
+.env.local
+
+# File di sistema
+.DS_Store
+Thumbs.db

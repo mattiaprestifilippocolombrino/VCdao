@@ -1,0 +1,38 @@
+{
+  "name": "veramo-ssi-demo",
+  "version": "2.0.0",
+  "description": "Progetto didattico SSI — Verifiable Credentials con EIP-712 e Selective Disclosure",
+  "main": "index.js",
+  "scripts": {
+    "create-dids": "ts-node scripts/1-create-dids.ts",
+    "issue-credential": "ts-node scripts/2-issue-credential.ts",
+    "selective-disclosure": "ts-node scripts/3-selective-disclosure.ts",
+    "verify-credential": "ts-node scripts/4-verify-credential.ts",
+    "full-flow": "ts-node scripts/5-full-flow.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["veramo", "did", "verifiable-credentials", "ssi", "eip712", "selective-disclosure"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@veramo/core": "^7.0.0",
+    "@veramo/credential-eip712": "^7.0.0",
+    "@veramo/credential-w3c": "^7.0.0",
+    "@veramo/data-store": "^7.0.0",
+    "@veramo/did-manager": "^7.0.0",
+    "@veramo/did-provider-ethr": "^7.0.0",
+    "@veramo/did-resolver": "^7.0.0",
+    "@veramo/key-manager": "^7.0.0",
+    "@veramo/kms-local": "^7.0.0",
+    "@veramo/selective-disclosure": "^7.0.0",
+    "dotenv": "^16.4.7",
+    "ethr-did-resolver": "^11.0.5",
+    "sqlite3": "^5.1.7",
+    "typeorm": "^0.3.28",
+    "web-did-resolver": "^2.0.32"
+  }
+}
