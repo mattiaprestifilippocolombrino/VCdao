@@ -23,8 +23,9 @@ import * as fs from "fs";
 import * as path from "path";
 
 async function main() {
-    // Ottieni il primo account Hardhat (il deployer/fondatore)
-    const [deployer] = await ethers.getSigners();
+    // Ottieni tutti gli account Hardhat (il primo è il deployer/fondatore, il 16° è l'Issuer)
+    const signers = await ethers.getSigners();
+    const deployer = signers[0];
 
     // Parametri di configurazione
     const TIMELOCK_DELAY = 3600;       // 1 ora di attesa prima dell'esecuzione
@@ -85,6 +86,12 @@ async function main() {
     await token.setTreasury(await treasury.getAddress());
     console.log(`   🔗 Token → Treasury collegato`);
 
+    // Imposta l'Issuer fidato (es. Università) per la verifica delle VC.
+    // L'Issuer è un account esterno alla DAO che firma le credenziali con EIP-712.
+    const issuerSigner = signers[15];
+    await token.setTrustedIssuer(issuerSigner.address);
+    console.log(`   🏛️ Issuer fidato: ${issuerSigner.address}`);
+
     // Il deployer entra nella DAO e chiama joinDAO() con 100 ETH, ricevendo 100k token.
     // Gli ETH vengono trasferiti automaticamente al Treasury, poi delega i voti a sé stesso per attivare il voting power.
     await token.joinDAO({ value: ethers.parseEther(FOUNDER_DEPOSIT) });
@@ -126,6 +133,7 @@ async function main() {
         registry: await registry.getAddress(),
         mockStartup: await mockStartup.getAddress(),
         deployer: deployer.address,
+        issuer: issuerSigner.address,
     };
     fs.writeFileSync(path.join(__dirname, "..", "deployedAddresses.json"), JSON.stringify(addresses, null, 2));
 

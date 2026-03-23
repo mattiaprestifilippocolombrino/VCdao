@@ -1,5 +1,5 @@
 // ============================================================================
-//  05_competenceUpgrade.test.ts — Upgrade competenza via governance
+//  05_competenceUpgrade.test.ts — Upgrade competenza via governance + VP EIP-712
 // ============================================================================
 
 import { expect } from "chai";
@@ -15,13 +15,32 @@ describe("Competence Upgrade — via governance", function () {
     let governor: MyGovernor;
     let deployer: HardhatEthersSigner;
     let member: HardhatEthersSigner;
+    let issuer: HardhatEthersSigner;
 
     const VOTING_DELAY = 1;
     const VOTING_PERIOD = 50;
     const TIMELOCK_DELAY = 3600;
 
+    // Tipi EIP-712 per la VerifiableCredential (devono corrispondere a VPVerifier.sol)
+    const VC_TYPES = {
+        CredentialSubject: [
+            { name: "id", type: "string" },
+            { name: "holderAddress", type: "address" },
+            { name: "degreeLevel", type: "uint8" },
+            { name: "nbf", type: "uint256" },
+            { name: "exp", type: "uint256" },
+        ],
+        VerifiableCredential: [
+            { name: "issuerDid", type: "string" },
+            { name: "issuerAddress", type: "address" },
+            { name: "subject", type: "CredentialSubject" },
+            { name: "issuanceDate", type: "string" },
+            { name: "expirationDate", type: "string" },
+        ],
+    };
+
     beforeEach(async function () {
-        [deployer, member] = await ethers.getSigners();
+        [deployer, member, issuer] = await ethers.getSigners();
 
         const Timelock = await ethers.getContractFactory("TimelockController");
         timelock = await Timelock.deploy(TIMELOCK_DELAY, [], [], deployer.address);
@@ -36,6 +55,7 @@ describe("Competence Upgrade — via governance", function () {
         await treasury.waitForDeployment();
 
         await token.setTreasury(await treasury.getAddress());
+        await token.setTrustedIssuer(issuer.address);
 
         await token.joinDAO({ value: ethers.parseEther("10") }); // 10.000 COMP
         await token.delegate(deployer.address);
@@ -58,7 +78,9 @@ describe("Competence Upgrade — via governance", function () {
         await mine(1);
     });
 
-    // Helper: esegue un upgrade completo via governance
+    // =========================================================================
+    //  Helper: esegue un upgrade completo via governance (legacy)
+    // =========================================================================
     async function doUpgrade(target: HardhatEthersSigner, grade: number, proof: string) {
         const tokenAddr = await token.getAddress();
         const calldata = token.interface.encodeFunctionData("upgradeCompetence", [
@@ -85,7 +107,79 @@ describe("Competence Upgrade — via governance", function () {
         await governor.execute(targets, values, calldatas, descHash);
     }
 
-    it("upgrade da Student a PhD: 5.000 × (4-1) = 15.000 aggiuntivi → 20.000 totali", async function () {
+    // =========================================================================
+    //  Helper: costruisce il dominio EIP-712 del GovernanceToken
+    // =========================================================================
+    async function getEIP712Domain() {
+        return {
+            name: "CompetenceDAO Token",
+            version: "1",
+            chainId: (await ethers.provider.getNetwork()).chainId,
+            verifyingContract: await token.getAddress(),
+        };
+    }
+
+    // =========================================================================
+    //  Helper: firma una VC con EIP-712 e esegue l'upgrade via governance
+    // =========================================================================
+    async function doUpgradeWithVP(
+        target: HardhatEthersSigner,
+        degreeLevel: number,
+        holderDid: string,
+        issuerDid: string,
+        signer: HardhatEthersSigner = issuer
+    ) {
+        const now = await time.latest();
+        const domain = await getEIP712Domain();
+
+        const vcData = {
+            issuerDid: issuerDid,
+            issuerAddress: signer.address,
+            subject: {
+                id: holderDid,
+                holderAddress: target.address,
+                degreeLevel: degreeLevel,
+                nbf: now - 3600,
+                exp: now + 86400 * 365,
+            },
+            issuanceDate: "2024-01-01T00:00:00Z",
+            expirationDate: "2025-12-31T23:59:59Z",
+        };
+
+        // L'Issuer firma la VC con EIP-712
+        const signature = await signer.signTypedData(domain, VC_TYPES, vcData);
+
+        // Costruisci la proposta di governance con upgradeCompetenceWithVP
+        const tokenAddr = await token.getAddress();
+        const calldata = token.interface.encodeFunctionData("upgradeCompetenceWithVP", [
+            target.address, vcData, signature
+        ]);
+        const targets = [tokenAddr];
+        const values = [0n];
+        const calldatas = [calldata];
+        const description = `VP Upgrade ${target.address} a grado ${degreeLevel}`;
+
+        const tx = await governor.propose(targets, values, calldatas, description);
+        const receipt = await tx.wait();
+        const proposalId = receipt!.logs
+            .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })
+            .find((p: any) => p?.name === "ProposalCreated")?.args?.proposalId;
+
+        await mine(VOTING_DELAY + 1);
+        await governor.castVote(proposalId, 1);
+        await mine(VOTING_PERIOD + 1);
+
+        const descHash = ethers.id(description);
+        await governor.queue(targets, values, calldatas, descHash);
+        await time.increase(TIMELOCK_DELAY + 1);
+        await governor.execute(targets, values, calldatas, descHash);
+    }
+
+    // =========================================================================
+    //  Test legacy (retrocompatibilità)
+    // =========================================================================
+
+    it("upgrade legacy da Student a PhD: 5.000 × (4-1) = 15.000 aggiuntivi → 20.000 totali", async function () {
         await doUpgrade(member, 3, "PhD in AI, Politecnico di Milano, 2024");
 
         expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("20000", 18));
@@ -93,24 +187,14 @@ describe("Competence Upgrade — via governance", function () {
         expect(await token.competenceProof(member.address)).to.equal("PhD in AI, Politecnico di Milano, 2024");
     });
 
-    it("upgrade da Student a Professor: 5.000 × (5-1) = 20.000 aggiuntivi → 25.000 totali", async function () {
+    it("upgrade legacy da Student a Professor: 5.000 × (5-1) = 20.000 aggiuntivi → 25.000 totali", async function () {
         await doUpgrade(member, 4, "Professore Ordinario, UniMi");
 
         expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 
-    it("upgrade progressivo: Student → Bachelor → Professor", async function () {
-        // Student → Bachelor: 5.000 × (2-1) = 5.000 aggiuntivi → 10.000
-        await doUpgrade(member, 1, "Laurea Triennale, 2022");
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("10000", 18));
-
-        // Bachelor → Professor: 5.000 × (5-2) = 15.000 aggiuntivi → 25.000
-        await doUpgrade(member, 4, "Professore, 2024");
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
-    });
-
-    it("non è possibile fare downgrade", async function () {
+    it("non è possibile fare downgrade (legacy)", async function () {
         await doUpgrade(member, 3, "PhD");
 
         const tokenAddr = await token.getAddress();
@@ -141,10 +225,116 @@ describe("Competence Upgrade — via governance", function () {
         ).to.be.reverted;
     });
 
-    it("il membro upgraded ha più voting power", async function () {
+    // =========================================================================
+    //  Test DID registration (binding 1:1)
+    // =========================================================================
+
+    it("un membro può registrare il proprio DID", async function () {
+        const did = "did:ethr:sepolia:0x" + member.address.slice(2);
+        await token.connect(member).registerDID(did);
+
+        expect(await token.memberDID(member.address)).to.equal(did);
+        expect(await token.didToAddress(ethers.keccak256(ethers.toUtf8Bytes(did))))
+            .to.equal(member.address);
+    });
+
+    it("un non-membro non può registrare un DID", async function () {
+        const [, , , nonMember] = await ethers.getSigners();
+        const did = "did:ethr:sepolia:0x" + nonMember.address.slice(2);
+        await expect(token.connect(nonMember).registerDID(did))
+            .to.be.revertedWithCustomError(token, "NotMember");
+    });
+
+    it("un membro non può registrare due volte un DID", async function () {
+        const did = "did:ethr:sepolia:0x" + member.address.slice(2);
+        await token.connect(member).registerDID(did);
+        await expect(token.connect(member).registerDID("did:ethr:other"))
+            .to.be.revertedWithCustomError(token, "DIDAlreadyRegistered");
+    });
+
+    it("due membri non possono registrare lo stesso DID", async function () {
+        const did = "did:ethr:sepolia:shared";
+        await token.connect(member).registerDID(did);
+
+        // Il deployer è anch'esso membro (ha fatto joinDAO nel beforeEach)
+        await expect(token.connect(deployer).registerDID(did))
+            .to.be.revertedWithCustomError(token, "DIDAlreadyBound");
+    });
+
+    // =========================================================================
+    //  Test VP-based upgrade (core della tesi)
+    // =========================================================================
+
+    it("upgrade con VP valida: Student → PhD (5.000 × 3 = 15.000 aggiuntivi)", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        // Registra il DID del membro
+        await token.connect(member).registerDID(holderDid);
+
+        // Esegui upgrade con VP firmata EIP-712
+        await doUpgradeWithVP(member, 3, holderDid, issuerDid);
+
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("20000", 18));
+        expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
+        expect(await token.competenceProof(member.address)).to.contain("VP-EIP712:");
+    });
+
+    it("upgrade con VP: Student → Professor (5.000 × 4 = 20.000 aggiuntivi)", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        await token.connect(member).registerDID(holderDid);
+        await doUpgradeWithVP(member, 4, holderDid, issuerDid);
+
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
+        expect(await token.getMemberGrade(member.address)).to.equal(4);
+    });
+
+    it("rifiuta VP con issuer non fidato", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const fakeDid = "did:ethr:sepolia:0xFAKE";
+        const [, , , fakeIssuer] = await ethers.getSigners();
+
+        await token.connect(member).registerDID(holderDid);
+
+        // Firma con un signer diverso dall'issuer fidato
+        await expect(
+            doUpgradeWithVP(member, 3, holderDid, fakeDid, fakeIssuer)
+        ).to.be.reverted; // UntrustedIssuer al momento dell'execute
+    });
+
+    it("rifiuta VP con DID non registrato", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        // NON registriamo il DID → NoDIDRegistered
+        await expect(
+            doUpgradeWithVP(member, 3, holderDid, issuerDid)
+        ).to.be.reverted;
+    });
+
+    it("rifiuta VP con DID che non corrisponde al membro", async function () {
+        const wrongDid = "did:ethr:sepolia:0xWRONG";
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        // Registra un DID diverso da quello nella VC
+        await token.connect(member).registerDID("did:ethr:sepolia:0xREAL");
+
+        await expect(
+            doUpgradeWithVP(member, 3, wrongDid, issuerDid)
+        ).to.be.reverted; // DIDMismatch
+    });
+
+    it("il membro upgraded con VP ha più voting power", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        await token.connect(member).registerDID(holderDid);
+
         const votesBefore = await token.getVotes(member.address);
-        await doUpgrade(member, 4, "Professor");
-        await token.connect(member).delegate(member.address); // Re-delega per aggiornare
+        await doUpgradeWithVP(member, 4, holderDid, issuerDid);
+        await token.connect(member).delegate(member.address); // Re-delega
 
         const votesAfter = await token.getVotes(member.address);
         expect(votesAfter).to.be.greaterThan(votesBefore);

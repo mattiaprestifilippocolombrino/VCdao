@@ -1,79 +1,119 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-// Smart Contract che implementa il token usato per votare nella DAO.
-// Chiunque può unirsi alla DAO chiamando joinDAO() e inviando ETH, e ricevendo token in proporzione.
-// Per aumentare il proprio peso di voto, un membro può richiedere un UPGRADE DI COMPETENZA tramite proposta di governance.
-// I membri votano e, se approvata, il Timelock della DAO chiama upgradeCompetence().
-// I membri possono acquistare token aggiuntivi chiamando mintTokens().
-// TokenMintati = ETH × 1.000 × CoefficienteCompetenza
+/*
+    Smart Contract che implementa il token usato per votare nella DAO.
+
+    MEMBERSHIP:
+    Chiunque può unirsi alla DAO chiamando joinDAO() e inviando ETH,
+    ricevendo token in proporzione (1 ETH = 1.000 COMP).
+
+    IDENTITÀ DECENTRALIZZATA (DID):
+    Ogni membro può registrare il proprio DID (Decentralized Identifier)
+    tramite registerDID(), creando un binding 1:1 tra indirizzo Ethereum e DID.
+    Questo collegamento è necessario per l'upgrade di competenza con VP.
+
+    UPGRADE DI COMPETENZA:
+    Due modalità:
+    1. Legacy: upgradeCompetence() — il Timelock passa indirizzo, grado e prova testuale.
+    2. Con VP (core della tesi): upgradeCompetenceWithVP() — il Timelock passa una
+       Verifiable Credential firmata dall'Issuer con EIP-712. Il contratto verifica
+       la firma on-chain, controlla il binding DID, e aggiorna il grado.
+
+    Formula token: TokenMintati = ETH × 1.000 × CoefficienteCompetenza
+*/
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/utils/Nonces.sol";
+import "./VPVerifier.sol";
 
-///Il token eredita ERC20 per le funzionalità base del token (transfer, balanceOf, ecc.),
-/// e ERC20Votes per la gestione del potere di voto nella DAO, con checkpoint basati sul
-// blocco di inizio votazione e delega del potere di voto.
 contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
+
+    // =====================================================================
+    //  Gradi di competenza
+    // =====================================================================
+
     /*
-I gradi di competenza sono rappresentati da una Enum chiamata CompetenceGrade,
-in cui il grado di partenza è Student con 1, BachelorDegree con 2, MasterDegree con 3,
-PhD con 4 e Professor con 5.
-*/
+        I gradi di competenza sono rappresentati da un'Enum.
+        Il grado di partenza è Student (coefficiente 1).
+        Il mapping degreeLevel della VC (uint8) corrisponde direttamente
+        all'indice dell'enum: 0=Student, 1=Bachelor, 2=Master, 3=PhD, 4=Professor.
+    */
     enum CompetenceGrade {
-        Student, // Coefficiente 1, grado di partenza
+        Student,        // Coefficiente 1, grado di partenza
         BachelorDegree, // Coefficiente 2
-        MasterDegree, // Coefficiente 3
-        PhD, // Coefficiente 4
-        Professor // Coefficiente 5
+        MasterDegree,   // Coefficiente 3
+        PhD,            // Coefficiente 4
+        Professor       // Coefficiente 5
     }
 
+    // =====================================================================
     //  Costanti
+    // =====================================================================
 
-    //Tasso di conversione: 1 ETH = 1.000 token (con 18 decimali)
+    /// Tasso di conversione: 1 ETH = 1.000 token (con 18 decimali)
     uint256 public constant TOKENS_PER_ETH = 1000;
 
-    //Deposito massimo per membro: 100 ETH
+    /// Deposito massimo per membro: 100 ETH
     uint256 public constant MAX_DEPOSIT = 100 ether;
 
-    //Variabili di stato
+    /// Numero massimo di gradi di competenza (0..4)
+    uint8 public constant MAX_DEGREE_LEVEL = 4;
 
-    //Indirizzo del TimelockController, usato per eseguire gli upgrade di competenza autorizzati dalla governance
+    // =====================================================================
+    //  Variabili di stato
+    // =====================================================================
+
+    /// Indirizzo del TimelockController (esegue upgrade autorizzati dalla governance)
     address public timelock;
 
-    //Indirizzo del Treasury, usato per inviare gli ETH ricevuti dai joinDAO() e dai mintTokens()
+    /// Indirizzo del Treasury (riceve gli ETH dai joinDAO e mintTokens)
     address public treasury;
 
-    //Indirizzo del deployer, usato per chiamare setTreasury() al deploy della DAO
+    /// Indirizzo del deployer (setup iniziale: setTreasury, setTrustedIssuer)
     address public immutable deployer;
 
-    //Mappa che associa ad ogni grado di competenza il relativo coefficiente.
+    /// Indirizzo dell'Issuer fidato (es. l'Università che firma le VC)
+    /// Impostato dal deployer al deploy, modificabile dalla governance
+    address public trustedIssuer;
+
+    /// Coefficiente di competenza per ogni grado
     mapping(CompetenceGrade => uint256) public competenceScore;
 
-    //Mappa che associa ad ogni membro il numero di token ricevuti prima dell'upgrade di competenza.
+    /// Token base ricevuti da ogni membro (prima degli upgrade)
     mapping(address => uint256) public baseTokens;
 
-    //Mappa che associa ad ogni membro il suo grado di competenza.
+    /// Grado di competenza attuale di ogni membro
     mapping(address => CompetenceGrade) public memberGrade;
 
-    //Mappa che associa ad ogni membro il flag isMember.
+    /// Flag di membership
     mapping(address => bool) public isMember;
 
-    //Mappa che associa ad ogni membro la proof relativa alla competenza.
+    /// Prova di competenza (stringa testuale o hash VP)
     mapping(address => string) public competenceProof;
 
-    //  Eventi
+    // ----- Binding DID ↔ Address (1:1) -----
 
-    //Emesso quando un nuovo membro entra nella DAO. Prende in input l'indirizzo del membro, il deposito di ETH e i token ricevuti.
+    /// DID registrato per ogni membro (es. "did:ethr:sepolia:0x...")
+    mapping(address => string) public memberDID;
+
+    /// Mapping inverso: hash(DID) → indirizzo del membro (impedisce duplicati)
+    mapping(bytes32 => address) public didToAddress;
+
+    // =====================================================================
+    //  Eventi
+    // =====================================================================
+
+    /// Emesso quando un nuovo membro entra nella DAO
     event MemberJoined(
         address indexed member,
         uint256 ethDeposited,
         uint256 tokensReceived
     );
 
-    //Emesso quando un membro minta token aggiuntivi. Prende in input l'indirizzo del membro, il deposito di ETH, i token mintati e il coefficiente di competenza.
+    /// Emesso quando un membro minta token aggiuntivi
     event TokensMinted(
         address indexed member,
         uint256 ethDeposited,
@@ -81,7 +121,7 @@ PhD con 4 e Professor con 5.
         uint256 competenceScore
     );
 
-    //Emesso quando un membro viene promosso a un grado superiore. Prende in input l'indirizzo del membro, il nuovo grado di competenza, i token aggiuntivi ricevuti e la proof relativa alla competenza.
+    /// Emesso quando un membro viene promosso (upgrade legacy o VP)
     event CompetenceUpgraded(
         address indexed member,
         CompetenceGrade newGrade,
@@ -89,38 +129,79 @@ PhD con 4 e Professor con 5.
         string proof
     );
 
-    //Errori custom
-    error OnlyTimelock(); // Solo il Timelock può chiamare questa funzione
-    error OnlyDeployer(); // Solo il deployer può chiamare questa funzione
-    error AlreadyMember(); // L'indirizzo è già un membro della DAO
-    error NotMember(); // L'indirizzo non è un membro della DAO
-    error ZeroDeposit(); // Devi inviare almeno un po' di ETH
-    error ExceedsMaxDeposit(); // Superato il deposito massimo di 100 ETH
-    error CannotDowngrade(); // Non puoi scendere di grado
-    error ZeroAddress(); // Indirizzo non valido
-    error TreasuryNotSet(); // Il Treasury non è stato ancora impostato
-    error TreasuryAlreadySet(); // Il Treasury è già stato impostato
-    error TreasuryTransferFailed(); // Trasferimento ETH al Treasury fallito
+    /// Emesso quando un membro registra il proprio DID
+    event DIDRegistered(address indexed member, string did);
 
-    // ======================================================================
+    /// Emesso quando l'Issuer fidato viene impostato o aggiornato
+    event TrustedIssuerSet(address indexed issuer);
+
+    /// Emesso specificamente per un upgrade tramite VP verificata on-chain
+    event CompetenceUpgradedWithVP(
+        address indexed member,
+        CompetenceGrade newGrade,
+        uint8 degreeLevel,
+        string issuerDid
+    );
+
+    // =====================================================================
+    //  Errori custom
+    // =====================================================================
+
+    error OnlyTimelock();
+    error OnlyDeployer();
+    error OnlyDeployerOrTimelock();
+    error AlreadyMember();
+    error NotMember();
+    error ZeroDeposit();
+    error ExceedsMaxDeposit();
+    error CannotDowngrade();
+    error ZeroAddress();
+    error TreasuryNotSet();
+    error TreasuryAlreadySet();
+    error TreasuryTransferFailed();
+
+    // Errori specifici per DID e VP
+    error DIDAlreadyRegistered();   // Il membro ha già un DID registrato
+    error DIDAlreadyBound();        // Il DID è già associato a un altro indirizzo
+    error NoDIDRegistered();        // Il membro non ha registrato un DID
+    error DIDMismatch();            // Il DID nella VC non corrisponde al DID del membro
+    error HolderAddressMismatch();  // L'indirizzo nella VC non corrisponde al membro
+    error UntrustedIssuer();        // La firma non proviene dall'Issuer fidato
+    error VCNotYetValid();          // La VC non è ancora valida (nbf > now)
+    error VCExpired();              // La VC è scaduta (exp ≤ now)
+    error InvalidDegreeLevel();     // degreeLevel > 4
+    error TrustedIssuerNotSet();    // L'Issuer fidato non è stato configurato
+    error EmptyDID();               // Stringa DID vuota
+
+    // =====================================================================
     //  Modifier
-    // ======================================================================
+    // =====================================================================
 
-    /// Decorator che indica obbliga la funzione interna ad essere eseguita solo dal TimeLockController.
     modifier onlyTimelock() {
         if (msg.sender != timelock) revert OnlyTimelock();
         _;
     }
 
-    /// Decorator che indica obbliga la funzione interna ad essere eseguita solo dal deployer.
     modifier onlyDeployer() {
         if (msg.sender != deployer) revert OnlyDeployer();
         _;
     }
 
-    /* Costruttore che prende come input l'indirizzo del TimelockController della DAO, 
-     inizializza il token, l'indirizzo del timelock e del deployer 
-     e imposta la tabella dei coefficienti di competenza.
+    modifier onlyDeployerOrTimelock() {
+        if (msg.sender != deployer && msg.sender != timelock)
+            revert OnlyDeployerOrTimelock();
+        _;
+    }
+
+    // =====================================================================
+    //  Costruttore
+    // =====================================================================
+
+    /*
+        Inizializza il token, imposta timelock e deployer,
+        e popola la tabella dei coefficienti di competenza.
+        Il dominio EIP-712 viene inizializzato da ERC20Permit con nome "CompetenceDAO Token"
+        e versione "1" — lo stesso dominio usato dall'Issuer per firmare le VC off-chain.
     */
     constructor(
         address _timelock
@@ -128,6 +209,7 @@ PhD con 4 e Professor con 5.
         if (_timelock == address(0)) revert ZeroAddress();
         timelock = _timelock;
         deployer = msg.sender;
+
         competenceScore[CompetenceGrade.Student] = 1;
         competenceScore[CompetenceGrade.BachelorDegree] = 2;
         competenceScore[CompetenceGrade.MasterDegree] = 3;
@@ -135,117 +217,210 @@ PhD con 4 e Professor con 5.
         competenceScore[CompetenceGrade.Professor] = 5;
     }
 
-    /*  Funzione di setup one shot che Imposta l'indirizzo del Treasury. 
-        Prende in input l'indirizzo del treasury e può essere chiamata una sola volta, solo dal deployer.
-        È necessaria perché il Treasury viene deployato dopo il GovernanceToken.
-    */
+    // =====================================================================
+    //  Setup iniziale (one-shot)
+    // =====================================================================
+
+    /// Imposta l'indirizzo del Treasury. Chiamabile una sola volta, solo dal deployer.
     function setTreasury(address _treasury) external onlyDeployer {
         if (treasury != address(0)) revert TreasuryAlreadySet();
         if (_treasury == address(0)) revert ZeroAddress();
         treasury = _treasury;
     }
 
-    /* Funzione usata dagli utenti per entrare nella DAO, chiamabile da chiunque, senza passare da una proposal.
-       Può essere chiamata solo dagli utenti che non sono ancora membri della DAO. Controlla che il treasury abbia
-       un indirizzo assegnato, che il deposito sia superiore a 0 e inferiore al deposito massimo consentito.
-       Calcola il numero di token da ricevere in base al deposito effettuato. Imposta il membro come attivo, come
-       Student e il deposito effettuato. Minta i token e li invia al membro. Trasferisce gli ETH ricevuti 
-       direttamente al treasury.
-    */
+    /// Imposta o aggiorna l'Issuer fidato (es. l'Università).
+    /// Al deploy viene chiamato dal deployer; successivamente solo la governance può cambiarlo.
+    function setTrustedIssuer(address _issuer) external onlyDeployerOrTimelock {
+        if (_issuer == address(0)) revert ZeroAddress();
+        trustedIssuer = _issuer;
+        emit TrustedIssuerSet(_issuer);
+    }
+
+    // =====================================================================
+    //  Membership
+    // =====================================================================
+
+    /// Funzione per entrare nella DAO inviando ETH. Aperta a chiunque.
     function joinDAO() external payable {
         if (treasury == address(0)) revert TreasuryNotSet();
         if (isMember[msg.sender]) revert AlreadyMember();
         if (msg.value == 0) revert ZeroDeposit();
         if (msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
 
-        // 1 ETH (1e18 wei) × 1000 = 1.000 token (1e21 con 18 decimali)
         uint256 tokenAmount = msg.value * TOKENS_PER_ETH;
 
-        // Registra il membro, come Student
         isMember[msg.sender] = true;
         memberGrade[msg.sender] = CompetenceGrade.Student;
         baseTokens[msg.sender] = tokenAmount;
 
         _mint(msg.sender, tokenAmount);
 
-        // Trasferisci gli ETH al Treasury
         (bool success, ) = treasury.call{value: msg.value}("");
         if (!success) revert TreasuryTransferFailed();
         emit MemberJoined(msg.sender, msg.value, tokenAmount);
     }
 
-    /* Funzione che minta i token successivamente all'ingresso nella DAO, inviando ETH.
-       I token tengono conto del grado di competenza dell'utente. La funzione controlla che il membro
-       sia effettivamente un membro della DAO, che il treasury abbia un indirizzo assegnato
-       e che il deposito inviato sia superiore a 0.
-       La formula per calcolare i token mintati è: tokenMintati = ETH × 1.000 × coefficienteCompetenza.
-       I baseTokens vengono aggiornati per i futuri calcoli di upgrade. Gli ETH vengono trasferiti 
-       direttamente al Treasury.
-    */
+    /// Minta token aggiuntivi inviando ETH. Il moltiplicatore dipende dal grado.
     function mintTokens() external payable {
         if (!isMember[msg.sender]) revert NotMember();
         if (msg.value == 0) revert ZeroDeposit();
         if (treasury == address(0)) revert TreasuryNotSet();
 
-        // Calcola i token base aggiuntivi (senza moltiplicatore)
         uint256 newBaseTokens = msg.value * TOKENS_PER_ETH;
-
-        // Applica il moltiplicatore di competenza
         uint256 score = competenceScore[memberGrade[msg.sender]];
         uint256 tokensToMint = newBaseTokens * score;
 
-        // Aggiorna i token base (per futuri upgrade)
         baseTokens[msg.sender] += newBaseTokens;
-
         _mint(msg.sender, tokensToMint);
 
-        // Trasferisci gli ETH al Treasury
         (bool success, ) = treasury.call{value: msg.value}("");
         if (!success) revert TreasuryTransferFailed();
-
         emit TokensMinted(msg.sender, msg.value, tokensToMint, score);
     }
 
-    /* Funzione che promuove un membro a un grado superiore in base alle competenze dimostrat
-       e dalla proof portata. Essendo una funzione di governance della DAO, può essere chiamata
-       solo dal Timelock dopo approvazione della governance.
-       Viene controllato che l'utente sia un membro della DAO, e che il grado sia superiore a quello corrente.
-       Viene calcolato il numero di token aggiuntivi da mintare moltiplicando i baseTokens per la differenza
-       tra il nuovo e il vecchio coefficiente di competenza. I token aggiuntivi vengono mintati
-       e inviati al membro. Il grado di competenza del membro e la proof vengono aggiornati.
+    // =====================================================================
+    //  Registrazione DID (binding 1:1)
+    // =====================================================================
+
+    /*
+        Ogni membro della DAO può registrare il proprio Decentralized Identifier (DID).
+        Il binding è 1:1: un indirizzo può avere al massimo un DID,
+        e un DID può essere associato a un solo indirizzo.
+        Questo binding è obbligatorio per l'upgrade di competenza tramite VP,
+        perché la DAO verifica che il DID nella VC corrisponda a quello registrato.
     */
+    function registerDID(string calldata _did) external {
+        if (!isMember[msg.sender]) revert NotMember();
+        if (bytes(_did).length == 0) revert EmptyDID();
+        if (bytes(memberDID[msg.sender]).length > 0) revert DIDAlreadyRegistered();
+
+        bytes32 didHash = keccak256(bytes(_did));
+        if (didToAddress[didHash] != address(0)) revert DIDAlreadyBound();
+
+        memberDID[msg.sender] = _did;
+        didToAddress[didHash] = msg.sender;
+
+        emit DIDRegistered(msg.sender, _did);
+    }
+
+    // =====================================================================
+    //  Upgrade di competenza — Legacy (string proof)
+    // =====================================================================
+
+    /// Promuove un membro con una prova testuale. Solo il Timelock (governance).
     function upgradeCompetence(
         address _member,
         CompetenceGrade _newGrade,
         string calldata _proof
     ) external onlyTimelock {
         if (!isMember[_member]) revert NotMember();
+        _performUpgrade(_member, _newGrade, _proof);
+    }
 
+    // =====================================================================
+    //  Upgrade di competenza — Con Verifiable Presentation (core della tesi)
+    // =====================================================================
+
+    /*
+        Promuove un membro verificando on-chain una Verifiable Credential
+        firmata dall'Issuer fidato con EIP-712.
+
+        Verifica eseguita dal contratto:
+        1. Il membro deve aver registrato un DID
+        2. Il DID nella VC deve corrispondere al DID registrato dal membro
+        3. L'indirizzo nella VC deve corrispondere all'indirizzo del membro
+        4. La VC deve essere nel periodo di validità (nbf ≤ now < exp)
+        5. La firma EIP-712 deve provenire dall'Issuer fidato (ECDSA.recover)
+        6. Il degreeLevel deve essere valido (0..4) e superiore al grado attuale
+
+        Dopo la verifica, il contratto mappa degreeLevel → CompetenceGrade
+        e applica l'upgrade con la stessa formula token della modalità legacy.
+    */
+    function upgradeCompetenceWithVP(
+        address _member,
+        VPVerifier.VerifiableCredential memory _vc,
+        bytes memory _issuerSignature
+    ) external onlyTimelock {
+        // Controlli di membership
+        if (!isMember[_member]) revert NotMember();
+        if (trustedIssuer == address(0)) revert TrustedIssuerNotSet();
+
+        // Controllo binding DID
+        if (bytes(memberDID[_member]).length == 0) revert NoDIDRegistered();
+        if (keccak256(bytes(_vc.subject.id)) != keccak256(bytes(memberDID[_member])))
+            revert DIDMismatch();
+        if (_vc.subject.holderAddress != _member) revert HolderAddressMismatch();
+
+        // Validazione temporale della VC
+        if (!VPVerifier.isTemporallyValid(_vc.subject)) {
+            if (block.timestamp < _vc.subject.nbf) revert VCNotYetValid();
+            revert VCExpired();
+        }
+
+        // Verifica firma EIP-712: recupera il firmatario e controlla che sia l'Issuer fidato
+        address recoveredIssuer = VPVerifier.recoverIssuer(
+            _vc, _issuerSignature, _domainSeparatorV4()
+        );
+        if (recoveredIssuer != trustedIssuer) revert UntrustedIssuer();
+        if (_vc.issuerAddress != trustedIssuer) revert UntrustedIssuer();
+
+        // Mapping degreeLevel → CompetenceGrade
+        if (_vc.subject.degreeLevel > MAX_DEGREE_LEVEL) revert InvalidDegreeLevel();
+        CompetenceGrade newGrade = CompetenceGrade(_vc.subject.degreeLevel);
+
+        // Costruisci la proof string (riferimento alla VP verificata)
+        string memory proof = string(abi.encodePacked(
+            "VP-EIP712:", _vc.issuerDid
+        ));
+
+        // Applica l'upgrade
+        _performUpgrade(_member, newGrade, proof);
+
+        emit CompetenceUpgradedWithVP(
+            _member, newGrade, _vc.subject.degreeLevel, _vc.issuerDid
+        );
+    }
+
+    // =====================================================================
+    //  Logica interna di upgrade (condivisa tra legacy e VP)
+    // =====================================================================
+
+    /*
+        Calcola i token aggiuntivi e aggiorna grado e prova.
+        Formula: additionalTokens = baseTokens × (nuovoScore - vecchioScore)
+    */
+    function _performUpgrade(
+        address _member,
+        CompetenceGrade _newGrade,
+        string memory _proof
+    ) internal {
         uint256 newScore = competenceScore[_newGrade];
         uint256 oldScore = competenceScore[memberGrade[_member]];
         if (newScore <= oldScore) revert CannotDowngrade();
 
-        // Calcola i token aggiuntivi: base × (nuovoScore - vecchioScore)
         uint256 additionalTokens = baseTokens[_member] * (newScore - oldScore);
 
-        // Aggiorna il grado e la prova di competenza
         memberGrade[_member] = _newGrade;
         competenceProof[_member] = _proof;
 
-        // Minta i token aggiuntivi
         _mint(_member, additionalTokens);
         emit CompetenceUpgraded(_member, _newGrade, additionalTokens, _proof);
     }
 
-    /// Funzione che restituisce il grado di competenza di un membro
+    // =====================================================================
+    //  Funzioni di lettura
+    // =====================================================================
+
+    /// Restituisce il grado di competenza di un membro
     function getMemberGrade(
         address _member
     ) external view returns (CompetenceGrade) {
         return memberGrade[_member];
     }
 
-    //  Override richiesti per risolvere conflitti di ereditarietà: Viene richiesto di effettuare
-    //  l'override della funzione _update e nonces per risolvere conflitti di ereditarietà tra ERC20, ERC20Votes e ERC20Permit.
+    // =====================================================================
+    //  Override richiesti per risolvere conflitti di ereditarietà
+    // =====================================================================
 
     function _update(
         address from,
