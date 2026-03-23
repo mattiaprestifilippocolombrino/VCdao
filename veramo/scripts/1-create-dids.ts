@@ -37,7 +37,7 @@ async function main() {
   for (const holder of HOLDERS) {
     const result = await getOrCreateDID(holder.alias)
     const label = CREDENTIAL_LABELS[holder.level]
-    console.log(`   - ${holder.name} [${label}]`)
+    console.log(`   - ${holder.nominativo} [${label}]`)
     console.log(`     DID: ${result.did}`)
   }
 

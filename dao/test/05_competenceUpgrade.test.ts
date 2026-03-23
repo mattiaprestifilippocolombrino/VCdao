@@ -24,11 +24,16 @@ describe("Competence Upgrade — via governance", function () {
     // Tipi EIP-712 per la VerifiableCredential (devono corrispondere a VPVerifier.sol)
     const VC_TYPES = {
         CredentialSubject: [
-            { name: "id", type: "string" },
-            { name: "holderAddress", type: "address" },
-            { name: "degreeLevel", type: "uint8" },
-            { name: "nbf", type: "uint256" },
+            { name: "codiceFiscale", type: "string" },
+            { name: "dataNascita", type: "string" },
             { name: "exp", type: "uint256" },
+            { name: "facolta", type: "string" },
+            { name: "id", type: "string" },
+            { name: "nbf", type: "uint256" },
+            { name: "nominativo", type: "string" },
+            { name: "titoloStudio", type: "string" },
+            { name: "universita", type: "string" },
+            { name: "voto", type: "string" },
         ],
         VerifiableCredential: [
             { name: "issuerDid", type: "string" },
@@ -124,7 +129,7 @@ describe("Competence Upgrade — via governance", function () {
     // =========================================================================
     async function doUpgradeWithVP(
         target: HardhatEthersSigner,
-        degreeLevel: number,
+        titoloStudio: string,
         holderDid: string,
         issuerDid: string,
         signer: HardhatEthersSigner = issuer
@@ -136,11 +141,16 @@ describe("Competence Upgrade — via governance", function () {
             issuerDid: issuerDid,
             issuerAddress: signer.address,
             subject: {
-                id: holderDid,
-                holderAddress: target.address,
-                degreeLevel: degreeLevel,
-                nbf: now - 3600,
+                codiceFiscale: "XXXXXX90A01Y000Z",
+                dataNascita: "1990-01-01",
                 exp: now + 86400 * 365,
+                facolta: "Computer Science",
+                id: holderDid,
+                nbf: now - 3600,
+                nominativo: "Mock Nominativo",
+                titoloStudio: titoloStudio,
+                universita: "Mock University",
+                voto: "110/110"
             },
             issuanceDate: "2024-01-01T00:00:00Z",
             expirationDate: "2025-12-31T23:59:59Z",
@@ -157,7 +167,7 @@ describe("Competence Upgrade — via governance", function () {
         const targets = [tokenAddr];
         const values = [0n];
         const calldatas = [calldata];
-        const description = `VP Upgrade ${target.address} a grado ${degreeLevel}`;
+        const description = `VP Upgrade ${target.address} a grado ${titoloStudio}`;
 
         const tx = await governor.propose(targets, values, calldatas, description);
         const receipt = await tx.wait();
@@ -273,7 +283,7 @@ describe("Competence Upgrade — via governance", function () {
         await token.connect(member).registerDID(holderDid);
 
         // Esegui upgrade con VP firmata EIP-712
-        await doUpgradeWithVP(member, 3, holderDid, issuerDid);
+        await doUpgradeWithVP(member, "PhD", holderDid, issuerDid);
 
         expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("20000", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
@@ -285,7 +295,7 @@ describe("Competence Upgrade — via governance", function () {
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
         await token.connect(member).registerDID(holderDid);
-        await doUpgradeWithVP(member, 4, holderDid, issuerDid);
+        await doUpgradeWithVP(member, "Professor", holderDid, issuerDid);
 
         expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
@@ -300,7 +310,7 @@ describe("Competence Upgrade — via governance", function () {
 
         // Firma con un signer diverso dall'issuer fidato
         await expect(
-            doUpgradeWithVP(member, 3, holderDid, fakeDid, fakeIssuer)
+            doUpgradeWithVP(member, "PhD", holderDid, fakeDid, fakeIssuer)
         ).to.be.reverted; // UntrustedIssuer al momento dell'execute
     });
 
@@ -310,7 +320,7 @@ describe("Competence Upgrade — via governance", function () {
 
         // NON registriamo il DID → NoDIDRegistered
         await expect(
-            doUpgradeWithVP(member, 3, holderDid, issuerDid)
+            doUpgradeWithVP(member, "PhD", holderDid, issuerDid)
         ).to.be.reverted;
     });
 
@@ -322,7 +332,7 @@ describe("Competence Upgrade — via governance", function () {
         await token.connect(member).registerDID("did:ethr:sepolia:0xREAL");
 
         await expect(
-            doUpgradeWithVP(member, 3, wrongDid, issuerDid)
+            doUpgradeWithVP(member, "PhD", wrongDid, issuerDid)
         ).to.be.reverted; // DIDMismatch
     });
 
@@ -333,7 +343,7 @@ describe("Competence Upgrade — via governance", function () {
         await token.connect(member).registerDID(holderDid);
 
         const votesBefore = await token.getVotes(member.address);
-        await doUpgradeWithVP(member, 4, holderDid, issuerDid);
+        await doUpgradeWithVP(member, "Professor", holderDid, issuerDid);
         await token.connect(member).delegate(member.address); // Re-delega
 
         const votesAfter = await token.getVotes(member.address);

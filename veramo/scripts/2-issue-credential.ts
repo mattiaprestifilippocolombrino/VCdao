@@ -49,14 +49,21 @@ async function main() {
   for (const holder of HOLDERS) {
     const holderIdentity = await agent.didManagerGetByAlias({ alias: holder.alias })
 
-    // Prepariamo i dati ("claims") contenuti nella credenziale.
-    // L'Università li inserisce TUTTI, ma lo studente rivelerà solo 'degreeLevel'.
+    // Prepariamo i dati ("claims") contenuti nella credenziale in ordine ALFABETICO rigoroso
+    // per non rompere il TypeHash EIP-712 dinamico generato da Veramo.
+    const now = Math.floor(Date.now() / 1000)
+
     const credentialSubject: UniversityCredentialSubject = {
+      codiceFiscale: holder.codiceFiscale,
+      dataNascita: holder.dataNascita,
+      exp: now + 31536000 * 5,    // Scade tra 5 anni
+      facolta: holder.facolta,
       id: holderIdentity.did,
-      name: holder.name,
-      degreeLevel: holder.level,
-      degreeName: DEGREE_NAMES[holder.level],
-      university: UNIVERSITY_INFO.name,
+      nbf: now - 3600,            // Valida da un'ora fa
+      nominativo: holder.nominativo,
+      titoloStudio: holder.level, // Stringa es. "BachelorDegree"
+      universita: UNIVERSITY_INFO.name,
+      voto: holder.voto
     }
 
     // Creiamo e firmiamo la credenziale con EIP-712
@@ -78,10 +85,10 @@ async function main() {
     await agent.dataStoreSaveVerifiableCredential({ verifiableCredential: vc })
 
     count++
-    console.log(`   ${count}/10 ✅ VC emessa per ${holder.name} (${CREDENTIAL_LABELS[holder.level]})`)
+    console.log(`   ${count}/${HOLDERS.length} ✅ VC emessa per ${holder.nominativo} (${CREDENTIAL_LABELS[holder.level]})`)
   }
 
-  console.log('\n✅ Tutte le 10 credenziali sono state create con successo!')
+  console.log('\n✅ Tutte le 10 credenziali sono state create con successo!\n')
 }
 
 main().catch((error) => {

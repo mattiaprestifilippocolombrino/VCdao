@@ -349,7 +349,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         if (bytes(memberDID[_member]).length == 0) revert NoDIDRegistered();
         if (keccak256(bytes(_vc.subject.id)) != keccak256(bytes(memberDID[_member])))
             revert DIDMismatch();
-        if (_vc.subject.holderAddress != _member) revert HolderAddressMismatch();
 
         // Validazione temporale della VC
         if (!VPVerifier.isTemporallyValid(_vc.subject)) {
@@ -364,9 +363,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         if (recoveredIssuer != trustedIssuer) revert UntrustedIssuer();
         if (_vc.issuerAddress != trustedIssuer) revert UntrustedIssuer();
 
-        // Mapping degreeLevel → CompetenceGrade
-        if (_vc.subject.degreeLevel > MAX_DEGREE_LEVEL) revert InvalidDegreeLevel();
-        CompetenceGrade newGrade = CompetenceGrade(_vc.subject.degreeLevel);
+        // Mapping semantico: string TitoloStudio -> CompetenceGrade
+        CompetenceGrade newGrade = _getGradeFromTitle(_vc.subject.titoloStudio);
 
         // Costruisci la proof string (riferimento alla VP verificata)
         string memory proof = string(abi.encodePacked(
@@ -376,9 +374,27 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         // Applica l'upgrade
         _performUpgrade(_member, newGrade, proof);
 
+        // 4. Emette l'evento (la prova crittografica off-chain ora "diventa" l'attestato on-chain)
         emit CompetenceUpgradedWithVP(
-            _member, newGrade, _vc.subject.degreeLevel, _vc.issuerDid
+            _member, newGrade, uint8(newGrade), _vc.issuerDid
         );
+    }
+
+    // =====================================================================
+    //  Utility Semantic Parsing
+    // =====================================================================
+    /*
+        Questa funzione trasforma l'attestato descrittivo W3C ("Master Degree") 
+        nel peso numerico della gerarchia On-Chain, agendo da Traduttore Semantico.
+    */
+    function _getGradeFromTitle(string memory _titoloStudio) internal pure returns (CompetenceGrade) {
+        bytes32 hashTitle = keccak256(bytes(_titoloStudio));
+        if (hashTitle == keccak256(bytes("SimpleStudent"))) return CompetenceGrade.Student;
+        if (hashTitle == keccak256(bytes("BachelorDegree"))) return CompetenceGrade.BachelorDegree;
+        if (hashTitle == keccak256(bytes("MasterDegree"))) return CompetenceGrade.MasterDegree;
+        if (hashTitle == keccak256(bytes("PhD"))) return CompetenceGrade.PhD;
+        if (hashTitle == keccak256(bytes("Professor"))) return CompetenceGrade.Professor;
+        revert InvalidDegreeLevel();
     }
 
     // =====================================================================

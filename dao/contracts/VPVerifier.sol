@@ -41,15 +41,20 @@ library VPVerifier {
         in ordine alfabetico alla stringa del tipo genitore.
     */
 
-    /// @dev keccak256("CredentialSubject(string id,address holderAddress,uint8 degreeLevel,uint256 nbf,uint256 exp)")
+    /// @dev keccak256("CredentialSubject(string codiceFiscale,string dataNascita,uint256 exp,string facolta,string id,uint256 nbf,string nominativo,string titoloStudio,string universita,string voto)")
     bytes32 internal constant CREDENTIAL_SUBJECT_TYPEHASH =
         keccak256(
             "CredentialSubject("
+            "string codiceFiscale,"
+            "string dataNascita,"
+            "uint256 exp,"
+            "string facolta,"
             "string id,"
-            "address holderAddress,"
-            "uint8 degreeLevel,"
             "uint256 nbf,"
-            "uint256 exp"
+            "string nominativo,"
+            "string titoloStudio,"
+            "string universita,"
+            "string voto"
             ")"
         );
 
@@ -65,11 +70,16 @@ library VPVerifier {
             "string expirationDate"
             ")"
             "CredentialSubject("
+            "string codiceFiscale,"
+            "string dataNascita,"
+            "uint256 exp,"
+            "string facolta,"
             "string id,"
-            "address holderAddress,"
-            "uint8 degreeLevel,"
             "uint256 nbf,"
-            "uint256 exp"
+            "string nominativo,"
+            "string titoloStudio,"
+            "string universita,"
+            "string voto"
             ")"
         );
 
@@ -78,14 +88,19 @@ library VPVerifier {
     // =========================================================================
 
     /// @notice Dati certificati dell'holder. Solo `degreeLevel` viene usato dalla DAO.
-    /// @dev Rappresenta il credentialSubject della VC, ridotto ai campi necessari
-    ///      per la Selective Disclosure on-chain.
+    /// @dev Rappresenta il credentialSubject della VC arricchita con tutti i dati personali.
+    ///      I campi sono ordinati alfabeticamente per rispettare lo standard EIP-712 di Veramo.
     struct CredentialSubject {
-        string id;              // DID dell'holder (es. "did:ethr:sepolia:0x...")
-        address holderAddress;  // Indirizzo Ethereum dell'holder
-        uint8 degreeLevel;      // Livello certificato: 0=Student, 1=Bachelor, 2=Master, 3=PhD, 4=Professor
-        uint256 nbf;            // Not-Before: inizio validità (UNIX timestamp)
+        string codiceFiscale;   // Codice Fiscale
+        string dataNascita;     // Data di nascita
         uint256 exp;            // Expiration: fine validità (UNIX timestamp)
+        string facolta;         // Facoltà universitaria
+        string id;              // DID dell'holder
+        uint256 nbf;            // Not-Before: inizio validità (UNIX timestamp)
+        string nominativo;      // Nome e Cognome
+        string titoloStudio;    // Livello esteso (es. "Bachelor Degree") testuale
+        string universita;      // Nome dell'Università emittente
+        string voto;            // Voto di laurea
     }
 
     /// @notice Credenziale verifiable firmata dall'Issuer con EIP-712
@@ -112,11 +127,16 @@ library VPVerifier {
     ) internal pure returns (bytes32) {
         return keccak256(abi.encode(
             CREDENTIAL_SUBJECT_TYPEHASH,
+            keccak256(bytes(cs.codiceFiscale)),
+            keccak256(bytes(cs.dataNascita)),
+            cs.exp,
+            keccak256(bytes(cs.facolta)),
             keccak256(bytes(cs.id)),
-            cs.holderAddress,
-            cs.degreeLevel,
             cs.nbf,
-            cs.exp
+            keccak256(bytes(cs.nominativo)),
+            keccak256(bytes(cs.titoloStudio)),
+            keccak256(bytes(cs.universita)),
+            keccak256(bytes(cs.voto))
         ));
     }
 

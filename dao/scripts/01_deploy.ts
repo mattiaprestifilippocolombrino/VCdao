@@ -88,9 +88,27 @@ async function main() {
 
     // Imposta l'Issuer fidato (es. Università) per la verifica delle VC.
     // L'Issuer è un account esterno alla DAO che firma le credenziali con EIP-712.
-    const issuerSigner = signers[15];
-    await token.setTrustedIssuer(issuerSigner.address);
-    console.log(`   🏛️ Issuer fidato: ${issuerSigner.address}`);
+    // Leggiamo l'indirizzo dell'Issuer direttamente dalle Verifiable Credentials generate
+    // dal modulo Veramo (Opzione B della tesi - loose coupling).
+    let issuerAddress = signers[15].address; // Indirizzo di fallback
+    const veramoCredsPath = path.join(__dirname, "..", "..", "veramo", "credentials");
+    const testCredFile = path.join(veramoCredsPath, "student-luca-bianchi.json");
+    
+    if (fs.existsSync(testCredFile)) {
+        console.log(`   📂 File VC di Veramo trovato. Estrazione indirizzo Issuer...`);
+        const vcData = JSON.parse(fs.readFileSync(testCredFile, 'utf-8'));
+        const issuerDid = vcData.issuer.id; // es. did:ethr:sepolia:0xABCD...oppure did:ethr:0xABCD...
+        // Estraiamo l'indirizzo Ethereum splittando la stringa DID
+        const extractedAddress = issuerDid.split(':').pop(); 
+        if (extractedAddress && ethers.isAddress(extractedAddress)) {
+            issuerAddress = extractedAddress;
+        }
+    } else {
+        console.log(`   ⚠️ Nessuna VC Veramo trovata in ${veramoCredsPath}. Uso l'Issuer simulato (Signer 15).`);
+    }
+
+    await token.setTrustedIssuer(issuerAddress);
+    console.log(`   🏛️ Issuer fidato impostato: ${issuerAddress}`);
 
     // Il deployer entra nella DAO e chiama joinDAO() con 100 ETH, ricevendo 100k token.
     // Gli ETH vengono trasferiti automaticamente al Treasury, poi delega i voti a sé stesso per attivare il voting power.

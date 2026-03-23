@@ -11,10 +11,18 @@
     "full-flow": "ts-node scripts/5-full-flow.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["veramo", "did", "verifiable-credentials", "ssi", "eip712", "selective-disclosure"],
+  "keywords": [
+    "veramo",
+    "did",
+    "verifiable-credentials",
+    "ssi",
+    "eip712",
+    "selective-disclosure"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },

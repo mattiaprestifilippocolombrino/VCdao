@@ -33,13 +33,19 @@ const GRADE_NAMES: Record<number, string> = {
 };
 
 // Tipi EIP-712 per la VerifiableCredential (devono corrispondere a VPVerifier.sol)
+// I campi in CredentialSubject devono essere rigorosamente in ordine alfabetico
 const VC_TYPES = {
     CredentialSubject: [
-        { name: "id", type: "string" },
-        { name: "holderAddress", type: "address" },
-        { name: "degreeLevel", type: "uint8" },
-        { name: "nbf", type: "uint256" },
+        { name: "codiceFiscale", type: "string" },
+        { name: "dataNascita", type: "string" },
         { name: "exp", type: "uint256" },
+        { name: "facolta", type: "string" },
+        { name: "id", type: "string" },
+        { name: "nbf", type: "uint256" },
+        { name: "nominativo", type: "string" },
+        { name: "titoloStudio", type: "string" },
+        { name: "universita", type: "string" },
+        { name: "voto", type: "string" },
     ],
     VerifiableCredential: [
         { name: "issuerDid", type: "string" },
@@ -84,9 +90,11 @@ async function main() {
         }
     }
 
-    // ── FASE 2: Costruzione delle VP firmate dall'Issuer ──
-    // L'Issuer (Università) firma una VC per ogni membro che deve fare upgrade.
-    // I 2 Student (signers[13] e signers[14]) non vengono inclusi.
+    // ── FASE 2: Lettura delle VP da Veramo (Opzione B) ──
+    // Il modulo Veramo ha generato off-chain i file JSON nella cartella "credentials".
+    // Lo script DAO li legge, estrae le firme e costruisce la proposta on-chain.
+
+    console.log("\n📝 La DAO legge le VC generate da Veramo...");
 
     // Dominio EIP-712 del GovernanceToken (deve corrispondere a quello nel contratto)
     const domain = {
@@ -99,62 +107,111 @@ async function main() {
     const now = await time.latest();
     const issuerDid = `did:ethr:0x${issuer.address.slice(2)}`;
 
-    // Lista degli upgrade da applicare (stessa struttura del vecchio script)
+    // Lista degli upgrade da applicare (con titoli descrittivi)
     const upgrades = [
-        { signer: signers[0],  grade: 4, label: "Professor 1" },
-        { signer: signers[1],  grade: 4, label: "Professor 2" },
-        { signer: signers[2],  grade: 4, label: "Professor 3" },
-        { signer: signers[3],  grade: 4, label: "Professor 4" },
-        { signer: signers[4],  grade: 4, label: "Professor 5" },
-        { signer: signers[5],  grade: 3, label: "PhD 1" },
-        { signer: signers[6],  grade: 3, label: "PhD 2" },
-        { signer: signers[7],  grade: 3, label: "PhD 3" },
-        { signer: signers[8],  grade: 2, label: "Master 1" },
-        { signer: signers[9],  grade: 2, label: "Master 2" },
-        { signer: signers[10], grade: 1, label: "Bachelor 1" },
-        { signer: signers[11], grade: 1, label: "Bachelor 2" },
-        { signer: signers[12], grade: 1, label: "Bachelor 3" },
+        { signer: signers[0],  grade: "Professor", label: "Professor 1" },
+        { signer: signers[1],  grade: "Professor", label: "Professor 2" },
+        { signer: signers[2],  grade: "Professor", label: "Professor 3" },
+        { signer: signers[3],  grade: "Professor", label: "Professor 4" },
+        { signer: signers[4],  grade: "Professor", label: "Professor 5" },
+        { signer: signers[5],  grade: "PhD", label: "PhD 1" },
+        { signer: signers[6],  grade: "PhD", label: "PhD 2" },
+        { signer: signers[7],  grade: "PhD", label: "PhD 3" },
+        { signer: signers[8],  grade: "MasterDegree", label: "Master 1" },
+        { signer: signers[9],  grade: "MasterDegree", label: "Master 2" },
+        { signer: signers[10], grade: "BachelorDegree", label: "Bachelor 1" },
+        { signer: signers[11], grade: "BachelorDegree", label: "Bachelor 2" },
+        { signer: signers[12], grade: "BachelorDegree", label: "Bachelor 3" },
     ];
 
-    console.log("\n📝 L'Issuer firma le VC con EIP-712...");
-
-    // Per ogni upgrade, costruiamo: target, value, calldata con la VP firmata
     const tokenAddr = addresses.token;
     const targets: string[] = [];
     const values: bigint[] = [];
     const calldatas: string[] = [];
+    const veramoCredsPath = path.join(__dirname, "..", "..", "veramo", "credentials");
 
     for (const u of upgrades) {
-        const holderDid = `did:ethr:0x${u.signer.address.slice(2)}`;
+        let vcDataObj: any = null;
+        let signature = "";
+        
+        if (fs.existsSync(veramoCredsPath)) {
+            const files = fs.readdirSync(veramoCredsPath);
+            for (const file of files) {
+                if (file.endsWith(".json")) {
+                    const content = JSON.parse(fs.readFileSync(path.join(veramoCredsPath, file), "utf-8"));
+                    if (content.credentialSubject?.titoloStudio === u.grade) {
+                        vcDataObj = content;
+                        signature = content.proof?.proofValue || "0x0";
+                        break;
+                    }
+                }
+            }
+        }
 
-        // Costruisci la VC (Verifiable Credential) con i dati del membro
-        const vcData = {
-            issuerDid: issuerDid,
-            issuerAddress: issuer.address,
-            subject: {
-                id: holderDid,
-                holderAddress: u.signer.address,
-                degreeLevel: u.grade,
-                nbf: now - 3600,            // Valida da 1 ora fa
-                exp: now + 86400 * 365,     // Scade tra 1 anno
-            },
-            issuanceDate: new Date().toISOString(),
-            expirationDate: new Date(Date.now() + 86400000 * 365).toISOString(),
-        };
+        // Se non troviamo il JSON da Veramo, creiamo un mock hardcoded
+        if (!vcDataObj) {
+            console.log(`   ⚠️ JSON per ${u.label} non trovato in ${veramoCredsPath}. MOCK locale inserito.`);
+            const holderDid = `did:ethr:0x${u.signer.address.slice(2)}`;
+            vcDataObj = {
+                issuerDid: issuerDid,
+                issuerAddress: issuer.address,
+                subject: {
+                    codiceFiscale: "XXXXXX90A01Y000Z",
+                    dataNascita: "1990-01-01",
+                    exp: now + 86400 * 365,
+                    facolta: "Computer Science",
+                    id: holderDid,
+                    nbf: now - 3600,
+                    nominativo: "Mock Nominativo",
+                    titoloStudio: u.grade,
+                    universita: "Mock University",
+                    voto: "110/110"
+                },
+                issuanceDate: new Date().toISOString(),
+                expirationDate: new Date(Date.now() + 86400000 * 365).toISOString(),
+            };
+            signature = await issuer.signTypedData(domain, VC_TYPES, vcDataObj);
+        } else {
+            // Estrazione dati reali dal JSON Veramo per adattarli alla struct Solidity alfabetica
+            const holderDid = vcDataObj.credentialSubject.id;
+            
+            try {
+                await token.connect(u.signer).registerDID(holderDid);
+                console.log(`   🔗 DID Registrato per signer: ${holderDid}`);
+            } catch { /* Ignora se già registrato */ }
 
-        // L'Issuer firma la VC con EIP-712 (firma off-chain)
-        const signature = await issuer.signTypedData(domain, VC_TYPES, vcData);
+            // Mappiamo i campi del JSON nel formato esatto della struct Solidity in ordine alfabetico
+            const solStruct = {
+                issuerDid: vcDataObj.issuer.id || vcDataObj.issuer,
+                issuerAddress: addresses.issuer, 
+                subject: {
+                    codiceFiscale: vcDataObj.credentialSubject.codiceFiscale || "XXXYYY00A01H501Z",
+                    dataNascita: vcDataObj.credentialSubject.dataNascita || "1990-01-01",
+                    exp: vcDataObj.credentialSubject.exp || now + 86400 * 365,
+                    facolta: vcDataObj.credentialSubject.facolta || "Informatica",
+                    id: holderDid,
+                    nbf: vcDataObj.credentialSubject.nbf || now - 3600,
+                    nominativo: vcDataObj.credentialSubject.nominativo || "N/A N/A",
+                    titoloStudio: vcDataObj.credentialSubject.titoloStudio || "Student",
+                    universita: vcDataObj.credentialSubject.universita || "University of Computer Science",
+                    voto: vcDataObj.credentialSubject.voto || "N/A"
+                },
+                issuanceDate: vcDataObj.issuanceDate,
+                expirationDate: vcDataObj.expirationDate || new Date(Date.now() + 86400000 * 365).toISOString(),
+            };
+            vcDataObj = solStruct;
+        }
 
         // Prepara il calldata per upgradeCompetenceWithVP
         targets.push(tokenAddr);
         values.push(0n);
         calldatas.push(
             token.interface.encodeFunctionData("upgradeCompetenceWithVP", [
-                u.signer.address, vcData, signature,
+                u.signer.address, vcDataObj, signature,
             ])
         );
 
-        console.log(`   🔏 ${u.label} (grado ${u.grade}) → firma OK`);
+        console.log(`   🔏 ${u.label} (grado ${u.grade}) → pacchetto VP preparato`);
     }
 
     // ── FASE 3: Proposta di governance batch ──
