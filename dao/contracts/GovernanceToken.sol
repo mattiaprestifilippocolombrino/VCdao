@@ -35,8 +35,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     /*
         I gradi di competenza sono rappresentati da un'Enum.
         Il grado di partenza è Student (coefficiente 1).
-        Il mapping degreeLevel della VC (uint8) corrisponde direttamente
-        all'indice dell'enum: 0=Student, 1=Bachelor, 2=Master, 3=PhD, 4=Professor.
     */
     enum CompetenceGrade {
         Student, // Coefficiente 1, grado di partenza
@@ -162,11 +160,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     error DIDAlreadyBound(); // Il DID è già associato a un altro indirizzo
     error NoDIDRegistered(); // Il membro non ha registrato un DID
     error DIDMismatch(); // Il DID nella VC non corrisponde al DID del membro
-    error HolderAddressMismatch(); // L'indirizzo nella VC non corrisponde al membro
     error UntrustedIssuer(); // La firma non proviene dall'Issuer fidato
-    error VCNotYetValid(); // La VC non è ancora valida (nbf > now)
-    error VCExpired(); // La VC è scaduta (exp ≤ now)
-    error InvalidDegreeLevel(); // degreeLevel > 4
+    error InvalidDegreeLevel(); // Titolo studio non supportato
     error TrustedIssuerNotSet(); // L'Issuer fidato non è stato configurato
     error EmptyDID(); // Stringa DID vuota
 
@@ -246,12 +241,15 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
         uint256 tokenAmount = msg.value * TOKENS_PER_ETH;
 
+        // Salva stato membro: ora è Student con relativi token
         isMember[msg.sender] = true;
         memberGrade[msg.sender] = CompetenceGrade.Student;
         baseTokens[msg.sender] = tokenAmount;
 
+        // Minta fisicamente i token sul suo account usando l'interfaccia ERC20
         _mint(msg.sender, tokenAmount);
 
+        // Trasferisci tutti gli ETH al contratto Treasury (che è gestito dal Timelock)
         (bool success, ) = treasury.call{value: msg.value}("");
         if (!success) revert TreasuryTransferFailed();
         emit MemberJoined(msg.sender, msg.value, tokenAmount);
@@ -326,11 +324,9 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         Verifica eseguita dal contratto:
         1. Il membro deve aver registrato un DID
         2. Il DID nella VC deve corrispondere al DID registrato dal membro
-        3. L'indirizzo nella VC deve corrispondere all'indirizzo del membro
-        4. La VC deve essere nel periodo di validità (nbf ≤ now < exp)
-        5. La firma EIP-712 deve provenire dall'Issuer fidato (ECDSA.recover)
-        6. Il degreeLevel deve essere valido (0..4) e superiore al grado attuale
-        Dopo la verifica, il contratto mappa degreeLevel → CompetenceGrade
+        3. La firma EIP-712 deve provenire dall'Issuer fidato (ECDSA.recover)
+        4. Il degreeTitle nella VC deve essere valido (Bachelor/Master/PhD/Professor)
+        Dopo la verifica, il contratto mappa degreeTitle → CompetenceGrade
         e applica l'upgrade con la stessa formula token della modalità legacy.
     */
     function upgradeCompetenceWithVP(
@@ -345,31 +341,40 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         // Controllo binding DID
         if (bytes(memberDID[_member]).length == 0) revert NoDIDRegistered();
         if (
-            keccak256(bytes(_vc.subject.id)) !=
+            keccak256(bytes(_vc.credentialSubject.id)) !=
             keccak256(bytes(memberDID[_member]))
         ) revert DIDMismatch();
 
-        // Validazione temporale della VC
-        if (!VPVerifier.isTemporallyValid(_vc.subject)) {
-            if (block.timestamp < _vc.subject.nbf) revert VCNotYetValid();
-            revert VCExpired();
-        }
+        // ----------------------------------------------------------------------
+        // Calcolo del Dominio Universale EIP-712
+        // Non usiamo _domainSeparatorV4() perché lega la firma a DAO e Blockchain specifiche.
+        // Vogliamo che la VC sia utilizzabile su qualsiasi sistema.
+        // ----------------------------------------------------------------------
+        bytes32 universalDomainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version)"),
+                keccak256(bytes("Universal VC Protocol")),
+                keccak256(bytes("1"))
+            )
+        );
 
-        // Verifica firma EIP-712: recupera il firmatario e controlla che sia l'Issuer fidato
+        // Verifica firma EIP-712: recupera il firmatario matematicamente (ECDSA)
         address recoveredIssuer = VPVerifier.recoverIssuer(
             _vc,
             _issuerSignature,
-            _domainSeparatorV4()
+            universalDomainSeparator
         );
+        // Se la firma recuperata NON COMBACIA con il trustedIssuer, si tratta di un falso/attacco
         if (recoveredIssuer != trustedIssuer) revert UntrustedIssuer();
-        if (_vc.issuerAddress != trustedIssuer) revert UntrustedIssuer();
 
         // Mapping semantico: string TitoloStudio -> CompetenceGrade
-        CompetenceGrade newGrade = _getGradeFromTitle(_vc.subject.titoloStudio);
+        CompetenceGrade newGrade = _getGradeFromTitle(
+            _vc.credentialSubject.degreeTitle
+        );
 
         // Costruisci la proof string (riferimento alla VP verificata)
         string memory proof = string(
-            abi.encodePacked("VP-EIP712:", _vc.issuerDid)
+            abi.encodePacked("VP-EIP712:", _vc.issuer.id)
         );
 
         // Applica l'upgrade
@@ -380,7 +385,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
             _member,
             newGrade,
             uint8(newGrade),
-            _vc.issuerDid
+            _vc.issuer.id
         );
     }
 
@@ -392,11 +397,9 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         nel peso numerico della gerarchia On-Chain, agendo da Traduttore Semantico.
     */
     function _getGradeFromTitle(
-        string memory _titoloStudio
+        string memory _degreeTitle
     ) internal pure returns (CompetenceGrade) {
-        bytes32 hashTitle = keccak256(bytes(_titoloStudio));
-        if (hashTitle == keccak256(bytes("SimpleStudent")))
-            return CompetenceGrade.Student;
+        bytes32 hashTitle = keccak256(bytes(_degreeTitle));
         if (hashTitle == keccak256(bytes("BachelorDegree")))
             return CompetenceGrade.BachelorDegree;
         if (hashTitle == keccak256(bytes("MasterDegree")))

@@ -23,24 +23,18 @@ describe("Competence Upgrade — via governance", function () {
 
     // Tipi EIP-712 per la VerifiableCredential (devono corrispondere a VPVerifier.sol)
     const VC_TYPES = {
+        Issuer: [{ name: "id", type: "string" }],
         CredentialSubject: [
-            { name: "codiceFiscale", type: "string" },
-            { name: "dataNascita", type: "string" },
-            { name: "exp", type: "uint256" },
-            { name: "facolta", type: "string" },
             { name: "id", type: "string" },
-            { name: "nbf", type: "uint256" },
-            { name: "nominativo", type: "string" },
-            { name: "titoloStudio", type: "string" },
-            { name: "universita", type: "string" },
-            { name: "voto", type: "string" },
+            { name: "university", type: "string" },
+            { name: "faculty", type: "string" },
+            { name: "degreeTitle", type: "string" },
+            { name: "grade", type: "string" },
         ],
         VerifiableCredential: [
-            { name: "issuerDid", type: "string" },
-            { name: "issuerAddress", type: "address" },
-            { name: "subject", type: "CredentialSubject" },
+            { name: "issuer", type: "Issuer" },
             { name: "issuanceDate", type: "string" },
-            { name: "expirationDate", type: "string" },
+            { name: "credentialSubject", type: "CredentialSubject" },
         ],
     };
 
@@ -113,14 +107,12 @@ describe("Competence Upgrade — via governance", function () {
     }
 
     // =========================================================================
-    //  Helper: costruisce il dominio EIP-712 del GovernanceToken
+    //  Helper: costruisce il dominio EIP-712 Universale
     // =========================================================================
     async function getEIP712Domain() {
         return {
-            name: "CompetenceDAO Token",
+            name: "Universal VC Protocol",
             version: "1",
-            chainId: (await ethers.provider.getNetwork()).chainId,
-            verifyingContract: await token.getAddress(),
         };
     }
 
@@ -129,31 +121,25 @@ describe("Competence Upgrade — via governance", function () {
     // =========================================================================
     async function doUpgradeWithVP(
         target: HardhatEthersSigner,
-        titoloStudio: string,
+        degreeTitle: string,
         holderDid: string,
         issuerDid: string,
         signer: HardhatEthersSigner = issuer
     ) {
-        const now = await time.latest();
         const domain = await getEIP712Domain();
 
         const vcData = {
-            issuerDid: issuerDid,
-            issuerAddress: signer.address,
-            subject: {
-                codiceFiscale: "XXXXXX90A01Y000Z",
-                dataNascita: "1990-01-01",
-                exp: now + 86400 * 365,
-                facolta: "Computer Science",
-                id: holderDid,
-                nbf: now - 3600,
-                nominativo: "Mock Nominativo",
-                titoloStudio: titoloStudio,
-                universita: "Mock University",
-                voto: "110/110"
+            issuer: {
+                id: issuerDid,
             },
-            issuanceDate: "2024-01-01T00:00:00Z",
-            expirationDate: "2025-12-31T23:59:59Z",
+            issuanceDate: "2026-01-01T00:00:00Z",
+            credentialSubject: {
+                id: holderDid,
+                university: "University of Pisa",
+                faculty: "Computer Science",
+                degreeTitle: degreeTitle,
+                grade: "110/110"
+            },
         };
 
         // L'Issuer firma la VC con EIP-712
@@ -167,7 +153,7 @@ describe("Competence Upgrade — via governance", function () {
         const targets = [tokenAddr];
         const values = [0n];
         const calldatas = [calldata];
-        const description = `VP Upgrade ${target.address} a grado ${titoloStudio}`;
+        const description = `VP Upgrade ${target.address} to ${degreeTitle}`;
 
         const tx = await governor.propose(targets, values, calldatas, description);
         const receipt = await tx.wait();
@@ -290,6 +276,17 @@ describe("Competence Upgrade — via governance", function () {
         expect(await token.competenceProof(member.address)).to.contain("VP-EIP712:");
     });
 
+    it("upgrade con VP: Student → MasterDegree (5.000 × 2 = 10.000 aggiuntivi)", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        await token.connect(member).registerDID(holderDid);
+        await doUpgradeWithVP(member, "MasterDegree", holderDid, issuerDid);
+
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("15000", 18));
+        expect(await token.getMemberGrade(member.address)).to.equal(2);
+    });
+
     it("upgrade con VP: Student → Professor (5.000 × 4 = 20.000 aggiuntivi)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
@@ -299,6 +296,16 @@ describe("Competence Upgrade — via governance", function () {
 
         expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
+    });
+
+    it("rifiuta VP con degreeTitle non consentito", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        await token.connect(member).registerDID(holderDid);
+        await expect(
+            doUpgradeWithVP(member, "SimpleStudent", holderDid, issuerDid)
+        ).to.be.reverted; // InvalidDegreeLevel
     });
 
     it("rifiuta VP con issuer non fidato", async function () {
@@ -343,11 +350,11 @@ describe("Competence Upgrade — via governance", function () {
         await token.connect(member).registerDID(holderDid);
 
         const votesBefore = await token.getVotes(member.address);
-        await doUpgradeWithVP(member, "Professor", holderDid, issuerDid);
+        await doUpgradeWithVP(member, "PhD", holderDid, issuerDid);
         await token.connect(member).delegate(member.address); // Re-delega
 
         const votesAfter = await token.getVotes(member.address);
         expect(votesAfter).to.be.greaterThan(votesBefore);
-        expect(votesAfter).to.equal(ethers.parseUnits("25000", 18));
+        expect(votesAfter).to.equal(ethers.parseUnits("20000", 18));
     });
 });

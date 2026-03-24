@@ -49,14 +49,20 @@ async function main() {
     //   1. Codifica la chiamata invest(startup, importo) come calldata
     //   2. Invia la proposta al Governor con propose()
     //   3. Estrae il proposalId dall'evento ProposalCreated
+    // ============================================================================
+    // CREAZIONE DELLE 4 PROPOSTE (LOOP)
+    // ============================================================================
     const proposalIds: string[] = [];
     for (const p of proposals) {
-        // Codifica la chiamata: treasury.invest(mockStartup, importoInWei)
+        // 1. CODIFICA CALLDATA
+        // Usiamo l'interfaccia di Ethers per incapsulare il patto: "chiama invest() sul Treasury"
         const calldata = treasury.interface.encodeFunctionData("invest", [
             addresses.mockStartup, ethers.parseEther(p.amount),
         ]);
 
-        // Crea la proposta nel Governor
+        // 2. SOTTOMISSIONE AL GOVERNOR
+        // array di target (chi invocare), array di valori (ETH allegati = 0),
+        // array di payload calldata (istruzioni bytecode), stringa descrittiva
         const tx = await governor.propose([addresses.treasury], [0n], [calldata], p.desc);
         const receipt = await tx.wait();
 

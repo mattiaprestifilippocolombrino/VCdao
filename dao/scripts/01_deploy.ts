@@ -132,16 +132,20 @@ async function main() {
 
     // Tutti gli indirizzi dei contratti vengono salvati in un file JSON, in modo che
     // gli script successivi possano riconnettersi ai contratti deployati.
+    // Prepariamo un oggetto Javascript con tutte le mappature Chiave-Indirizzo per la persistenza
     const addresses = {
-        token: await token.getAddress(),
-        timelock: await timelock.getAddress(),
-        governor: governorAddr,
-        treasury: await treasury.getAddress(),
-        registry: await registry.getAddress(),
-        mockStartup: await mockStartup.getAddress(),
-        deployer: deployer.address,
-        issuer: issuerAddress,
+        token: await token.getAddress(),         // Token per deleghe e pesi di voto
+        timelock: await timelock.getAddress(),   // Controller di esecuzione ritardata
+        governor: governorAddr,                  // Motore logico delle votazioni
+        treasury: await treasury.getAddress(),   // Conto corrente della DAO
+        registry: await registry.getAddress(),   // Anagrafica startup supportate
+        mockStartup: await mockStartup.getAddress(), // Startup fittizia del test finale
+        deployer: deployer.address,              // Chi ha avviato il setup
+        issuer: issuerAddress,                   // Università fidata
     };
+    
+    // Serializziamo l'oggetto in JSON stringificato
+    // Salviamo tutto su file locale (deployedAddresses.json) per gli step successivi
     fs.writeFileSync(path.join(__dirname, "..", "deployedAddresses.json"), JSON.stringify(addresses, null, 2));
 
     console.log("\n══════════════════════════════════════════════════");

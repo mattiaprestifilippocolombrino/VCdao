@@ -55,10 +55,19 @@ async function main() {
         { signer: signers[14], eth: "1", label: "Student 2" },
     ];
 
+    // ============================================================================
+    // ESECUZIONE DEL JOIN PER OGNI MEMBRO
+    // ============================================================================
     // Per ogni membro: chiama joinDAO() inviando ETH e controlla il balance di token ottenuti.
     for (const m of members) {
+        // Connette l'account associato (signer) al contratto e chiama la funzione joinDAO().
+        // Il parametro `value` invia fisicamente gli importi in ETH dichiarati nel dizionario sopra.
         await token.connect(m.signer).joinDAO({ value: ethers.parseEther(m.eth) });
+        
+        // Verifica quanti token (COMP) ha ora in bilancio l'indirizzo appena entrato.
         const bal = await token.balanceOf(m.signer.address);
+        
+        // Stampa a schermo formattando i BigInt (che hanno 18 zeri di default) in formato leggibile.
         console.log(`   💰 ${m.label}: ${m.eth} ETH → ${ethers.formatUnits(bal, 18)} COMP`);
     }
 

@@ -40,13 +40,23 @@ async function main() {
         "Bachelor 1", "Bachelor 2", "Bachelor 3", "Student 1", "Student 2",
     ];
 
+    // ============================================================================
+    // APPLICAZIONE DELEGA (ATTIVAZIONE VOTING POWER)
+    // ============================================================================
     // Per ogni membro che possiede token:
     //   - delegate(self) → attiva il voting power pari al saldo
     //   - Es: un membro con 10.000 COMP ora ha 10.000 voti
     for (let i = 0; i < 15; i++) {
+        // Legge il saldo del token del membro corrente nell'array
         const bal = await token.balanceOf(signers[i].address);
-        if (bal === 0n) continue; // Salta chi non ha token
+        
+        // Salta chi non ha token (es. account non utilizzati da hardhat)
+        if (bal === 0n) continue; 
+        
+        // Connette il firmatario corrente e chiama `delegate` passando il proprio stesso indirizzo
         await token.connect(signers[i]).delegate(signers[i].address);
+        
+        // Conferma in log l'avvenuta attivazione per quel membro
         console.log(`   ✅ ${labels[i]}: ${ethers.formatUnits(bal, 18)} voti`);
     }
 

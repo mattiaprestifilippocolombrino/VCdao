@@ -7,7 +7,9 @@ Verifica nei test che i fondi siano arrivati e registra automaticamente ogni inv
 
 */
 /// @title MockStartup
-/// @notice Contratto fittizio che simula una startup ricevente investimenti
+/// @notice Contratto fittizio che simula una startup ricevente investimenti.
+/// @dev In ambito Tesi, questo contratto rappresenta l'"End-Point" del ciclo vitale della DAO:
+/// dimostra che i fondi sono stati sbloccati dal Timelock e inviati correttamente.
 contract MockStartup {
     // ── Variabili di stato ──
 
