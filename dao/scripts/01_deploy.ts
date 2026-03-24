@@ -23,7 +23,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 async function main() {
-    // Ottieni tutti gli account Hardhat (il primo è il deployer/fondatore, il 16° è l'Issuer)
+    // Ottieni tutti gli account Hardhat (il primo è il deployer/fondatore)
     const signers = await ethers.getSigners();
     const deployer = signers[0];
 
@@ -87,25 +87,14 @@ async function main() {
     console.log(`   🔗 Token → Treasury collegato`);
 
     // Imposta l'Issuer fidato (es. Università) per la verifica delle VC.
-    // L'Issuer è un account esterno alla DAO che firma le credenziali con EIP-712.
-    // Leggiamo l'indirizzo dell'Issuer direttamente dalle Verifiable Credentials generate
-    // dal modulo Veramo (Opzione B della tesi - loose coupling).
-    let issuerAddress = signers[15].address; // Indirizzo di fallback
-    const veramoCredsPath = path.join(__dirname, "..", "..", "veramo", "credentials");
-    const testCredFile = path.join(veramoCredsPath, "student-luca-bianchi.json");
-    
-    if (fs.existsSync(testCredFile)) {
-        console.log(`   📂 File VC di Veramo trovato. Estrazione indirizzo Issuer...`);
-        const vcData = JSON.parse(fs.readFileSync(testCredFile, 'utf-8'));
-        const issuerDid = vcData.issuer.id; // es. did:ethr:sepolia:0xABCD...oppure did:ethr:0xABCD...
-        // Estraiamo l'indirizzo Ethereum splittando la stringa DID
-        const extractedAddress = issuerDid.split(':').pop(); 
-        if (extractedAddress && ethers.isAddress(extractedAddress)) {
-            issuerAddress = extractedAddress;
-        }
-    } else {
-        console.log(`   ⚠️ Nessuna VC Veramo trovata in ${veramoCredsPath}. Uso l'Issuer simulato (Signer 15).`);
+    // Best practice: issuer esplicito via env, senza fallback impliciti.
+    const issuerFromEnv = process.env.DAO_TRUSTED_ISSUER;
+    if (!issuerFromEnv || !ethers.isAddress(issuerFromEnv)) {
+        throw new Error(
+            "Variabile DAO_TRUSTED_ISSUER mancante o non valida. Esempio: DAO_TRUSTED_ISSUER=0xabc... npx hardhat run scripts/01_deploy.ts --network localhost"
+        );
     }
+    const issuerAddress = ethers.getAddress(issuerFromEnv);
 
     await token.setTrustedIssuer(issuerAddress);
     console.log(`   🏛️ Issuer fidato impostato: ${issuerAddress}`);
@@ -151,7 +140,7 @@ async function main() {
         registry: await registry.getAddress(),
         mockStartup: await mockStartup.getAddress(),
         deployer: deployer.address,
-        issuer: issuerSigner.address,
+        issuer: issuerAddress,
     };
     fs.writeFileSync(path.join(__dirname, "..", "deployedAddresses.json"), JSON.stringify(addresses, null, 2));
 

@@ -9,6 +9,7 @@
     "selective-disclosure": "ts-node scripts/3-selective-disclosure.ts",
     "verify-credential": "ts-node scripts/4-verify-credential.ts",
     "full-flow": "ts-node scripts/5-full-flow.ts",
+    "issue-for-dao": "ts-node scripts/issue-for-dao.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

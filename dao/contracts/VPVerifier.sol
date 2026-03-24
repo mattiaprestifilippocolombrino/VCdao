@@ -9,7 +9,7 @@ pragma solidity ^0.8.28;
     l'upgrade di competenza di un membro.
 
     Flusso di verifica:
-    1. L'Issuer firma la VC off-chain usando EIP-712 (es. tramite ethers.js / Veramo)
+    1. L'Issuer firma la VC off-chain usando EIP-712 
     2. Il membro presenta la VC firmata alla DAO tramite proposta di governance
     3. La DAO ricostruisce l'hash EIP-712 e recupera il firmatario (ECDSA.recover)
     4. Se il firmatario corrisponde all'Issuer fidato → la VC è autentica
@@ -22,13 +22,11 @@ pragma solidity ^0.8.28;
     Standard di riferimento:
     - EIP-712: https://eips.ethereum.org/EIPS/eip-712
     - W3C VC Data Model: https://www.w3.org/TR/vc-data-model
-    - Ispirato a: KrebitDAO/VCTypes.sol
 */
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 library VPVerifier {
-
     // =========================================================================
     //  Type Hash EIP-712 (costanti pre-calcolate)
     // =========================================================================
@@ -91,16 +89,16 @@ library VPVerifier {
     /// @dev Rappresenta il credentialSubject della VC arricchita con tutti i dati personali.
     ///      I campi sono ordinati alfabeticamente per rispettare lo standard EIP-712 di Veramo.
     struct CredentialSubject {
-        string codiceFiscale;   // Codice Fiscale
-        string dataNascita;     // Data di nascita
-        uint256 exp;            // Expiration: fine validità (UNIX timestamp)
-        string facolta;         // Facoltà universitaria
-        string id;              // DID dell'holder
-        uint256 nbf;            // Not-Before: inizio validità (UNIX timestamp)
-        string nominativo;      // Nome e Cognome
-        string titoloStudio;    // Livello esteso (es. "Bachelor Degree") testuale
-        string universita;      // Nome dell'Università emittente
-        string voto;            // Voto di laurea
+        string codiceFiscale; // Codice Fiscale
+        string dataNascita; // Data di nascita
+        uint256 exp; // Expiration: fine validità (UNIX timestamp)
+        string facolta; // Facoltà universitaria
+        string id; // DID dell'holder
+        uint256 nbf; // Not-Before: inizio validità (UNIX timestamp)
+        string nominativo; // Nome e Cognome
+        string titoloStudio; // Livello esteso (es. "Bachelor Degree") testuale
+        string universita; // Nome dell'Università emittente
+        string voto; // Voto di laurea
     }
 
     /// @notice Credenziale verifiable firmata dall'Issuer con EIP-712
@@ -108,11 +106,11 @@ library VPVerifier {
     ///      La firma dell'Issuer su questa struttura è la prova crittografica
     ///      che il CredentialSubject è autentico.
     struct VerifiableCredential {
-        string issuerDid;           // DID dell'issuer (es. "did:ethr:sepolia:0x...")
-        address issuerAddress;      // Indirizzo Ethereum dell'issuer
-        CredentialSubject subject;  // Dati certificati dell'holder
-        string issuanceDate;        // Data di emissione (ISO 8601)
-        string expirationDate;      // Data di scadenza (ISO 8601)
+        string issuerDid; // DID dell'issuer (es. "did:ethr:sepolia:0x...")
+        address issuerAddress; // Indirizzo Ethereum dell'issuer
+        CredentialSubject subject; // Dati certificati dell'holder
+        string issuanceDate; // Data di emissione (ISO 8601)
+        string expirationDate; // Data di scadenza (ISO 8601)
     }
 
     // =========================================================================
@@ -125,19 +123,22 @@ library VPVerifier {
     function hashCredentialSubject(
         CredentialSubject memory cs
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(
-            CREDENTIAL_SUBJECT_TYPEHASH,
-            keccak256(bytes(cs.codiceFiscale)),
-            keccak256(bytes(cs.dataNascita)),
-            cs.exp,
-            keccak256(bytes(cs.facolta)),
-            keccak256(bytes(cs.id)),
-            cs.nbf,
-            keccak256(bytes(cs.nominativo)),
-            keccak256(bytes(cs.titoloStudio)),
-            keccak256(bytes(cs.universita)),
-            keccak256(bytes(cs.voto))
-        ));
+        return
+            keccak256(
+                abi.encode(
+                    CREDENTIAL_SUBJECT_TYPEHASH,
+                    keccak256(bytes(cs.codiceFiscale)),
+                    keccak256(bytes(cs.dataNascita)),
+                    cs.exp,
+                    keccak256(bytes(cs.facolta)),
+                    keccak256(bytes(cs.id)),
+                    cs.nbf,
+                    keccak256(bytes(cs.nominativo)),
+                    keccak256(bytes(cs.titoloStudio)),
+                    keccak256(bytes(cs.universita)),
+                    keccak256(bytes(cs.voto))
+                )
+            );
     }
 
     /// @notice Calcola lo struct hash EIP-712 della VerifiableCredential
@@ -146,14 +147,17 @@ library VPVerifier {
     function hashVerifiableCredential(
         VerifiableCredential memory vc
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(
-            VERIFIABLE_CREDENTIAL_TYPEHASH,
-            keccak256(bytes(vc.issuerDid)),
-            vc.issuerAddress,
-            hashCredentialSubject(vc.subject),
-            keccak256(bytes(vc.issuanceDate)),
-            keccak256(bytes(vc.expirationDate))
-        ));
+        return
+            keccak256(
+                abi.encode(
+                    VERIFIABLE_CREDENTIAL_TYPEHASH,
+                    keccak256(bytes(vc.issuerDid)),
+                    vc.issuerAddress,
+                    hashCredentialSubject(vc.subject),
+                    keccak256(bytes(vc.issuanceDate)),
+                    keccak256(bytes(vc.expirationDate))
+                )
+            );
     }
 
     // =========================================================================

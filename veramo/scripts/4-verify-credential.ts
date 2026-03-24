@@ -27,7 +27,7 @@ async function main() {
     const label = CREDENTIAL_LABELS[holder.level]
 
     if (!fs.existsSync(credPath)) {
-      console.log(`⚠️  ${holder.name} [${label}] — file non trovato: ${credPath}`)
+      console.log(`⚠️  ${holder.nominativo} [${label}] — file non trovato: ${credPath}`)
       falliti++
       continue
     }
@@ -42,10 +42,10 @@ async function main() {
 
     if (verificaResult.verified) {
       const tipoProof = vc.proof?.type || 'Sconosciuto'
-      console.log(`✅ ${holder.name} — ${label} (Firma: ${tipoProof})`)
+      console.log(`✅ ${holder.nominativo} — ${label} (Firma: ${tipoProof})`)
       verificati++
     } else {
-      console.log(`❌ ${holder.name} —  VERIFICA FALLITA`)
+      console.log(`❌ ${holder.nominativo} —  VERIFICA FALLITA`)
       if (verificaResult.error) {
         console.log(`   Motivo: ${verificaResult.error.message}`)
       }

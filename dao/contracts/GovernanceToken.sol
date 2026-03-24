@@ -11,12 +11,10 @@ pragma solidity ^0.8.28;
     IDENTITÀ DECENTRALIZZATA (DID):
     Ogni membro può registrare il proprio DID (Decentralized Identifier)
     tramite registerDID(), creando un binding 1:1 tra indirizzo Ethereum e DID.
-    Questo collegamento è necessario per l'upgrade di competenza con VP.
+    Questo collegamento è necessario per l'upgrade di competenza con VC.
 
     UPGRADE DI COMPETENZA:
-    Due modalità:
-    1. Legacy: upgradeCompetence() — il Timelock passa indirizzo, grado e prova testuale.
-    2. Con VP (core della tesi): upgradeCompetenceWithVP() — il Timelock passa una
+     upgradeCompetenceWithVP(): Il Timelock passa una
        Verifiable Credential firmata dall'Issuer con EIP-712. Il contratto verifica
        la firma on-chain, controlla il binding DID, e aggiorna il grado.
 
@@ -30,7 +28,6 @@ import "@openzeppelin/contracts/utils/Nonces.sol";
 import "./VPVerifier.sol";
 
 contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
-
     // =====================================================================
     //  Gradi di competenza
     // =====================================================================
@@ -42,11 +39,11 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         all'indice dell'enum: 0=Student, 1=Bachelor, 2=Master, 3=PhD, 4=Professor.
     */
     enum CompetenceGrade {
-        Student,        // Coefficiente 1, grado di partenza
+        Student, // Coefficiente 1, grado di partenza
         BachelorDegree, // Coefficiente 2
-        MasterDegree,   // Coefficiente 3
-        PhD,            // Coefficiente 4
-        Professor       // Coefficiente 5
+        MasterDegree, // Coefficiente 3
+        PhD, // Coefficiente 4
+        Professor // Coefficiente 5
     }
 
     // =====================================================================
@@ -161,17 +158,17 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     error TreasuryTransferFailed();
 
     // Errori specifici per DID e VP
-    error DIDAlreadyRegistered();   // Il membro ha già un DID registrato
-    error DIDAlreadyBound();        // Il DID è già associato a un altro indirizzo
-    error NoDIDRegistered();        // Il membro non ha registrato un DID
-    error DIDMismatch();            // Il DID nella VC non corrisponde al DID del membro
-    error HolderAddressMismatch();  // L'indirizzo nella VC non corrisponde al membro
-    error UntrustedIssuer();        // La firma non proviene dall'Issuer fidato
-    error VCNotYetValid();          // La VC non è ancora valida (nbf > now)
-    error VCExpired();              // La VC è scaduta (exp ≤ now)
-    error InvalidDegreeLevel();     // degreeLevel > 4
-    error TrustedIssuerNotSet();    // L'Issuer fidato non è stato configurato
-    error EmptyDID();               // Stringa DID vuota
+    error DIDAlreadyRegistered(); // Il membro ha già un DID registrato
+    error DIDAlreadyBound(); // Il DID è già associato a un altro indirizzo
+    error NoDIDRegistered(); // Il membro non ha registrato un DID
+    error DIDMismatch(); // Il DID nella VC non corrisponde al DID del membro
+    error HolderAddressMismatch(); // L'indirizzo nella VC non corrisponde al membro
+    error UntrustedIssuer(); // La firma non proviene dall'Issuer fidato
+    error VCNotYetValid(); // La VC non è ancora valida (nbf > now)
+    error VCExpired(); // La VC è scaduta (exp ≤ now)
+    error InvalidDegreeLevel(); // degreeLevel > 4
+    error TrustedIssuerNotSet(); // L'Issuer fidato non è stato configurato
+    error EmptyDID(); // Stringa DID vuota
 
     // =====================================================================
     //  Modifier
@@ -292,7 +289,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     function registerDID(string calldata _did) external {
         if (!isMember[msg.sender]) revert NotMember();
         if (bytes(_did).length == 0) revert EmptyDID();
-        if (bytes(memberDID[msg.sender]).length > 0) revert DIDAlreadyRegistered();
+        if (bytes(memberDID[msg.sender]).length > 0)
+            revert DIDAlreadyRegistered();
 
         bytes32 didHash = keccak256(bytes(_did));
         if (didToAddress[didHash] != address(0)) revert DIDAlreadyBound();
@@ -332,7 +330,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         4. La VC deve essere nel periodo di validità (nbf ≤ now < exp)
         5. La firma EIP-712 deve provenire dall'Issuer fidato (ECDSA.recover)
         6. Il degreeLevel deve essere valido (0..4) e superiore al grado attuale
-
         Dopo la verifica, il contratto mappa degreeLevel → CompetenceGrade
         e applica l'upgrade con la stessa formula token della modalità legacy.
     */
@@ -347,8 +344,10 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
         // Controllo binding DID
         if (bytes(memberDID[_member]).length == 0) revert NoDIDRegistered();
-        if (keccak256(bytes(_vc.subject.id)) != keccak256(bytes(memberDID[_member])))
-            revert DIDMismatch();
+        if (
+            keccak256(bytes(_vc.subject.id)) !=
+            keccak256(bytes(memberDID[_member]))
+        ) revert DIDMismatch();
 
         // Validazione temporale della VC
         if (!VPVerifier.isTemporallyValid(_vc.subject)) {
@@ -358,7 +357,9 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
         // Verifica firma EIP-712: recupera il firmatario e controlla che sia l'Issuer fidato
         address recoveredIssuer = VPVerifier.recoverIssuer(
-            _vc, _issuerSignature, _domainSeparatorV4()
+            _vc,
+            _issuerSignature,
+            _domainSeparatorV4()
         );
         if (recoveredIssuer != trustedIssuer) revert UntrustedIssuer();
         if (_vc.issuerAddress != trustedIssuer) revert UntrustedIssuer();
@@ -367,16 +368,19 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         CompetenceGrade newGrade = _getGradeFromTitle(_vc.subject.titoloStudio);
 
         // Costruisci la proof string (riferimento alla VP verificata)
-        string memory proof = string(abi.encodePacked(
-            "VP-EIP712:", _vc.issuerDid
-        ));
+        string memory proof = string(
+            abi.encodePacked("VP-EIP712:", _vc.issuerDid)
+        );
 
         // Applica l'upgrade
         _performUpgrade(_member, newGrade, proof);
 
         // 4. Emette l'evento (la prova crittografica off-chain ora "diventa" l'attestato on-chain)
         emit CompetenceUpgradedWithVP(
-            _member, newGrade, uint8(newGrade), _vc.issuerDid
+            _member,
+            newGrade,
+            uint8(newGrade),
+            _vc.issuerDid
         );
     }
 
@@ -387,13 +391,19 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         Questa funzione trasforma l'attestato descrittivo W3C ("Master Degree") 
         nel peso numerico della gerarchia On-Chain, agendo da Traduttore Semantico.
     */
-    function _getGradeFromTitle(string memory _titoloStudio) internal pure returns (CompetenceGrade) {
+    function _getGradeFromTitle(
+        string memory _titoloStudio
+    ) internal pure returns (CompetenceGrade) {
         bytes32 hashTitle = keccak256(bytes(_titoloStudio));
-        if (hashTitle == keccak256(bytes("SimpleStudent"))) return CompetenceGrade.Student;
-        if (hashTitle == keccak256(bytes("BachelorDegree"))) return CompetenceGrade.BachelorDegree;
-        if (hashTitle == keccak256(bytes("MasterDegree"))) return CompetenceGrade.MasterDegree;
+        if (hashTitle == keccak256(bytes("SimpleStudent")))
+            return CompetenceGrade.Student;
+        if (hashTitle == keccak256(bytes("BachelorDegree")))
+            return CompetenceGrade.BachelorDegree;
+        if (hashTitle == keccak256(bytes("MasterDegree")))
+            return CompetenceGrade.MasterDegree;
         if (hashTitle == keccak256(bytes("PhD"))) return CompetenceGrade.PhD;
-        if (hashTitle == keccak256(bytes("Professor"))) return CompetenceGrade.Professor;
+        if (hashTitle == keccak256(bytes("Professor")))
+            return CompetenceGrade.Professor;
         revert InvalidDegreeLevel();
     }
 

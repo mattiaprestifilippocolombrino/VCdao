@@ -5,7 +5,7 @@ Script che dimostra il core della tesi: la DAO verifica on-chain una Verifiable 
 firmata dall'Issuer fidato (Università) con EIP-712, ed effettua l'upgrade di competenza.
 
 FLUSSO:
-1. L'Issuer (signers[15]) firma le VC dei membri con EIP-712 off-chain
+1. Le VC EIP-712 vengono generate off-chain dal modulo Veramo
 2. I membri registrano il proprio DID nel GovernanceToken
 3. Viene creata una proposta di governance batch con le VP
 4. I membri votano FOR → la proposta viene approvata
@@ -13,11 +13,8 @@ FLUSSO:
 6. Il contratto verifica ogni firma EIP-712 on-chain e aggiorna i gradi
 
 RISULTATO DOPO L'UPGRADE:
-- 5 Professors: base × 5   (Es: 100.000 × 5 = 500.000 COMP)
-- 3 PhDs:       base × 4   (Es: 30.000 × 4 = 120.000 COMP)
-- 2 Masters:    base × 3   (Es: 15.000 × 3 = 45.000 COMP)
-- 3 Bachelors:  base × 2   (Es: 8.000 × 2 = 16.000 COMP)
-- 2 Students:   nessun upgrade (restano base × 1)
+- I membri selezionati ricevono l'upgrade in base alle VC trusted realmente disponibili.
+- Nessun dato viene simulato: se le VC richieste non esistono o non sono valide, lo script fallisce con errore esplicito.
 
 ESECUZIONE: npx hardhat run scripts/04_upgradeCompetences.ts --network localhost
 */
@@ -31,34 +28,55 @@ import * as path from "path";
 const GRADE_NAMES: Record<number, string> = {
     0: "Student", 1: "Bachelor", 2: "Master", 3: "PhD", 4: "Professor",
 };
-
-// Tipi EIP-712 per la VerifiableCredential (devono corrispondere a VPVerifier.sol)
-// I campi in CredentialSubject devono essere rigorosamente in ordine alfabetico
-const VC_TYPES = {
-    CredentialSubject: [
-        { name: "codiceFiscale", type: "string" },
-        { name: "dataNascita", type: "string" },
-        { name: "exp", type: "uint256" },
-        { name: "facolta", type: "string" },
-        { name: "id", type: "string" },
-        { name: "nbf", type: "uint256" },
-        { name: "nominativo", type: "string" },
-        { name: "titoloStudio", type: "string" },
-        { name: "universita", type: "string" },
-        { name: "voto", type: "string" },
-    ],
-    VerifiableCredential: [
-        { name: "issuerDid", type: "string" },
-        { name: "issuerAddress", type: "address" },
-        { name: "subject", type: "CredentialSubject" },
-        { name: "issuanceDate", type: "string" },
-        { name: "expirationDate", type: "string" },
-    ],
+const PROPOSAL_STATE_NAMES: Record<number, string> = {
+    0: "Pending",
+    1: "Active",
+    2: "Canceled",
+    3: "Defeated",
+    4: "Succeeded",
+    5: "Queued",
+    6: "Expired",
+    7: "Executed",
 };
+
+type ParsedCredential = {
+    file: string;
+    issuerDid: string;
+    issuerAddress: string;
+    issuanceDate: string;
+    expirationDate: string;
+    signature: string;
+    subject: {
+        codiceFiscale: string;
+        dataNascita: string;
+        exp: bigint;
+        facolta: string;
+        id: string;
+        nbf: bigint;
+        nominativo: string;
+        titoloStudio: string;
+        universita: string;
+        voto: string;
+    };
+};
+
+function assertString(value: unknown, field: string, file: string): string {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        throw new Error(`VC non valida (${file}): campo '${field}' mancante o vuoto`);
+    }
+    return value;
+}
+
+function assertBigintLike(value: unknown, field: string, file: string): bigint {
+    try {
+        return BigInt(value as any);
+    } catch {
+        throw new Error(`VC non valida (${file}): campo '${field}' non numerico`);
+    }
+}
 
 async function main() {
     const signers = await ethers.getSigners();
-    const issuer = signers[15]; // L'Issuer fidato (Università)
 
     console.log("══════════════════════════════════════════════════");
     console.log("  CompetenceDAO — Upgrade competenze con VP EIP-712");
@@ -75,131 +93,189 @@ async function main() {
     const VOTING_PERIOD = 50;
     const TIMELOCK_DELAY = 3600;
 
-    // ── FASE 1: Registrazione DID dei membri ──
-    // Ogni membro registra il proprio DID nel GovernanceToken.
-    // Il DID è costruito a partire dall'indirizzo Ethereum.
-    console.log("🔑 Registrazione DID dei membri...");
+    // Garanzia di voting power: se lo script viene lanciato senza 03_delegateAll.ts,
+    // auto-deleghiamo i membri che hanno token ma zero voti.
     for (let i = 0; i < 15; i++) {
-        const did = `did:ethr:0x${signers[i].address.slice(2)}`;
-        try {
-            await token.connect(signers[i]).registerDID(did);
-            console.log(`   ✅ ${signers[i].address.slice(0, 10)}... → ${did.slice(0, 30)}...`);
-        } catch {
-            // DID già registrato (script eseguito più volte)
-            console.log(`   ⏭️  ${signers[i].address.slice(0, 10)}... → già registrato`);
+        const member = signers[i];
+        const balance = await token.balanceOf(member.address);
+        const votes = await token.getVotes(member.address);
+        if (balance > 0n && votes === 0n) {
+            await token.connect(member).delegate(member.address);
         }
     }
 
-    // ── FASE 2: Lettura delle VP da Veramo (Opzione B) ──
-    // Il modulo Veramo ha generato off-chain i file JSON nella cartella "credentials".
+    // ── FASE 1: Lettura delle VP generate per la DAO ──
+    // Le credenziali sono generate dallo script veramo/scripts/issue-for-dao.ts
+    // e salvate nella cartella condivisa dao/scripts/shared-credentials.
     // Lo script DAO li legge, estrae le firme e costruisce la proposta on-chain.
 
-    console.log("\n📝 La DAO legge le VC generate da Veramo...");
-
-    // Dominio EIP-712 del GovernanceToken (deve corrispondere a quello nel contratto)
-    const domain = {
-        name: "CompetenceDAO Token",
-        version: "1",
-        chainId: (await ethers.provider.getNetwork()).chainId,
-        verifyingContract: addresses.token,
-    };
-
-    const now = await time.latest();
-    const issuerDid = `did:ethr:0x${issuer.address.slice(2)}`;
-
-    // Lista degli upgrade da applicare (con titoli descrittivi)
-    const upgrades = [
-        { signer: signers[0],  grade: "Professor", label: "Professor 1" },
-        { signer: signers[1],  grade: "Professor", label: "Professor 2" },
-        { signer: signers[2],  grade: "Professor", label: "Professor 3" },
-        { signer: signers[3],  grade: "Professor", label: "Professor 4" },
-        { signer: signers[4],  grade: "Professor", label: "Professor 5" },
-        { signer: signers[5],  grade: "PhD", label: "PhD 1" },
-        { signer: signers[6],  grade: "PhD", label: "PhD 2" },
-        { signer: signers[7],  grade: "PhD", label: "PhD 3" },
-        { signer: signers[8],  grade: "MasterDegree", label: "Master 1" },
-        { signer: signers[9],  grade: "MasterDegree", label: "Master 2" },
-        { signer: signers[10], grade: "BachelorDegree", label: "Bachelor 1" },
-        { signer: signers[11], grade: "BachelorDegree", label: "Bachelor 2" },
-        { signer: signers[12], grade: "BachelorDegree", label: "Bachelor 3" },
-    ];
+    console.log("\n📝 La DAO legge le VC condivise e registra i DID corretti...");
 
     const tokenAddr = addresses.token;
     const targets: string[] = [];
     const values: bigint[] = [];
     const calldatas: string[] = [];
-    const veramoCredsPath = path.join(__dirname, "..", "..", "veramo", "credentials");
+    const veramoCredsPath = path.join(__dirname, "shared-credentials");
 
-    for (const u of upgrades) {
-        let vcDataObj: any = null;
-        let signature = "";
-        
-        if (fs.existsSync(veramoCredsPath)) {
-            const files = fs.readdirSync(veramoCredsPath);
-            for (const file of files) {
-                if (file.endsWith(".json")) {
-                    const content = JSON.parse(fs.readFileSync(path.join(veramoCredsPath, file), "utf-8"));
-                    if (content.credentialSubject?.titoloStudio === u.grade) {
-                        vcDataObj = content;
-                        signature = content.proof?.proofValue || "0x0";
-                        break;
-                    }
-                }
-            }
+    if (!fs.existsSync(veramoCredsPath)) {
+        throw new Error(
+            `Cartella credenziali non trovata: ${veramoCredsPath}. Esegui prima veramo/scripts/issue-for-dao.ts.`
+        );
+    }
+
+    const credentialFiles = fs
+        .readdirSync(veramoCredsPath)
+        .filter((f) => f.endsWith(".json"))
+        .sort();
+    if (credentialFiles.length === 0) {
+        throw new Error(`Nessun file VC JSON trovato in ${veramoCredsPath}.`);
+    }
+
+    const trustedIssuer = ethers.getAddress(addresses.issuer);
+    const parsedCredentials: ParsedCredential[] = credentialFiles.map((file) => {
+        const filePath = path.join(veramoCredsPath, file);
+        const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+
+        const issuerDid = assertString(content?.issuer?.id, "issuer.id", file);
+        const didTail = issuerDid.split(":").pop();
+        if (!didTail) {
+            throw new Error(`VC non valida (${file}): issuer DID malformato (${issuerDid})`);
         }
 
-        // Se non troviamo il JSON da Veramo, creiamo un mock hardcoded
-        if (!vcDataObj) {
-            console.log(`   ⚠️ JSON per ${u.label} non trovato in ${veramoCredsPath}. MOCK locale inserito.`);
-            const holderDid = `did:ethr:0x${u.signer.address.slice(2)}`;
-            vcDataObj = {
-                issuerDid: issuerDid,
-                issuerAddress: issuer.address,
-                subject: {
-                    codiceFiscale: "XXXXXX90A01Y000Z",
-                    dataNascita: "1990-01-01",
-                    exp: now + 86400 * 365,
-                    facolta: "Computer Science",
-                    id: holderDid,
-                    nbf: now - 3600,
-                    nominativo: "Mock Nominativo",
-                    titoloStudio: u.grade,
-                    universita: "Mock University",
-                    voto: "110/110"
-                },
-                issuanceDate: new Date().toISOString(),
-                expirationDate: new Date(Date.now() + 86400000 * 365).toISOString(),
-            };
-            signature = await issuer.signTypedData(domain, VC_TYPES, vcDataObj);
+        let issuerAddress = "";
+        if (ethers.isAddress(didTail)) {
+            issuerAddress = ethers.getAddress(didTail);
         } else {
-            // Estrazione dati reali dal JSON Veramo per adattarli alla struct Solidity alfabetica
-            const holderDid = vcDataObj.credentialSubject.id;
-            
-            try {
-                await token.connect(u.signer).registerDID(holderDid);
-                console.log(`   🔗 DID Registrato per signer: ${holderDid}`);
-            } catch { /* Ignora se già registrato */ }
+            const isCompressedPubKey = /^0x[0-9a-fA-F]{66}$/.test(didTail);
+            const isUncompressedPubKey = /^0x[0-9a-fA-F]{130}$/.test(didTail);
+            if (!isCompressedPubKey && !isUncompressedPubKey) {
+                throw new Error(
+                    `VC non valida (${file}): issuer DID non contiene né address né public key valida (${issuerDid})`
+                );
+            }
+            issuerAddress = ethers.computeAddress(didTail);
+        }
 
-            // Mappiamo i campi del JSON nel formato esatto della struct Solidity in ordine alfabetico
-            const solStruct = {
-                issuerDid: vcDataObj.issuer.id || vcDataObj.issuer,
-                issuerAddress: addresses.issuer, 
-                subject: {
-                    codiceFiscale: vcDataObj.credentialSubject.codiceFiscale || "XXXYYY00A01H501Z",
-                    dataNascita: vcDataObj.credentialSubject.dataNascita || "1990-01-01",
-                    exp: vcDataObj.credentialSubject.exp || now + 86400 * 365,
-                    facolta: vcDataObj.credentialSubject.facolta || "Informatica",
-                    id: holderDid,
-                    nbf: vcDataObj.credentialSubject.nbf || now - 3600,
-                    nominativo: vcDataObj.credentialSubject.nominativo || "N/A N/A",
-                    titoloStudio: vcDataObj.credentialSubject.titoloStudio || "Student",
-                    universita: vcDataObj.credentialSubject.universita || "University of Computer Science",
-                    voto: vcDataObj.credentialSubject.voto || "N/A"
-                },
-                issuanceDate: vcDataObj.issuanceDate,
-                expirationDate: vcDataObj.expirationDate || new Date(Date.now() + 86400000 * 365).toISOString(),
-            };
-            vcDataObj = solStruct;
+        const signature = assertString(content?.proof?.proofValue, "proof.proofValue", file);
+        const issuanceDate = assertString(content?.issuanceDate, "issuanceDate", file);
+        const expirationDate = assertString(content?.expirationDate, "expirationDate", file);
+        const subjectRaw = content?.credentialSubject ?? {};
+
+        return {
+            file,
+            issuerDid,
+            issuerAddress,
+            issuanceDate,
+            expirationDate,
+            signature,
+            subject: {
+                codiceFiscale: assertString(subjectRaw.codiceFiscale, "credentialSubject.codiceFiscale", file),
+                dataNascita: assertString(subjectRaw.dataNascita, "credentialSubject.dataNascita", file),
+                exp: assertBigintLike(subjectRaw.exp, "credentialSubject.exp", file),
+                facolta: assertString(subjectRaw.facolta, "credentialSubject.facolta", file),
+                id: assertString(subjectRaw.id, "credentialSubject.id", file),
+                nbf: assertBigintLike(subjectRaw.nbf, "credentialSubject.nbf", file),
+                nominativo: assertString(subjectRaw.nominativo, "credentialSubject.nominativo", file),
+                titoloStudio: assertString(subjectRaw.titoloStudio, "credentialSubject.titoloStudio", file),
+                universita: assertString(subjectRaw.universita, "credentialSubject.universita", file),
+                voto: assertString(subjectRaw.voto, "credentialSubject.voto", file),
+            },
+        };
+    });
+
+    const trustedCredentials = parsedCredentials.filter(
+        (c) => c.issuerAddress === trustedIssuer
+    );
+    if (trustedCredentials.length === 0) {
+        throw new Error(
+            `Nessuna VC firmata dall'issuer trusted (${trustedIssuer}). Rigenera le VC con l'issuer corretto.`
+        );
+    }
+
+    const upgradeSlots: Record<string, number[]> = {
+        Professor: [0, 1, 2, 3, 4],
+        PhD: [5, 6, 7],
+        MasterDegree: [8, 9],
+        BachelorDegree: [10, 11, 12],
+    };
+    const labelByGrade: Record<string, string> = {
+        Professor: "Professor",
+        PhD: "PhD",
+        MasterDegree: "Master",
+        BachelorDegree: "Bachelor",
+    };
+    const upgrades: Array<{ signer: (typeof signers)[number], grade: string, label: string }> = [];
+    for (const [grade, slots] of Object.entries(upgradeSlots)) {
+        const available = trustedCredentials.filter((c) => c.subject.titoloStudio === grade).length;
+        if (available === 0) continue;
+
+        const countToUse = Math.min(available, slots.length);
+        for (let i = 0; i < countToUse; i++) {
+            upgrades.push({
+                signer: signers[slots[i]],
+                grade,
+                label: `${labelByGrade[grade]} ${i + 1}`,
+            });
+        }
+
+        if (available > slots.length) {
+            console.log(
+                `   ⚠️ Trovate ${available} VC per ${grade}, ma gli slot piano upgrade sono ${slots.length}. Le VC extra verranno ignorate.`
+            );
+        }
+    }
+    if (upgrades.length === 0) {
+        throw new Error(
+            "Nessun upgrade pianificabile: mancano VC trusted per i gradi Bachelor/Master/PhD/Professor."
+        );
+    }
+    console.log(`   📌 Upgrade pianificati da VC trusted: ${upgrades.length}`);
+
+    const usedCredentialFiles = new Set<string>();
+
+    for (const u of upgrades) {
+        const selected = trustedCredentials.find(
+            (c) => !usedCredentialFiles.has(c.file) && c.subject.titoloStudio === u.grade
+        );
+        if (!selected) {
+            const remainingForGrade = trustedCredentials.filter(
+                (c) => !usedCredentialFiles.has(c.file) && c.subject.titoloStudio === u.grade
+            ).length;
+            throw new Error(
+                `VC insufficiente per ${u.label} (${u.grade}). Rimaste ${remainingForGrade} VC trusted per questo grado.`
+            );
+        }
+        usedCredentialFiles.add(selected.file);
+
+        const holderDid = selected.subject.id;
+        const vcDataObj = {
+            issuerDid: selected.issuerDid,
+            issuerAddress: selected.issuerAddress,
+            subject: {
+                codiceFiscale: selected.subject.codiceFiscale,
+                dataNascita: selected.subject.dataNascita,
+                exp: selected.subject.exp,
+                facolta: selected.subject.facolta,
+                id: selected.subject.id,
+                nbf: selected.subject.nbf,
+                nominativo: selected.subject.nominativo,
+                titoloStudio: selected.subject.titoloStudio,
+                universita: selected.subject.universita,
+                voto: selected.subject.voto
+            },
+            issuanceDate: selected.issuanceDate,
+            expirationDate: selected.expirationDate,
+        };
+        const signature = selected.signature;
+
+        const currentDid = await token.memberDID(u.signer.address);
+        if (currentDid.length === 0) {
+            await token.connect(u.signer).registerDID(holderDid);
+            console.log(`   🔑 DID registrato per ${u.label}: ${holderDid}`);
+        } else if (currentDid !== holderDid) {
+            throw new Error(
+                `DID già registrato diverso per ${u.label}: current=${currentDid}, vc=${holderDid}`
+            );
         }
 
         // Prepara il calldata per upgradeCompetenceWithVP
@@ -214,10 +290,27 @@ async function main() {
         console.log(`   🔏 ${u.label} (grado ${u.grade}) → pacchetto VP preparato`);
     }
 
-    // ── FASE 3: Proposta di governance batch ──
-    const description = "VP Batch upgrade: 5 Professors, 3 PhDs, 2 Masters, 3 Bachelors (EIP-712)";
+    // Validazione locale prima della proposta:
+    // ogni payload deve usare lo stesso DID già registrato per il membro target.
+    for (let i = 0; i < calldatas.length; i++) {
+        const decoded = token.interface.decodeFunctionData(
+            "upgradeCompetenceWithVP",
+            calldatas[i]
+        );
+        const member = decoded[0] as string;
+        const vc = decoded[1] as any;
+        const registeredDid = await token.memberDID(member);
+        if (registeredDid !== vc.subject.id) {
+            throw new Error(
+                `Payload DID mismatch su indice ${i}: member=${member}, registered=${registeredDid}, vc=${vc.subject.id}`
+            );
+        }
+    }
 
-    console.log("\n📝 Creazione proposta batch (13 upgrade con VP)...");
+    // ── FASE 2: Proposta di governance batch ──
+    const description = `VP Batch upgrade da VC trusted (EIP-712) — count: ${upgrades.length}`;
+
+    console.log(`\n📝 Creazione proposta batch (${upgrades.length} upgrade con VP)...`);
     const tx = await governor.propose(targets, values, calldatas, description);
     const receipt = await tx.wait();
 
@@ -225,19 +318,30 @@ async function main() {
         .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })
         .find((p: any) => p?.name === "ProposalCreated")?.args?.proposalId;
 
-    // ── FASE 4: Votazione ──
+    // ── FASE 3: Votazione ──
     await mine(VOTING_DELAY + 1);
-    await governor.connect(signers[0]).castVote(proposalId, 1); // FOR
-    await governor.connect(signers[1]).castVote(proposalId, 1); // FOR
+    // Votiamo con i 5 membri principali per rendere lo script stabile:
+    // anche con supply più alta si raggiunge superquorum rapidamente.
+    for (let i = 0; i < 5; i++) {
+        await governor.connect(signers[i]).castVote(proposalId, 1); // FOR
+    }
 
-    const state = Number(await governor.state(proposalId));
+    let state = Number(await governor.state(proposalId));
     if (state !== 4) {
         console.log("   ⏳ Superquorum non raggiunto, attendo fine voting period...");
         await mine(VOTING_PERIOD + 1);
+        state = Number(await governor.state(proposalId));
+    }
+    if (state !== 4) {
+        const [againstVotes, forVotes, abstainVotes] = await governor.proposalVotes(proposalId);
+        const quorumVotes = await governor.quorum(await governor.proposalSnapshot(proposalId));
+        throw new Error(
+            `Proposal non approvata: stato=${PROPOSAL_STATE_NAMES[state] ?? state}, for=${forVotes}, against=${againstVotes}, abstain=${abstainVotes}, quorum=${quorumVotes}`
+        );
     }
     console.log("   ✅ Proposta approvata!");
 
-    // ── FASE 5: Queue + Execute ──
+    // ── FASE 4: Queue + Execute ──
     const descHash = ethers.id(description);
     await governor.queue(targets, values, calldatas, descHash);
     console.log("   🔒 Proposta in coda nel Timelock");

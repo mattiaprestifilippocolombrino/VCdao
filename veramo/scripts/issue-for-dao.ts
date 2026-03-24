@@ -1,123 +1,182 @@
-import { createAgent, IDIDManager, IKeyManager, IDataStore, ICredentialPlugin } from '@veramo/core'
-import { CredentialPlugin } from '@veramo/credential-w3c'
-import { CredentialProviderEIP712 } from '@veramo/credential-eip712'
-import { ethers } from 'ethers'
-import * as fs from 'fs'
-import * as path from 'path'
-import {
-  CredentialLevel,
-  CREDENTIAL_TYPE,
-  CREDENTIAL_CONTEXT,
-  UNIVERSITY_INFO
-} from '../types/credentials'
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
 
-// Wallet Hardhat di default: "test test test test test test test test test test test junk"
-const HARDHAT_MNEMONIC = 'test test test test test test test test test test test junk'
+type Grade = "BachelorDegree" | "MasterDegree" | "PhD" | "Professor";
 
-// Livelli da assegnare ai primi 10 account (Signer 1 al 10)
-const HOLDER_LEVELS = [
-  CredentialLevel.SIMPLE_STUDENT,
-  CredentialLevel.SIMPLE_STUDENT,
-  CredentialLevel.BACHELOR_DEGREE,
-  CredentialLevel.BACHELOR_DEGREE,
-  CredentialLevel.MASTER_DEGREE,
-  CredentialLevel.MASTER_DEGREE,
-  CredentialLevel.PHD,
-  CredentialLevel.PHD,
-  CredentialLevel.PROFESSOR,
-  CredentialLevel.PROFESSOR,
-]
+const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
+  CredentialSubject: [
+    { name: "codiceFiscale", type: "string" },
+    { name: "dataNascita", type: "string" },
+    { name: "exp", type: "uint256" },
+    { name: "facolta", type: "string" },
+    { name: "id", type: "string" },
+    { name: "nbf", type: "uint256" },
+    { name: "nominativo", type: "string" },
+    { name: "titoloStudio", type: "string" },
+    { name: "universita", type: "string" },
+    { name: "voto", type: "string" },
+  ],
+  VerifiableCredential: [
+    { name: "issuerDid", type: "string" },
+    { name: "issuerAddress", type: "address" },
+    { name: "subject", type: "CredentialSubject" },
+    { name: "issuanceDate", type: "string" },
+    { name: "expirationDate", type: "string" },
+  ],
+};
 
-// Percorso condiviso con la DAO
-const SHARED_CREDENTIALS_DIR = path.join(__dirname, '../../dao/scripts/shared-credentials')
+const UNIVERSITY_NAME = "University of Computer Science";
+const FACULTY_NAME = "Informatica";
 
-// Questa funzione crea "al volo" un issuer EIP-712 usando la Private Key di Hardhat
-async function issueVC(issuerWallet: ethers.HDNodeWallet, holderAddress: string, level: CredentialLevel, i: number) {
-  // Prepariamo l'Agent Veramo leggero "usa e getta" per firmare con la chiave locale
-  const agent = createAgent<ICredentialPlugin>({
-    plugins: [
-      new CredentialPlugin([new CredentialProviderEIP712()])
-    ]
-  })
+const UPGRADE_PLAN: Array<{ signerIndex: number; grade: Grade; label: string }> = [
+  { signerIndex: 0, grade: "Professor", label: "Professor 1" },
+  { signerIndex: 1, grade: "Professor", label: "Professor 2" },
+  { signerIndex: 2, grade: "Professor", label: "Professor 3" },
+  { signerIndex: 3, grade: "Professor", label: "Professor 4" },
+  { signerIndex: 4, grade: "Professor", label: "Professor 5" },
+  { signerIndex: 5, grade: "PhD", label: "PhD 1" },
+  { signerIndex: 6, grade: "PhD", label: "PhD 2" },
+  { signerIndex: 7, grade: "PhD", label: "PhD 3" },
+  { signerIndex: 8, grade: "MasterDegree", label: "Master 1" },
+  { signerIndex: 9, grade: "MasterDegree", label: "Master 2" },
+  { signerIndex: 10, grade: "BachelorDegree", label: "Bachelor 1" },
+  { signerIndex: 11, grade: "BachelorDegree", label: "Bachelor 2" },
+  { signerIndex: 12, grade: "BachelorDegree", label: "Bachelor 3" },
+];
 
-  // Dati della credenziale (CredentialSubject)
-  // Nota: VPVerifier.sol si aspetta campi esatti: id, holderAddress, degreeLevel, nbf, exp
-  const nbf = Math.floor(Date.now() / 1000) - 3600 // Valido da 1 ora fa
-  const exp = Math.floor(Date.now() / 1000) + 31536000 * 5 // Scade tra 5 anni
-
-  // Mappatura Livello stringa -> uint8 (come in Solidity)
-  let levelInt = 0
-  if (level === CredentialLevel.BACHELOR_DEGREE) levelInt = 1
-  else if (level === CredentialLevel.MASTER_DEGREE) levelInt = 2
-  else if (level === CredentialLevel.PHD) levelInt = 3
-  else if (level === CredentialLevel.PROFESSOR) levelInt = 4
-
-  const didHolder = `did:ethr:${holderAddress}`
-  
-  const credentialSubject = {
-    id: didHolder,
-    holderAddress: holderAddress,
-    degreeLevel: levelInt,
-    nbf: nbf,
-    exp: exp
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || value.trim().length === 0) {
+    throw new Error(`Variabile ${name} mancante`);
   }
+  return value.trim();
+}
 
-  // Costruiamo la VC compatibile EIP-712 per Veramo
-  // Poichè non usiamo il DB KMS completo, passiamo un signer ethers.js personalizzato
-  // a Veramo tramite l'opzione EIP712
-  const vc = await agent.createVerifiableCredential({
-    credential: {
-      issuer: { id: `did:ethr:${issuerWallet.address}` },
-      issuanceDate: new Date().toISOString(),
-      expirationDate: new Date(exp * 1000).toISOString(),
-      credentialSubject,
-      type: [...CREDENTIAL_TYPE],
-      '@context': [...CREDENTIAL_CONTEXT],
-    },
-    proofFormat: 'EthereumEip712Signature2021',
-    save: false,
-    options: {
-      eip712Domain: {
-        name: "CompetenceDAO Token", // Stesso dominio del nostro Smart Contract
-        version: "1",
-        chainId: 31337, // Hardhat Localhost Chain ID
-        verifyingContract: "0x0000000000000000000000000000000000000000" // Placeholder, la DAO ignora il verifyingContract address su domain ricostruito
-      },
-      // Passiamo il metodo di firma Ethers per saltare il KMS locale
-      signMethod: async (data: any) => {
-        const types = { ...data.types }
-        delete types.EIP712Domain
-        return await issuerWallet.signTypedData(data.domain, types, data.message)
-      }
-    }
-  })
-
-  const filePath = path.join(SHARED_CREDENTIALS_DIR, `holder_${i}.json`)
-  fs.writeFileSync(filePath, JSON.stringify(vc, null, 2), 'utf-8')
-  console.log(`✅ Emessa VC EIP-712 per l'holder ${i} (${level}) in ${filePath}`)
+function buildFiscalCode(index: number): string {
+  const n = String(index).padStart(2, "0");
+  return `DAOHLD${n}A01H501Z`;
 }
 
 async function main() {
-  console.log("--- Emissione Verifiable Credentials (Veramo -> DAO) ---")
-  console.log("Issuer: Università (Hardhat Signer 15)")
+  console.log("--- Emissione VC compatibili DAO (EIP-712 strict) ---");
 
-  if (!fs.existsSync(SHARED_CREDENTIALS_DIR)) {
-    fs.mkdirSync(SHARED_CREDENTIALS_DIR, { recursive: true })
+  const issuerPrivateKey = requireEnv("DAO_ISSUER_PRIVATE_KEY");
+  if (!ethers.isHexString(issuerPrivateKey, 32)) {
+    throw new Error("DAO_ISSUER_PRIVATE_KEY non valido: atteso private key 32-byte hex");
+  }
+  const hardhatMnemonic = requireEnv("DAO_HARDHAT_MNEMONIC");
+
+  const deployedPath = path.join(__dirname, "../../dao/deployedAddresses.json");
+  if (!fs.existsSync(deployedPath)) {
+    throw new Error(
+      `File ${deployedPath} non trovato. Esegui prima dao/scripts/01_deploy.ts`
+    );
+  }
+  const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf-8"));
+  const tokenAddressRaw = deployed?.token;
+  if (!tokenAddressRaw || !ethers.isAddress(tokenAddressRaw)) {
+    throw new Error("deployedAddresses.json non contiene un token address valido");
+  }
+  const tokenAddress = ethers.getAddress(tokenAddressRaw);
+
+  const issuerWallet = new ethers.Wallet(issuerPrivateKey);
+  const issuerDid = `did:ethr:0x${issuerWallet.address.slice(2)}`;
+  const chainId = 31337;
+
+  if (deployed.issuer && ethers.isAddress(deployed.issuer)) {
+    const deployedIssuer = ethers.getAddress(deployed.issuer);
+    if (deployedIssuer !== issuerWallet.address) {
+      throw new Error(
+        `Issuer mismatch: deployed=${deployedIssuer}, privateKey=${issuerWallet.address}`
+      );
+    }
   }
 
-  // Hardhat Signer 15 è il nostro "Trusted Issuer"
-  const issuerWallet = ethers.HDNodeWallet.fromPhrase(HARDHAT_MNEMONIC, undefined, "m/44'/60'/0'/0/15")
-  console.log(`Identità Issuer (Signer 15): ${issuerWallet.address}\n`)
-
-  for (let i = 0; i < 10; i++) {
-    // I membri della DAO vanno dal Signer 1 al 10
-    const holderWallet = ethers.HDNodeWallet.fromPhrase(HARDHAT_MNEMONIC, undefined, `m/44'/60'/0'/0/${i + 1}`)
-    const level = HOLDER_LEVELS[i]
-    await issueVC(issuerWallet, holderWallet.address, level, i + 1)
+  const outDir = path.join(__dirname, "../../dao/scripts/shared-credentials");
+  fs.mkdirSync(outDir, { recursive: true });
+  for (const file of fs.readdirSync(outDir)) {
+    if (file.endsWith(".json")) fs.unlinkSync(path.join(outDir, file));
   }
 
-  console.log("\n✅ Tutte le 10 VC sono state emesse off-chain da Veramo!")
-  console.log("👉 Ora il modulo DAO può leggerle dalla cartella 'shared-credentials' e inoltrarle on-chain.")
+  const domain = {
+    name: "CompetenceDAO Token",
+    version: "1",
+    chainId,
+    verifyingContract: tokenAddress,
+  };
+
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const [i, item] of UPGRADE_PLAN.entries()) {
+    const holderWallet = ethers.HDNodeWallet.fromPhrase(
+      hardhatMnemonic,
+      undefined,
+      `m/44'/60'/0'/0/${item.signerIndex}`
+    );
+    const holderAddress = holderWallet.address;
+    const holderDid = `did:ethr:0x${holderAddress.slice(2)}`;
+
+    const issuanceDate = new Date().toISOString();
+    const exp = now + 60 * 60 * 24 * 365 * 5;
+    const nbf = now - 3600;
+    const expirationDate = new Date(exp * 1000).toISOString();
+
+    const vcForSigning = {
+      issuerDid,
+      issuerAddress: issuerWallet.address,
+      subject: {
+        codiceFiscale: buildFiscalCode(i + 1),
+        dataNascita: "1990-01-01",
+        exp,
+        facolta: FACULTY_NAME,
+        id: holderDid,
+        nbf,
+        nominativo: item.label,
+        titoloStudio: item.grade,
+        universita: UNIVERSITY_NAME,
+        voto: "N/A",
+      },
+      issuanceDate,
+      expirationDate,
+    };
+
+    const proofValue = await issuerWallet.signTypedData(domain, VC_TYPES, vcForSigning);
+    const credentialJson = {
+      issuer: { id: issuerDid },
+      credentialSubject: vcForSigning.subject,
+      issuanceDate,
+      expirationDate,
+      proof: {
+        type: "EthereumEip712Signature2021",
+        created: issuanceDate,
+        proofPurpose: "assertionMethod",
+        verificationMethod: `${issuerDid}#controller`,
+        proofValue,
+      },
+      meta: {
+        holderAddress,
+        signerIndex: item.signerIndex,
+        grade: item.grade,
+        tokenAddress,
+        chainId,
+      },
+    };
+
+    const outPath = path.join(
+      outDir,
+      `${String(i + 1).padStart(2, "0")}_${item.label.replace(/\s+/g, "_").toLowerCase()}.json`
+    );
+    fs.writeFileSync(outPath, JSON.stringify(credentialJson, null, 2), "utf-8");
+    console.log(`✅ VC ${i + 1}/${UPGRADE_PLAN.length} -> ${outPath}`);
+  }
+
+  console.log("\n✅ VC DAO generate con successo (strict, no fallback).");
+  console.log(`Issuer: ${issuerWallet.address}`);
+  console.log(`Token domain: ${tokenAddress} (chainId ${chainId})`);
 }
 
-main().catch(console.error)
+main().catch((error) => {
+  console.error("Errore in issue-for-dao:", error.message);
+  process.exit(1);
+});
