@@ -1,95 +1,146 @@
 /**
-File che centralizza le costanti usate in tutto il progetto.
-Definisce i ruoli (Issuer, Verifier, Holder) e quali campi della
-Verifiable Credential verranno condivisi tramite Selective Disclosure.
-*/
+ * Single source of truth per il modello VC usato da tutto il progetto:
+ * - modulo Veramo (issue/verify/disclosure demo)
+ * - modulo DAO (upgradeCompetenceWithVP on-chain)
+ */
 
-// Livelli di competenza accademica. Questo è l'UNICO dato che riveleremo alla DAO (Selective Disclosure).
-export enum CredentialLevel {
-  SIMPLE_STUDENT = 'SimpleStudent',
-  BACHELOR_DEGREE = 'BachelorDegree',
-  MASTER_DEGREE = 'MasterDegree',
-  PHD = 'PhD',
-  PROFESSOR = 'Professor',
+
+//Definisce i valori ammessi per il titolo. I valori sono: BachelorDegree, MasterDegree, PhD, Professor
+export type DegreeTitle = "BachelorDegree" | "MasterDegree" | "PhD" | "Professor"
+//Elenco dei valori ammessi per il titolo, contenuti in un array-
+export const DEGREE_TITLES: DegreeTitle[] = [
+  "BachelorDegree",
+  "MasterDegree",
+  "PhD",
+  "Professor",
+]
+//Ogni elemento di DEGREE_TITLES ha correlata una stringa estesa leggibile da un essere umano
+export const CREDENTIAL_LABELS: Record<DegreeTitle, string> = {
+  BachelorDegree: "Bachelor Degree",
+  MasterDegree: "Master Degree",
+  PhD: "PhD",
+  Professor: "Professor",
 }
 
-// Nomi leggibili per i livelli di competenza utili per i log
-export const CREDENTIAL_LABELS: Record<CredentialLevel, string> = {
-  [CredentialLevel.SIMPLE_STUDENT]: 'Studente Semplice',
-  [CredentialLevel.BACHELOR_DEGREE]: 'Laurea Triennale',
-  [CredentialLevel.MASTER_DEGREE]: 'Laurea Magistrale',
-  [CredentialLevel.PHD]: 'Dottorato di Ricerca (PhD)',
-  [CredentialLevel.PROFESSOR]: 'Professore Universitario',
-}
-
-// L'Università fungerà da "Issuer" (chi emette la credenziale)
+//Informazioni sull'università emittente. COntiene nome esteso, nome corto e paese.
 export const UNIVERSITY_INFO = {
-  name: 'University of Computer Science',
-  alias: 'university-of-cs',
-  country: 'IT',
+  name: "University of Pisa",
+  alias: "university-of-pisa",
+  country: "IT",
 } as const
 
-// Struttura di un Holder (lo studente/docente che riceve la credenziale)
-export interface HolderInfo {
+/* 
+Definisce i dati di ogni persona che possiede una VC.
+Ogni holder ha un nome alias interno, un nome leggibile, un indice del signer/account, un titolo, una facoltà e un voto
+*/
+export interface HolderPlan {
   alias: string
-  nominativo: string
-  dataNascita: string
-  codiceFiscale: string
-  facolta: string
-  voto: string
-  level: CredentialLevel
+  displayName: string
+  signerIndex: number
+  degreeTitle: DegreeTitle
+  faculty: string
+  grade: string
 }
 
-// Creiamo 10 holder di prova, due per ogni livello di competenza
-export const HOLDERS: HolderInfo[] = [
-  { alias: 'student-luca-bianchi', nominativo: 'Luca Bianchi', dataNascita: '2001-05-12', codiceFiscale: 'BNCLCU01E12H501Y', facolta: 'Informatica', voto: 'N/A', level: CredentialLevel.SIMPLE_STUDENT },
-  { alias: 'student-sara-verdi', nominativo: 'Sara Verdi', dataNascita: '2002-08-24', codiceFiscale: 'VRDSRA02M64F205Z', facolta: 'Informatica', voto: 'N/A', level: CredentialLevel.SIMPLE_STUDENT },
-  { alias: 'bachelor-marco-rossi', nominativo: 'Marco Rossi', dataNascita: '1999-11-03', codiceFiscale: 'RSSMRC99S03F205K', facolta: 'Informatica', voto: '110/110', level: CredentialLevel.BACHELOR_DEGREE },
-  { alias: 'bachelor-giulia-neri', nominativo: 'Giulia Neri', dataNascita: '2000-02-15', codiceFiscale: 'NRIGLI00B55H501X', facolta: 'Informatica', voto: '105/110', level: CredentialLevel.BACHELOR_DEGREE },
-  { alias: 'master-alessandro-conti', nominativo: 'Alessandro Conti', dataNascita: '1996-07-22', codiceFiscale: 'CNTLND96L22F205J', facolta: 'Informatica', voto: '110L/110', level: CredentialLevel.MASTER_DEGREE },
-  { alias: 'master-elena-martini', nominativo: 'Elena Martini', dataNascita: '1997-04-10', codiceFiscale: 'MRTLNE97D50H501W', facolta: 'Informatica', voto: '108/110', level: CredentialLevel.MASTER_DEGREE },
-  { alias: 'phd-francesco-ricci', nominativo: 'Francesco Ricci', dataNascita: '1992-09-30', codiceFiscale: 'RCCFNC92P30F205Q', facolta: 'Informatica', voto: 'N/A', level: CredentialLevel.PHD },
-  { alias: 'phd-chiara-colombo', nominativo: 'Chiara Colombo', dataNascita: '1993-12-05', codiceFiscale: 'CLMCHR93T45H501M', facolta: 'Informatica', voto: 'N/A', level: CredentialLevel.PHD },
-  { alias: 'prof-giuseppe-ferrari', nominativo: 'Giuseppe Ferrari', dataNascita: '1975-03-18', codiceFiscale: 'FRRGPP75C18F205A', facolta: 'Informatica', voto: 'N/A', level: CredentialLevel.PROFESSOR },
-  { alias: 'prof-maria-romano', nominativo: 'Maria Romano', dataNascita: '1980-01-29', codiceFiscale: 'RMNMRA80A69H501V', facolta: 'Informatica', voto: 'N/A', level: CredentialLevel.PROFESSOR },
+// Creiamo un set di costanti che implementano un array di HolderPlan, come pianificato in DAO/scripts/04_upgradeCompetences.ts.
+export const HOLDERS: HolderPlan[] = [
+  { alias: "professor-1", displayName: "Professor 1", signerIndex: 0, degreeTitle: "Professor", faculty: "Computer Science", grade: "N/A" },
+  { alias: "professor-2", displayName: "Professor 2", signerIndex: 1, degreeTitle: "Professor", faculty: "Computer Science", grade: "N/A" },
+  { alias: "professor-3", displayName: "Professor 3", signerIndex: 2, degreeTitle: "Professor", faculty: "Computer Science", grade: "N/A" },
+  { alias: "professor-4", displayName: "Professor 4", signerIndex: 3, degreeTitle: "Professor", faculty: "Computer Science", grade: "N/A" },
+  { alias: "professor-5", displayName: "Professor 5", signerIndex: 4, degreeTitle: "Professor", faculty: "Computer Science", grade: "N/A" },
+  { alias: "phd-1", displayName: "PhD 1", signerIndex: 5, degreeTitle: "PhD", faculty: "Computer Science", grade: "N/A" },
+  { alias: "phd-2", displayName: "PhD 2", signerIndex: 6, degreeTitle: "PhD", faculty: "Computer Science", grade: "N/A" },
+  { alias: "phd-3", displayName: "PhD 3", signerIndex: 7, degreeTitle: "PhD", faculty: "Computer Science", grade: "N/A" },
+  { alias: "master-1", displayName: "Master 1", signerIndex: 8, degreeTitle: "MasterDegree", faculty: "Computer Science", grade: "110/110" },
+  { alias: "master-2", displayName: "Master 2", signerIndex: 9, degreeTitle: "MasterDegree", faculty: "Computer Science", grade: "108/110" },
+  { alias: "bachelor-1", displayName: "Bachelor 1", signerIndex: 10, degreeTitle: "BachelorDegree", faculty: "Computer Science", grade: "105/110" },
+  { alias: "bachelor-2", displayName: "Bachelor 2", signerIndex: 11, degreeTitle: "BachelorDegree", faculty: "Computer Science", grade: "104/110" },
+  { alias: "bachelor-3", displayName: "Bachelor 3", signerIndex: 12, degreeTitle: "BachelorDegree", faculty: "Computer Science", grade: "103/110" },
 ]
 
-// Identificativi per gli attori del sistema
+//Definisce gli attori del sistema: emittente e verificatore. Serve solo a centralizzare questi nomi.
 export const ACTORS = {
   ISSUER: UNIVERSITY_INFO.alias,
-  VERIFIER: 'verifier-platform', // La app/DAO che verifica la competenza
+  VERIFIER: "verifier-platform",
 } as const
 
-// Struttura dei dati certificati all'interno della Verifiable Credential
-// I campi sono scritti in ordine rigorosamente ALFABETICO.
-// Veramo ordina alfabeticamente le chiavi per l'hash EIP-712: dobbiamo far sì che Solidity faccia lo stesso.
-export interface UniversityCredentialSubject {
-  codiceFiscale: string         // Codice Fiscale
-  dataNascita: string           // Data di nascita
-  exp: number                   // Data di scadenza in timestamp
-  facolta: string               // Facoltà
-  id: string                    // DID dell'holder
-  nbf: number                   // Data di validità in timestamp (Not-Before)
-  nominativo: string            // Nome e Cognome
-  titoloStudio: string          // Livello esteso (es. "Bachelor Degree") compatibile con string
-  universita: string            // Nome dell'Università emittente
-  voto: string                  // Voto di laurea o "N/A"
+//Costante che definisce il contesto e il tipo della VC, come definito nello standard W3C
+export const CREDENTIAL_CONTEXT = ["https://www.w3.org/2018/credentials/v1"] as const
+export const CREDENTIAL_TYPE = ["VerifiableCredential", "UniversityDegreeCredential"] as const
+
+/*Definizione della struttura della VC, come definito nello standard W3C.
+Questo blocco definisce la struttura EIP-712 dei dati da firmare.
+Dice quali campi vengono firmati, che tipo di dati contengono, e in che ordine vengono firmati.
+In questo caso vengono firmati i seguenti campi: id, university, faculty, degreeTitle e grade.
+Poi all'esterno del credentialSubject vengono firmati: issuer, issuanceDate e credentialSubject.
+La verifica on chain usa la stessa struttura per ricreare l'hash e confrontarlo con quello memorizzato nel contratto.
+*/
+export const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
+  Issuer: [{ name: "id", type: "string" }],
+  CredentialSubject: [
+    { name: "id", type: "string" },
+    { name: "university", type: "string" },
+    { name: "faculty", type: "string" },
+    { name: "degreeTitle", type: "string" },
+    { name: "grade", type: "string" },
+  ],
+  VerifiableCredential: [
+    { name: "issuer", type: "Issuer" },
+    { name: "issuanceDate", type: "string" },
+    { name: "credentialSubject", type: "CredentialSubject" },
+  ],
 }
 
-// Tipo e contesto W3C standard per la credenziale
-export const CREDENTIAL_TYPE = ['VerifiableCredential', 'UniversityDegreeCredential'] as const
-export const CREDENTIAL_CONTEXT = ['https://www.w3.org/2018/credentials/v1'] as const
+//Interfaccia che definisce la struttura dei dati del credential subject. Cuore informativo della VC.
+export interface CredentialSubject {
+  id: string
+  university: string
+  faculty: string
+  degreeTitle: DegreeTitle
+  grade: string
+}
 
-// Constante che identifica il campo che il Verifier chiederà e che l'Holder rivelerà, tramite selective disclosure
-export const DISCLOSED_FIELD = 'titoloStudio' as const
+/*
+Questa interfaccia definisce com’è fatta la VC completa che il progetto accetta. Deve avere
+@context, type, issuer, issuanceDate, credentialSubject, proof.
+In più impone che la proof sia coerente con una firma EthereumEip712Signature2021.
+*/
+export interface DaoCompatibleVc {
+  "@context": readonly ["https://www.w3.org/2018/credentials/v1"]
+  type: readonly ["VerifiableCredential", "UniversityDegreeCredential"]
+  issuer: { id: string }
+  issuanceDate: string
+  credentialSubject: CredentialSubject
+  proof: {
+    type: "EthereumEip712Signature2021"
+    created: string
+    proofPurpose: "assertionMethod"
+    verificationMethod: string
+    proofValue: string
+  }
+}
 
-// Tutti i campi presenti nella VC, utili a mostrare la differenza tra campi visibili e nascosti nei log
-export const ALL_CREDENTIAL_FIELDS = ['nominativo', 'titoloStudio', 'voto', 'universita'] as const
+//Campo che viene mostrato quando si fa la disclosure
+export const DISCLOSED_FIELD = "degreeTitle" as const
+//Tutti i campi informativi della VC
+export const ALL_CREDENTIAL_FIELDS = ["degreeTitle", "university", "faculty", "grade"] as const
 
-// Cartella dove salviamo temporaneamente le credenziali in JSON
-export const CREDENTIALS_DIR = './credentials'
+//Directory dove vengono salvate le VC
+export const CREDENTIALS_DIR = "./credentials"
+//Directory dove vengono salvate le VC condivise con la DAO
+export const DAO_SHARED_CREDENTIALS_DIR = "dao/scripts/shared-credentials"
 
-// Funzione che restituisce il percorso del file JSON della credenziale
-export function getCredentialPath(holderAlias: string): string {
-  return `${CREDENTIALS_DIR}/${holderAlias}.json`
+//Funzione che restituisce il percorso del file JSON della VC dato l'alias dell'holder
+export function getCredentialPath(holderAlias: string, baseDir: string = CREDENTIALS_DIR): string {
+  return `${baseDir}/${holderAlias}.json`
+}
+
+//Funzione che converte un indirizzo Ethereum in un DID
+export function toDid(address: string): string {
+  return `did:ethr:sepolia:0x${address.slice(2)}`
+}
+
+export function toIsoSecondPrecision(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z")
 }

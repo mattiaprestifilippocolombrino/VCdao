@@ -2,38 +2,22 @@
 pragma solidity ^0.8.28;
 
 /*
-    Libreria per la verifica on-chain di Verifiable Credentials (VC) tramite EIP-712.
-
-    La DAO usa questa libreria per verificare che una credenziale di competenza
-    sia stata firmata da un Issuer fidato (es. l'Università) prima di effettuare
-    l'upgrade di competenza di un membro.
-
-    Flusso di verifica:
-    1. L'Issuer firma la VC off-chain usando EIP-712 
-    2. Il membro presenta la VC firmata alla DAO tramite proposta di governance
-    3. La DAO ricostruisce l'hash EIP-712 e recupera il firmatario (ECDSA.recover)
-    4. Se il firmatario corrisponde all'Issuer fidato → la VC è autentica
-
-    Questa versione usa una VC minimale: il payload on-chain contiene
-    solo i campi strettamente necessari all'upgrade di competenza.
-
-    Standard di riferimento:
-    - EIP-712: https://eips.ethereum.org/EIPS/eip-712
-    - W3C VC Data Model: https://www.w3.org/TR/vc-data-model
+Libreria Solidity utile a verificare on-chain una VC firmata off-chain con EIP-712.
+Prende i dati della credenziale, ricostruisce esattamente lo stesso hash digest che era stato firmato off-chain,
+e poi usa la firma per recuperare la chiave pubblica di chi lo ha firmato.
+Il contratto chiamante confronta poi questo address con il trusted issuer. Se coincidono, la VC è valida.
 */
 
-// Importazione della libreria OpenZeppelin per recuperare gli indirizzi dalle firme ECDSA (Elliptic Curve Digital Signature Algorithm)
+// Utility OpenZeppelin per recuperare l'address firmatario partendo dalla firma e dal digest, via ECDSA.
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-// =========================================================================
-// 1. DEFINIZIONE DELLE COSTANTI E DEI TYPEHASH (EIP-712)
-// =========================================================================
 library VPVerifier {
-    // EIP-712 type hashes per la VC minimale del PoC.
-    // La signature copre solo i dati semantici richiesti:
-    // issuer.id, issuanceDate, credentialSubject.{id,university,faculty,degreeTitle,grade}
-    bytes32 internal constant ISSUER_TYPEHASH =
-        keccak256("Issuer(string id)");
+    /*
+Costruiamo il typeHash, ovver l'hash della struttura dei campi che compongono la VC. Hashiamo la struttura del 
+credentialSubject, con al suo interno i campi id, university, faculty, degreeTitle, grade. I nomi e 
+l'ordine dei campi DEVONO essere identici a quelli usati off-chain durante l'emissione della VC.
+*/
+    bytes32 internal constant ISSUER_TYPEHASH = keccak256("Issuer(string id)");
 
     bytes32 internal constant CREDENTIAL_SUBJECT_TYPEHASH =
         keccak256(
@@ -46,8 +30,9 @@ library VPVerifier {
             ")"
         );
 
-    // Le dipendenze annidate sono accodate in ordine alfabetico:
-    // CredentialSubject, Issuer.
+    // Ricostruiamo il typeHash della struct principale VerifiableCredential,
+    // contenente issuer, issuanceDate e credentialSubject in modo annidato, come richiede EIP-712.
+
     bytes32 internal constant VERIFIABLE_CREDENTIAL_TYPEHASH =
         keccak256(
             "VerifiableCredential("
@@ -67,41 +52,36 @@ library VPVerifier {
             ")"
         );
 
-    // =========================================================================
-    //  Strutture dati — VC minimale del PoC
-    // =========================================================================
-
+    //Creazione struct per contenere i dati della VC.
+    // Identita dell'issuer (espresso come DID).
     struct Issuer {
         string id;
     }
 
-    /// @notice Dati essenziali certificati dell'holder.
+    // Struct contenente i dati certificati relativi all'holder, CredentialSubject.
     struct CredentialSubject {
-        string id; // DID dell'holder
-        string university; // Issuing institution name
-        string faculty; // Faculty / program
-        string degreeTitle; // BachelorDegree | MasterDegree | PhD | Professor
-        string grade; // Final grade
+        string id; // DID holder
+        string university; // Università
+        string faculty; // facolta / corso
+        string degreeTitle; // titolo: BachelorDegree | MasterDegree | PhD | Professor
+        string grade; // voto finale
     }
 
-    /// @notice VC minimale firmata dall'issuer con EIP-712.
+    // Struct contenente i dati della VC informativi, da certificare
     struct VerifiableCredential {
-        Issuer issuer; // issuer.id DID
-        string issuanceDate; // Data di emissione (ISO 8601)
-        CredentialSubject credentialSubject; // Dati certificati dell'holder
+        Issuer issuer; // DID issuer
+        string issuanceDate; // Data di emissione
+        CredentialSubject credentialSubject; // payload dati utente
     }
 
-    // =========================================================================
-    //  2. FUNZIONI DI HASHING EIP-712 (Digest Creation)
-    // =========================================================================
-    // Per verificare una firma EIP-712, lo smart contract deve ricreare lo stesso
-    // identico hash (digest) che è stato firmato off-chain. Queste funzioni
-    // hasano i singoli componenti della credenziale.
-
+    //Funzioni di hashing EIP-712. Le stringhe vanno sempre pre-hashate con `keccak256(bytes(...))`.
+    // Hash EIP-712 della struct `Issuer`. Hasha il typeHash e l'id dell'issuer.
     function hashIssuer(Issuer memory issuer) internal pure returns (bytes32) {
-        return keccak256(abi.encode(ISSUER_TYPEHASH, keccak256(bytes(issuer.id))));
+        return
+            keccak256(abi.encode(ISSUER_TYPEHASH, keccak256(bytes(issuer.id))));
     }
 
+    // Hash EIP-712 della struct `CredentialSubject`. Viene hashato il typeHash e tutti i valori assunti dai campi.
     function hashCredentialSubject(
         CredentialSubject memory cs
     ) internal pure returns (bytes32) {
@@ -118,6 +98,8 @@ library VPVerifier {
             );
     }
 
+    // Hash EIP-712 della credenziale completa. Per campi struct annidati
+    // usa i rispettivi hash (`hashIssuer`, `hashCredentialSubject`), chiamando la funzione completa.
     function hashVerifiableCredential(
         VerifiableCredential memory vc
     ) internal pure returns (bytes32) {
@@ -132,13 +114,13 @@ library VPVerifier {
             );
     }
 
-    // =========================================================================
-    //  3. VERIFICA FIRMA CRITTOGRAFICA (Recupero Address)
-    // =========================================================================
-    // Questa funzione incapsula tutto: ricrea l'hash completo partendo dai dati forniti
-    // e usa ECDSA.recover() per scoprire "chi" ha firmato quell'hash.
-    // L'indirizzo recuperato deve poi essere confrontato dal chiamante con l'Issuer fidato.
-
+    /*
+        Recover Signer. Ricrea digest EIP-712 usando le funzioni precedentemente implementate. 
+        Viene ricreato il digest EIP-712 concatenando il prefisso standard `0x1901`, il domainSeparator e il digest.
+        Il digest finale deve combaciare bit-a-bit con quello usato dal firmatario off-chain.
+        A partire dal digest e dalla firma, viene recuperato l'address relativo alla chiave pubblica che ha prodotto la firma.
+        Il chiamante confronta poi questo address con il trusted issuer. Se coincidono, la VC è valida.
+    */
     function recoverIssuer(
         VerifiableCredential memory vc,
         bytes memory signature,
@@ -148,6 +130,7 @@ library VPVerifier {
         bytes32 digest = keccak256(
             abi.encodePacked("\x19\x01", domainSeparator, structHash)
         );
+
         signer = ECDSA.recover(digest, signature);
     }
 }

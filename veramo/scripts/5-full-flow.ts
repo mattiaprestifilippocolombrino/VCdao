@@ -1,233 +1,152 @@
-/**
- * Script 5 — Flusso Completo SSI (didattico)
- *
- * Questo script esegue l'intera demo:
- * 1) Crea DID per Issuer, Holder e Verifier.
- * 2) Emette VC firmate con EIP-712.
- * 3) Crea VP firmate dagli Holder e le verifica.
- * 4) Estrae il livello accademico utile al voto ponderato in DAO.
- * 5) Mostra un riepilogo finale.
- *
- * Nota: qui rimuoviamo i passaggi di Selective Disclosure non usati
- * nell'integrazione blockchain, mantenendo solo il flusso EIP-712.
- */
+/*
+================================================================================
+Script 5 — Full Flow POC (Veramo -> DAO logica)
 
-import * as fs from 'fs'
-import { agent } from '../agent/setup'
+OBIETTIVO:
+Vostro ultimo script di simulazione ibrida (Offchain). In una situazione reale
+non c'è bisogno della blockchain per verificare una W3C Credential se lo scopo
+è ad esempio farsi far entrare tramite un tornello fisico, o loggarsi a un sito web.
+Questa verifica è COMPLETAMENTE OFFCHAIN, simulando quello che le applicazioni 
+fanno chiamando ethers.verifyTypedData internamente in Typescript.
+================================================================================
+*/
+
+import * as fs from "fs"
+import * as path from "path"
+import { ethers } from "ethers"
+
+import { agent } from "../agent/setup"
 import {
   ACTORS,
-  UNIVERSITY_INFO,
   HOLDERS,
-  CREDENTIAL_LABELS,
-  CREDENTIAL_TYPE,
-  CREDENTIAL_CONTEXT,
   CREDENTIALS_DIR,
-  getCredentialPath,
-  UniversityCredentialSubject,
+  CREDENTIAL_CONTEXT,
+  CREDENTIAL_TYPE,
+  VC_TYPES,
   DISCLOSED_FIELD,
-} from '../types/credentials'
+} from "../types/credentials"
+import { issueDaoCompatibleCredentials } from "./issue-for-dao"
 
-// Tipo minimale per leggere in modo sicuro il claim dalla VC interna alla VP.
-type MinimalCredential = { credentialSubject?: Record<string, unknown> }
-
-/**
- * Recupera un DID esistente tramite alias, oppure lo crea se non esiste ancora.
- */
 async function getOrCreateDID(alias: string): Promise<string> {
   try {
     const existing = await agent.didManagerGetByAlias({ alias })
     return existing.did
   } catch {
-    const created = await agent.didManagerCreate({ alias, provider: 'did:ethr:sepolia' })
+    const created = await agent.didManagerCreate({ alias, provider: "did:ethr:sepolia" })
     return created.did
   }
 }
 
-/**
- * Estrae la prima VC da una VP.
- * In EIP-712 Veramo serializza la VC come stringa JSON: qui la riportiamo a oggetto.
- */
-function decodeFirstCredentialFromPresentation(vp: { verifiableCredential?: unknown[] }): MinimalCredential | null {
-  const firstCredential = vp.verifiableCredential?.[0]
-  if (!firstCredential) return null
-
-  if (typeof firstCredential === 'string') {
-    try {
-      return JSON.parse(firstCredential) as MinimalCredential
-    } catch {
-      return null
-    }
+function parseIssuerAddressFromDid(issuerDid: string): string {
+  const didTail = issuerDid.split(":").pop()
+  if (!didTail) throw new Error(`Issuer DID malformato: ${issuerDid}`)
+  if (ethers.isAddress(didTail)) return ethers.getAddress(didTail)
+  if (/^0x[0-9a-fA-F]{66}$/.test(didTail) || /^0x[0-9a-fA-F]{130}$/.test(didTail)) {
+    return ethers.computeAddress(didTail)
   }
-
-  return firstCredential as MinimalCredential
+  throw new Error(`Issuer DID senza address/public key valida: ${issuerDid}`)
 }
 
 async function main() {
-  // --- STEP 1: Identità ---
-  console.log('\n============== DIMOSTRAZIONE FLUSSO SSI ==============')
-  console.log('--- Step 1: Creazione dei Decentralized Identifiers (DID) ---')
+  console.log("\n============== FULL FLOW SSI -> DAO ==============")
+  console.log("--- Step 1: DID setup ---")
 
-  // 1.1 DID Issuer (Università)
+  // ============================================================================
+  // 1. SETUP DEGLI IDENTIFICATIVI (DID)
+  // ============================================================================
+  // Genera "on-the-fly" gli identificativi decentralizzati per l'Issuer, il Verifier
+  // e tutti gli Holder usando il DID provider "ethr".
   const issuerDid = await getOrCreateDID(ACTORS.ISSUER)
-  console.log(`🏛️  Università creata con DID: ${issuerDid}`)
-
-  // 1.2 DID Holders
-  const holderDids: Map<string, string> = new Map()
-  for (const holder of HOLDERS) {
-    const did = await getOrCreateDID(holder.alias)
-    holderDids.set(holder.alias, did)
-    console.log(`🎓 ${holder.nominativo} registrato.`)
-  }
-
-  // 1.3 DID Verifier (DAO platform)
   const verifierDid = await getOrCreateDID(ACTORS.VERIFIER)
-  console.log(`🔍 Piattaforma DAO creata con DID: ${verifierDid}`)
-
-  // --- STEP 2: Emissione VC ---
-  console.log('\n--- Step 2: L\'Università emette le Verifiable Credentials ---')
-
-  // 2.1 Preparazione cartella locale "wallet demo"
-  if (!fs.existsSync(CREDENTIALS_DIR)) fs.mkdirSync(CREDENTIALS_DIR, { recursive: true })
-
-  // 2.2 Collezione in memoria delle VC emesse per usarle subito nello step successivo
-  const issuedVCs: Map<string, any> = new Map()
-
-  // 2.3 Emissione di una VC per ciascun holder
   for (const holder of HOLDERS) {
-    const holderDid = holderDids.get(holder.alias)!
-    const now = Math.floor(Date.now() / 1000)
-
-    // Dati del subject: includiamo tutte le info necessarie per la demo accademica.
-    const credentialSubject: UniversityCredentialSubject = {
-      codiceFiscale: holder.codiceFiscale,
-      dataNascita: holder.dataNascita,
-      exp: now + 31536000 * 5,
-      facolta: holder.facolta,
-      id: holderDid,
-      nbf: now - 3600,
-      nominativo: holder.nominativo,
-      titoloStudio: holder.level,
-      universita: UNIVERSITY_INFO.name,
-      voto: holder.voto,
-    }
-
-    // Creazione VC firmata EIP-712.
-    const vc = await agent.createVerifiableCredential({
-      credential: {
-        issuer: { id: issuerDid },
-        credentialSubject,
-        type: [...CREDENTIAL_TYPE],
-        '@context': [...CREDENTIAL_CONTEXT],
-      },
-      proofFormat: 'EthereumEip712Signature2021',
-    })
-
-    // Salvataggio sia su file (wallet demo) sia nel datastore Veramo.
-    fs.writeFileSync(getCredentialPath(holder.alias), JSON.stringify(vc, null, 2), 'utf-8')
-    await agent.dataStoreSaveVerifiableCredential({ verifiableCredential: vc })
-    issuedVCs.set(holder.alias, vc)
+    await getOrCreateDID(holder.alias)
   }
-  console.log(`✅ 10 credenziali emesse con firma Ethereum EIP-712.`)
+  console.log(`🏛️  Issuer DID:   ${issuerDid}`)
+  console.log(`🔍 Verifier DID: ${verifierDid}`)
+  console.log(`🎓 Holder DID alias pronti: ${HOLDERS.length}`)
 
-  // --- STEP 3: Presentazione verso la DAO ---
-  console.log('\n--- Step 3: Presentazione EIP-712 verso la DAO ---')
-  console.log(`La DAO userà il campo: "${DISCLOSED_FIELD}"`)
+  // ============================================================================
+  // 2. EMISSIONE DELLE CREDENZIALI
+  // ============================================================================
+  console.log("\n--- Step 2: Issue VC (modello unico) ---")
+  await issueDaoCompatibleCredentials()
 
-  // --- STEP 4: Risposta holder + verifiche verifier ---
-  console.log('\n--- Step 4: Costruzione VP degli Holder e Verifica ---')
-  let verificatiOk = 0
-  let falliti = 0
-  const results: { nome: string; livello: string; valido: boolean }[] = []
+  // ============================================================================
+  // 3. VERIFICA OFF-CHAIN E SELECTIVE DISCLOSURE
+  // ============================================================================
+  console.log("\n--- Step 3: Verify + selective processing ---")
+  // Carica i dati del token per ricreare a mano lo stesso dominio EIP-712 usato dall'Issuer.
+  const deployedPath = path.join(__dirname, "../../dao/deployedAddresses.json")
+  const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf-8"))
+  const domain = {
+    name: "Universal VC Protocol",
+    version: "1",
+  }
+  const trustedIssuer = ethers.getAddress(deployed.issuer)
 
+  let ok = 0
+  let failed = 0
   for (const holder of HOLDERS) {
-    const holderDid = holderDids.get(holder.alias)!
-    const vc = issuedVCs.get(holder.alias)
-
-    // 4.1 Controllo VC base: la credenziale deve essere valida prima di essere presentata.
-    const vcResult = await agent.verifyCredential({ credential: vc })
-    if (!vcResult.verified) {
-      console.log(`❌ VC non valida per ${holder.nominativo}.`)
-      falliti++
-      results.push({ nome: holder.nominativo, livello: CREDENTIAL_LABELS[holder.level], valido: false })
+    const filePath = path.join(__dirname, "..", CREDENTIALS_DIR, `${holder.alias}.json`)
+    if (!fs.existsSync(filePath)) {
+      failed++
+      console.log(`❌ ${holder.displayName} — VC non trovata`)
       continue
     }
 
-    // 4.2 L'holder crea e firma la VP che incapsula la propria VC.
-    const vp = await agent.createVerifiablePresentation({
-      presentation: {
-        holder: holderDid,
-        verifiableCredential: [vc],
-      },
-      proofFormat: 'EthereumEip712Signature2021',
-    })
+    try {
+      const vc = JSON.parse(fs.readFileSync(filePath, "utf-8"))
+      if (JSON.stringify(vc["@context"]) !== JSON.stringify(CREDENTIAL_CONTEXT)) {
+        throw new Error("@context non conforme")
+      }
+      if (JSON.stringify(vc.type) !== JSON.stringify(CREDENTIAL_TYPE)) {
+        throw new Error("type non conforme")
+      }
 
-    // 4.3 Il verifier verifica l'autenticità della VP.
-    const vpResult = await agent.verifyPresentation({ presentation: vp })
-    if (!vpResult.verified) {
-      console.log(`❌ VP non valida per ${holder.nominativo}.`)
-      falliti++
-      results.push({ nome: holder.nominativo, livello: CREDENTIAL_LABELS[holder.level], valido: false })
-      continue
+      // Preparazione statica per la verifica della firma EIP-712 off-chain.
+      // Dobbiamo ricostruire la stessa esatta struttura usata dall'issuer al momento della firma.
+      const signablePayload = {
+        issuer: vc.issuer,
+        issuanceDate: vc.issuanceDate,
+        credentialSubject: vc.credentialSubject,
+      }
+      
+      // La funzione "verifyTypedData" prende in input la firma in Bytes e, calcolando 
+      // i vari hash come fa lo smart contract, restituisce l'Indirizzo Pubblico di chi aveva firmato (ECDSA Recover).
+      const recovered = ethers.verifyTypedData(
+        domain,
+        VC_TYPES,
+        signablePayload,
+        String(vc.proof?.proofValue ?? "")
+      )
+      const recoveredAddress = ethers.getAddress(recovered)
+      const issuerFromDid = parseIssuerAddressFromDid(String(vc.issuer?.id ?? ""))
+      if (recoveredAddress !== trustedIssuer || issuerFromDid !== trustedIssuer) {
+        throw new Error("issuer non trusted")
+      }
+
+      const disclosed = vc.credentialSubject?.[DISCLOSED_FIELD]
+      if (disclosed === undefined) throw new Error(`claim ${DISCLOSED_FIELD} mancante`)
+
+      console.log(`✅ ${holder.displayName} -> ${DISCLOSED_FIELD}: ${String(disclosed)}`)
+      ok++
+    } catch (error: any) {
+      failed++
+      console.log(`❌ ${holder.displayName} -> ${error?.message ?? "errore sconosciuto"}`)
     }
-
-    // 4.4 Best practice: verifichiamo anche la VC interna alla VP.
-    const embeddedVc = decodeFirstCredentialFromPresentation(vp)
-    if (!embeddedVc) {
-      console.log(`❌ VC interna alla VP non decodificabile per ${holder.nominativo}.`)
-      falliti++
-      results.push({ nome: holder.nominativo, livello: CREDENTIAL_LABELS[holder.level], valido: false })
-      continue
-    }
-
-    const embeddedVcResult = await agent.verifyCredential({ credential: embeddedVc as any })
-    if (!embeddedVcResult.verified) {
-      console.log(`❌ VC interna alla VP non valida per ${holder.nominativo}.`)
-      falliti++
-      results.push({ nome: holder.nominativo, livello: CREDENTIAL_LABELS[holder.level], valido: false })
-      continue
-    }
-
-    // 4.5 Estraiamo il claim utile all'integrazione blockchain (peso voto DAO).
-    const livello = embeddedVc.credentialSubject?.[DISCLOSED_FIELD]
-    if (livello === undefined) {
-      console.log(`❌ Claim "${DISCLOSED_FIELD}" assente per ${holder.nominativo}.`)
-      falliti++
-      results.push({ nome: holder.nominativo, livello: CREDENTIAL_LABELS[holder.level], valido: false })
-      continue
-    }
-
-    // 4.6 Esito positivo: la DAO usa il livello di studio per il voto ponderato.
-    console.log(`✅ DAO vede per ${holder.nominativo} solo: ${String(livello)}`)
-    verificatiOk++
-    results.push({ nome: holder.nominativo, livello: CREDENTIAL_LABELS[holder.level], valido: true })
   }
 
-  // --- STEP 5: Riepilogo ---
-  console.log('\n============== RIEPILOGO FINALE ==============')
-  console.log(`🔹 Issuer registrati:      1 (Università)`)
-  console.log(`🔹 Certificati originati:  ${issuedVCs.size} (EIP-712)`)
-  console.log(`🔹 Holder partecipanti:    ${HOLDERS.length}`)
-  console.log(`🔹 Controlli positivi DAO: ${verificatiOk}`)
-  console.log(`🔹 Controlli falliti:      ${falliti}\n`)
+  console.log("\n============== RIEPILOGO ==============")
+  console.log(`VC validate: ${ok}`)
+  console.log(`VC fallite: ${failed}`)
+  console.log("Cartelle output:")
+  console.log("- veramo/credentials")
+  console.log("- dao/scripts/shared-credentials")
 
-  if (falliti === 0) {
-    console.log('✅ TEST SUPERATO IN PIENO!\n')
-  }
-
-  // Riepilogo tecnico: un holder è "ok" se VC+VP sono valide e il claim richiesto è presente.
-  console.log('--- Riepilogo Partecipanti ---')
-  for (const r of results) {
-    const esito = r.valido ? 'VOTO PONDERATO' : 'CANCELLATO'
-    console.log(`- ${r.nome.padEnd(20)} | Titolo studio: ${r.livello.padEnd(30)} | ESITO: ${esito}`)
-  }
-
-  console.log(`\nℹ️  Campo usato per la DAO: ${DISCLOSED_FIELD}`)
-  console.log('ℹ️  Flusso crittografico usato: solo EthereumEip712Signature2021 (VC + VP).')
-
-  if (falliti > 0) process.exit(1)
+  if (failed > 0) process.exit(1)
 }
 
 main().catch((error) => {
-  console.error('Errore nel flusso SSI globale:', error.message)
+  console.error("Errore nel full flow:", error.message)
   process.exit(1)
 })

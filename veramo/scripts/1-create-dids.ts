@@ -1,10 +1,14 @@
 /*
-Script 1 — Creazione delle Identità Decentralizzate (DID)
-Script in cui vengono creati i DID per tutti i partecipanti del sistema SSI.
-Sono previsti 12 partecipanti in totale: 1 Issuer (L'Università), 10 Holder 
-(Gli studenti e professori) e 1 Verifier (La piattaforma DAO).
-*/
+================================================================================
+SCRIPT 1: Creazione delle Identità Decentralizzate (DID)
 
+CONTESTO DIDATTICO (SSI):
+Nel paradigma Self-Sovereign Identity, l'identità non è fornita da un ente centrale
+(come Google o lo Stato). Ogni attore genera la propria identità, detta DID (Decentralized
+Identifier), ancorandola crittograficamente (in questo caso su rete Ethereum - ethr DID).
+Questo script genera i DID per l'Università, per gli Studenti e per il Verificatore.
+================================================================================
+*/
 import { agent } from '../agent/setup'
 import { ACTORS, UNIVERSITY_INFO, HOLDERS, CREDENTIAL_LABELS } from '../types/credentials'
 
@@ -27,26 +31,35 @@ async function getOrCreateDID(alias: string): Promise<{ did: string; isNew: bool
 async function main() {
   console.log('--- STEP 1: Creazione Identità (DID) ---')
 
-  // 1. Creazione dell'identità dell'Università (Issuer)
+  // ============================================================================
+  // 1. SETUP ISSUER (L'Università)
+  // ============================================================================
+  // L'Issuer è colui che firmerà le credenziali.
   console.log(`\n🏛️  Issuer: ${UNIVERSITY_INFO.name}`)
   const issuer = await getOrCreateDID(ACTORS.ISSUER)
   console.log(`   ${issuer.isNew ? 'Creato' : 'Esistente'}: ${issuer.did}`)
 
-  // 2. Creazione delle identità per i 10 studenti/professori (Holder)
-  console.log('\n🎓 Holder (10 totali):')
+  // ============================================================================
+  // 2. SETUP HOLDERS (Studenti e Professori)
+  // ============================================================================
+  // Gli holder sono coloro che riceveranno le credenziali (il loro indirizzo).
+  console.log(`\n🎓 Holder (${HOLDERS.length} totali):`)
   for (const holder of HOLDERS) {
     const result = await getOrCreateDID(holder.alias)
-    const label = CREDENTIAL_LABELS[holder.level]
-    console.log(`   - ${holder.nominativo} [${label}]`)
+    const label = CREDENTIAL_LABELS[holder.degreeTitle]
+    console.log(`   - ${holder.displayName} [${label}]`)
     console.log(`     DID: ${result.did}`)
   }
 
-  // 3. Creazione dell'identità del Verifier
+  // ============================================================================
+  // 3. SETUP VERIFICATORE
+  // ============================================================================
+  // Simula un'entità terza (es. un'azienda) che leggerà le VC e chiederà i dati.
   console.log('\n🔍 Verifier:')
   const verifier = await getOrCreateDID(ACTORS.VERIFIER)
   console.log(`   ${verifier.isNew ? 'Creato' : 'Esistente'}: ${verifier.did}`)
 
-  console.log('\n✅ 12 identità DID pronte all\'uso!')
+  console.log('\n✅ Identità DID pronte all\'uso!')
 }
 
 main().catch((error) => {

@@ -1,10 +1,14 @@
 /**
- * Configurazione dell'Agente Veramo (SSI)
- *
- * Questo è il "motore" del nostro sistema. Qui attiviamo i plugin necessari
- * per gestire identità, credenziali e crittografia in modo standardizzato (W3C).
- */
+================================================================================
+CONFIGURAZIONE DELL'AGENTE (Veramo Framework)
 
+CONTESTO DIDATTICO:
+L'Agente è il "Motore" SSI. Proprio come Hardhat gestisce l'interazione Ethereum,
+Veramo gestisce l'interazione SSI W3C. Questo file configura i "plugin", dicendo
+all'agente come salvare le chiavi in modo sicuro (KMS criptato con password),
+come creare i DID (plugin Ethr) e dove salvare le credenziali (SQLite).
+================================================================================
+ */
 import 'dotenv/config'
 
 import {
