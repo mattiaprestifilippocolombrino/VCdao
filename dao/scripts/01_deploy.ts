@@ -107,7 +107,7 @@ async function main() {
 
     // Deploy dei contratti StartupRegistry e MockStartup.
     const Registry = await ethers.getContractFactory("StartupRegistry");
-    const registry = await Registry.deploy();
+    const registry = await Registry.deploy(await timelock.getAddress());
     await registry.waitForDeployment();
     const MS = await ethers.getContractFactory("MockStartup");
     const mockStartup = await MS.deploy();

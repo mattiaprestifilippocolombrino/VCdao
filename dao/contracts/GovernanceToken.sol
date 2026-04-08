@@ -41,6 +41,19 @@ PhD con 4 e Professor con 5.
     /// Massimo livello enum supportato (utile per UI/integrazioni).
     uint8 public constant MAX_DEGREE_LEVEL = 4;
 
+    /// Domain separator EIP-712 universale, precalcolato a compile-time.
+    /// Identico al dominio usato off-chain da Veramo per firmare le VC.
+    /// Essendo `constant`, il valore viene incorporato direttamente nel bytecode
+    /// senza occupare storage e senza costi di SLOAD (risparmio ~600 gas).
+    bytes32 public constant UNIVERSAL_DOMAIN_SEPARATOR =
+        keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version)"),
+                keccak256(bytes("Universal VC Protocol")),
+                keccak256(bytes("1"))
+            )
+        );
+
     //Variabili di stato
 
     //Indirizzo del TimelockController, usato per eseguire gli upgrade di competenza autorizzati dalla governance
@@ -127,7 +140,6 @@ PhD con 4 e Professor con 5.
 
     error OnlyTimelock();
     error OnlyDeployer();
-    error OnlyDeployerOrTimelock();
     error AlreadyMember();
     error NotMember();
     error ZeroDeposit();
@@ -164,12 +176,6 @@ PhD con 4 e Professor con 5.
         _;
     }
 
-    // Access control: consente solo deployer o timelock.
-    modifier onlyDeployerOrTimelock() {
-        if (msg.sender != deployer && msg.sender != timelock)
-            revert OnlyDeployerOrTimelock();
-        _;
-    }
 
     // =====================================================================
     //  Costruttore
@@ -207,10 +213,19 @@ PhD con 4 e Professor con 5.
         treasury = _treasury;
     }
 
-    /// Configura issuer fidato che firma le VC riconosciute dal contratto.
-    /// In setup puo farlo il deployer, poi solo governance (timelock).
-    function setTrustedIssuer(address _issuer) external onlyDeployerOrTimelock {
+    /// Configura l'issuer fidato che firma le VC riconosciute dal contratto.
+    /// Best practice DAO: il deployer può impostarlo solo al primo setup (bootstrap).
+    /// Dopo la prima configurazione, solo la governance (timelock) può cambiarlo,
+    /// garantendo che nessun singolo individuo possa modificare l'issuer unilateralmente.
+    function setTrustedIssuer(address _issuer) external {
         if (_issuer == address(0)) revert ZeroAddress();
+        if (trustedIssuer == address(0)) {
+            // Bootstrap: prima configurazione, solo deployer
+            if (msg.sender != deployer) revert OnlyDeployer();
+        } else {
+            // Post-bootstrap: solo governance può cambiare l'issuer
+            if (msg.sender != timelock) revert OnlyTimelock();
+        }
         trustedIssuer = _issuer;
         emit TrustedIssuerSet(_issuer);
     }
@@ -312,65 +327,69 @@ PhD con 4 e Professor con 5.
     }
 
     /*
-Upgrade competenza tramite VC (EIP-712)
-Usa la libreria VPVerifier per verificare una VC firmata e applica l'upgrade se valida.
-Controlla se il membro e' esistente e se è configurato l'issuer fidato.
-Controlla se il DID del membro e' coerente con il DID nel credentialSubject.
-Calcola il typehash del dominio EIP-712.
-Recupera l'address del firmatario usando le funzioni della libreria VPVerifier sulla firma EIP-712 contenuta nella VC.
-Controlla se l'issuer recuperato e' uguale al trustedIssuer. In caso di successo, mappa il titolo testuale nell'enum di grado.
-Costruisce una stringa prova sintetica persistita on-chain. Esegue l'aggiornamento del grado del membro, tramite la funzione _performUpgrade.
+    Upgrade competenza tramite VC — Self-Sovereign (EIP-712)
+
+    Best practice SSI: il membro presenta direttamente la propria VC firmata
+    e il contratto la verifica crittograficamente, senza bisogno di una
+    votazione di governance. Questo perché la validità della VC è un fatto
+    OGGETTIVO (la firma ecrecover è matematicamente verificabile), non una
+    decisione SOGGETTIVA che richiede consenso umano.
+
+    Il membro chiama questa funzione in prima persona (msg.sender), dimostrando
+    di essere il legittimo holder della credenziale. Questo incarna il principio
+    fondamentale della SSI: "l'utente controlla la propria identità".
+
+    Flusso:
+    1. Verifica che msg.sender sia un membro con DID registrato
+    2. Verifica che il DID nel credentialSubject corrisponda al DID del membro
+    3. Recupera l'address del firmatario tramite ecrecover EIP-712
+    4. Verifica che il firmatario sia il trustedIssuer
+    5. Mappa il degreeTitle nell'enum di competenza
+    6. Esegue l'upgrade senza intervento della governance
     */
     function upgradeCompetenceWithVP(
-        address _member,
         VPVerifier.VerifiableCredential memory _vc,
         bytes memory _issuerSignature
-    ) external onlyTimelock {
-        // Controlla se il membro e' esistente e se è configurato l'issuer fidato.
-        if (!isMember[_member]) revert NotMember();
+    ) external {
+        // Il chiamante (msg.sender) è il membro che presenta la propria VC.
+        if (!isMember[msg.sender]) revert NotMember();
         if (trustedIssuer == address(0)) revert TrustedIssuerNotSet();
 
-        // Controlla se il DID del membro e' coerente con il DID nel credentialSubject.
-        if (bytes(memberDID[_member]).length == 0) revert NoDIDRegistered();
+        // Verifica binding DID: il DID nel credentialSubject deve corrispondere
+        // al DID registrato dal membro, garantendo che nessuno possa usare
+        // la VC di un altro.
+        if (bytes(memberDID[msg.sender]).length == 0) revert NoDIDRegistered();
         if (
             keccak256(bytes(_vc.credentialSubject.id)) !=
-            keccak256(bytes(memberDID[_member]))
+            keccak256(bytes(memberDID[msg.sender]))
         ) revert DIDMismatch();
 
-        // Calcola il typehash del dominio EIP-712.
-        bytes32 universalDomainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version)"),
-                keccak256(bytes("Universal VC Protocol")),
-                keccak256(bytes("1"))
-            )
-        );
-
-        // Recupera l'address del firmatario usando le funzioni della libreria VPVerifier sulla firma  EIP-712 contenuta nella VC.
+        // Recupera l'address del firmatario usando la libreria VPVerifier.
+        // Il domain separator è precalcolato come constant (0 gas di hashing).
         address recoveredIssuer = VPVerifier.recoverIssuer(
             _vc,
             _issuerSignature,
-            universalDomainSeparator
+            UNIVERSAL_DOMAIN_SEPARATOR
         );
-        // Controlla se l'issuer recuperato e' uguale al trustedIssuer.
+        // Verifica crittografica: solo le VC firmate dal trustedIssuer sono valide.
         if (recoveredIssuer != trustedIssuer) revert UntrustedIssuer();
 
-        // In caso di successo, mappa il titolo testuale nell'enum di grado.
+        // Mappa il titolo testuale nell'enum di grado.
         CompetenceGrade newGrade = _getGradeFromTitle(
             _vc.credentialSubject.degreeTitle
         );
 
-        // Costruisce una stringa prova sintetica persistita on-chain.
+        // Costruisce la prova sintetica persistita on-chain.
         string memory proof = string(
             abi.encodePacked("VP-EIP712:", _vc.issuer.id)
         );
 
-        // Esegue l'aggiornamento del grado del membro, tramite la funzione _performUpgrade.
-        _performUpgrade(_member, newGrade, proof);
+        // Esegue direttamente l'upgrade — nessun voto richiesto.
+        _performUpgrade(msg.sender, newGrade, proof);
 
         // Evento dedicato per audit analytics del percorso VC.
         emit CompetenceUpgradedWithVP(
-            _member,
+            msg.sender,
             newGrade,
             uint8(newGrade),
             _vc.issuer.id

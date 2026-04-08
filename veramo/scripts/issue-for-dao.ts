@@ -95,17 +95,10 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
   // Carichiamo il JSON deployedAddresses.json
   const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf-8"))
 
-  // Estraiamo l'address del token deployato.
-  const tokenAddressRaw = deployed?.token
-
-  // Verifichiamo che l'indirizzo del token sia valido.
-  if (!tokenAddressRaw || !ethers.isAddress(tokenAddressRaw)) {
+  // Verifichiamo che il deploy contenga un indirizzo token valido (sanity check).
+  if (!deployed?.token || !ethers.isAddress(deployed.token)) {
     throw new Error("deployedAddresses.json non contiene un token address valido")
   }
-
-  // Normalizziamo l'indirizzo del token in formato checksum (EIP-55).
-  const tokenAddress = ethers.getAddress(tokenAddressRaw)
-  // BUG: INDIRIZZO DEL TOKEN USATO IN UNA VERSIONE PRECEDENTE, ORA MAI USATO. DA RIMUOVERE.
 
   // Istanziamo il wallet issuer usando la private key validata dell'issuer.
   const issuerWallet = new ethers.Wallet(issuerPrivateKey)

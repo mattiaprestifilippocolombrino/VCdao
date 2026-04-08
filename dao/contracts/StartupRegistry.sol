@@ -5,8 +5,10 @@ pragma solidity ^0.8.28;
 Contratto che mantiene un registro on-chain di startup/progetti verso cui la DAO può investire.
 Invece di proporre investimenti verso indirizzi "random", la DAO può
 verificare che la startup sia registrata e attiva.
-Contratto non necessario per il funzionamento del Governor, ma rende il progetto realistico tenendo conto delle startup verso cui la DAO può investire.
-TODO: Devo aggiornarlo, dando la possibilità di registrare startup solo tramite il Governor, e quindi il TimelockController.
+
+Best practice DAO: solo la governance (TimelockController) può registrare o
+disattivare startup. Nessun singolo individuo può aggiungere target di
+investimento senza l'approvazione della comunità.
 */
 
 contract StartupRegistry {
@@ -20,8 +22,8 @@ contract StartupRegistry {
 
     // Variabili di stato
 
-    /// Indirizzo di chi ha deployato il contratto (può registrare startup)
-    address public owner;
+    /// Indirizzo del TimelockController (unica autorità per registrazione/disattivazione)
+    address public timelock;
 
     /// Contatore delle startup registrate (usato come ID)
     uint256 public startupCount;
@@ -39,8 +41,8 @@ contract StartupRegistry {
 
     // Errori
 
-    /// Solo il proprietario può eseguire questa azione
-    error OnlyOwner();
+    /// Solo il TimelockController (governance) può eseguire questa azione
+    error OnlyTimelock();
 
     /// L'ID della startup non esiste
     error StartupNotFound();
@@ -50,17 +52,19 @@ contract StartupRegistry {
 
     // Modifier
 
-    /// Permette l'accesso solo al proprietario
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert OnlyOwner();
-        _;
+    /// Permette l'accesso solo alla governance (TimelockController)
+    modifier onlyTimelock() {
+        if (msg.sender != timelock) revert OnlyTimelock();
+        _;    
     }
 
     // Constructor
 
-    /// Imposta il deployer come proprietario del registro
-    constructor() {
-        owner = msg.sender;
+    /// Imposta il TimelockController come unica autorità del registro.
+    /// Best practice DAO: nessun owner singolo, solo governance decentralizzata.
+    constructor(address _timelock) {
+        if (_timelock == address(0)) revert ZeroAddress();
+        timelock = _timelock;
     }
 
     // Funzioni pubbliche
@@ -74,7 +78,7 @@ contract StartupRegistry {
         string calldata _name,
         address _wallet,
         string calldata _description
-    ) external onlyOwner returns (uint256 id) {
+    ) external onlyTimelock returns (uint256 id) {
         if (_wallet == address(0)) revert ZeroAddress();
 
         // L'ID è semplicemente il contatore corrente (parte da 0)
@@ -94,7 +98,7 @@ contract StartupRegistry {
 
     /// @notice Disattiva una startup (non potrà più ricevere investimenti)
     /// @param _id ID della startup da disattivare
-    function deactivateStartup(uint256 _id) external onlyOwner {
+    function deactivateStartup(uint256 _id) external onlyTimelock {
         if (_id >= startupCount) revert StartupNotFound();
         startups[_id].active = false;
 

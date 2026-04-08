@@ -117,7 +117,8 @@ describe("Competence Upgrade — via governance", function () {
     }
 
     // =========================================================================
-    //  Helper: firma una VC con EIP-712 e esegue l'upgrade via governance
+    //  Helper: firma una VC con EIP-712 e esegue l'upgrade DIRETTAMENTE
+    //  Best practice SSI: il membro presenta la propria VC senza governance
     // =========================================================================
     async function doUpgradeWithVP(
         target: HardhatEthersSigner,
@@ -145,30 +146,8 @@ describe("Competence Upgrade — via governance", function () {
         // L'Issuer firma la VC con EIP-712
         const signature = await signer.signTypedData(domain, VC_TYPES, vcData);
 
-        // Costruisci la proposta di governance con upgradeCompetenceWithVP
-        const tokenAddr = await token.getAddress();
-        const calldata = token.interface.encodeFunctionData("upgradeCompetenceWithVP", [
-            target.address, vcData, signature
-        ]);
-        const targets = [tokenAddr];
-        const values = [0n];
-        const calldatas = [calldata];
-        const description = `VP Upgrade ${target.address} to ${degreeTitle}`;
-
-        const tx = await governor.propose(targets, values, calldatas, description);
-        const receipt = await tx.wait();
-        const proposalId = receipt!.logs
-            .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })
-            .find((p: any) => p?.name === "ProposalCreated")?.args?.proposalId;
-
-        await mine(VOTING_DELAY + 1);
-        await governor.castVote(proposalId, 1);
-        await mine(VOTING_PERIOD + 1);
-
-        const descHash = ethers.id(description);
-        await governor.queue(targets, values, calldatas, descHash);
-        await time.increase(TIMELOCK_DELAY + 1);
-        await governor.execute(targets, values, calldatas, descHash);
+        // Il membro presenta direttamente la propria VC — Self-Sovereign, nessun voto
+        await token.connect(target).upgradeCompetenceWithVP(vcData, signature);
     }
 
     // =========================================================================

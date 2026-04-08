@@ -1,12 +1,13 @@
 /*
-04_upgradeCompetences.ts — Upgrade competenze con VC minimale firmata EIP-712
+04_upgradeCompetences.ts — Upgrade competenze con VC firmata EIP-712
 
-Flusso:
+Flusso (Self-Sovereign, best practice SSI):
 1) Legge le VC JSON generate da veramo/scripts/2-issue-credential.ts
 2) Valida che ogni VC rispetti il formato minimale richiesto dal PoC
 3) Registra i DID holder nel token (se non presenti)
-4) Costruisce una proposta batch con upgradeCompetenceWithVP
-5) Vota, mette in queue, esegue: la firma EIP-712 viene verificata on-chain
+4) Ogni membro chiama upgradeCompetenceWithVP DIRETTAMENTE, presentando
+   la propria VC firmata — nessuna votazione di governance necessaria,
+   perché la validità della VC è verificata crittograficamente (ecrecover)
 */
 
 // Importiamo ethers da hardhat per interagire con la rete locale
@@ -341,6 +342,7 @@ async function main() {
   console.log(`   📌 Upgrade pianificati da VC trusted: ${upgrades.length}`);
 
   const usedCredentialFiles = new Set<string>();
+  const directUpgrades: { signer: any; label: string; vcDataObj: any; signature: string }[] = [];
 
   for (const u of upgrades) {
     const selected = trustedCredentials.find(
@@ -386,78 +388,34 @@ async function main() {
     values.push(0n);
     calldatas.push(
       token.interface.encodeFunctionData("upgradeCompetenceWithVP", [
-        u.signer.address,
         vcDataObj,
         signature,
       ])
     );
 
+    // Salva il riferimento signer→VC per la chiamata diretta
+    directUpgrades.push({ signer: u.signer, label: u.label, vcDataObj, signature });
+
     console.log(`   🔏 ${u.label} (grado ${u.grade}) → pacchetto VC preparato`);
   }
 
-  for (let i = 0; i < calldatas.length; i++) {
-    const decoded = token.interface.decodeFunctionData("upgradeCompetenceWithVP", calldatas[i]);
-    const member = decoded[0] as string;
-    const vc = decoded[1] as any;
-    const registeredDid = await token.memberDID(member);
-    if (registeredDid !== vc.credentialSubject.id) {
-      throw new Error(
-        `Payload DID mismatch su indice ${i}: member=${member}, registered=${registeredDid}, vc=${vc.credentialSubject.id}`
-      );
-    }
+  // ============================================================================
+  // 5. UPGRADE DIRETTO — Self-Sovereign (Best Practice SSI)
+  // ============================================================================
+  // L'upgrade con VC è un'azione OGGETTIVA (verificata crittograficamente),
+  // quindi non richiede una votazione di governance. Ogni membro chiama
+  // upgradeCompetenceWithVP direttamente, presentando la propria VC firmata.
+  // Questo incarna il principio SSI: "l'utente controlla la propria identità".
+  console.log(`\n🔐 Upgrade self-sovereign (${directUpgrades.length} membri presentano le proprie VC)...`);
+
+  for (const du of directUpgrades) {
+    const tx = await token.connect(du.signer).upgradeCompetenceWithVP(du.vcDataObj, du.signature);
+    await tx.wait();
+    const grade = Number(await token.getMemberGrade(du.signer.address));
+    console.log(`   ✅ ${du.label} → ${GRADE_NAMES[grade]} (verificato on-chain via EIP-712)`);
   }
 
-  // ============================================================================
-  // 5. INVIO DELLA PROPOSTA ON-CHAIN (Tramite il Governor)
-  // ============================================================================
-  const description = `VC Batch upgrade da VC trusted (EIP-712) — count: ${upgrades.length}`;
-  console.log(`\n📝 Creazione proposta batch (${upgrades.length} upgrade con VC)...`);
-
-  // Chiama la funzione 'propose' del contratto MyGovernor.sol passando i target, i valori, 
-  // le firme + payload decodificati nell'array calldatas, e una stringa di descrizione.
-  const tx = await governor.propose(targets, values, calldatas, description);
-  const receipt = await tx.wait();
-  const proposalId = receipt!.logs
-    .map((log: any) => {
-      try {
-        return governor.interface.parseLog(log);
-      } catch {
-        return null;
-      }
-    })
-    .find((p: any) => p?.name === "ProposalCreated")?.args?.proposalId;
-
-  await mine(VOTING_DELAY + 1);
-  for (let i = 0; i < 5; i++) {
-    await governor.connect(signers[i]).castVote(proposalId, 1);
-  }
-
-  // ============================================================================
-  // 6. FASE DI VOTO, ATTESA (QUEUE) ED ESECUZIONE 
-  // ============================================================================
-  // Controlla lo stato della proposta nel Governor. "4" significa Succeeded.
-  let state = Number(await governor.state(proposalId));
-  if (state !== 4) {
-    console.log("   ⏳ Superquorum non raggiunto, attendo fine voting period...");
-    await mine(VOTING_PERIOD + 1);
-    state = Number(await governor.state(proposalId));
-  }
-  if (state !== 4) {
-    const [againstVotes, forVotes, abstainVotes] = await governor.proposalVotes(proposalId);
-    const quorumVotes = await governor.quorum(await governor.proposalSnapshot(proposalId));
-    throw new Error(
-      `Proposal non approvata: stato=${PROPOSAL_STATE_NAMES[state] ?? state}, for=${forVotes}, against=${againstVotes}, abstain=${abstainVotes}, quorum=${quorumVotes}`
-    );
-  }
-  console.log("   ✅ Proposta approvata!");
-
-  const descHash = ethers.id(description);
-  await governor.queue(targets, values, calldatas, descHash);
-  console.log("   🔒 Proposta in coda nel Timelock");
-
-  await time.increase(TIMELOCK_DELAY + 1);
-  await governor.execute(targets, values, calldatas, descHash);
-  console.log("   🚀 Upgrade VC eseguiti! Le firme EIP-712 sono state verificate on-chain.\n");
+  console.log("\n   🚀 Tutti gli upgrade VC completati! Le firme EIP-712 sono state verificate on-chain.\n");
 
   console.log("📊 Token dopo gli upgrade:");
   for (let i = 0; i < 15; i++) {
