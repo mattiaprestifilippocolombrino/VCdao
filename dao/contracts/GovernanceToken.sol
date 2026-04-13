@@ -6,7 +6,10 @@ pragma solidity ^0.8.28;
 // Per aumentare il proprio peso di voto, un membro può richiedere un UPGRADE DI COMPETENZA tramite proposta di governance.
 // I membri votano e, se approvata, il Timelock della DAO chiama upgradeCompetence().
 // I membri possono acquistare token aggiuntivi chiamando mintTokens().
-// TokenMintati = ETH × 1.000 × CoefficienteCompetenza
+//
+// Modello Voting Power Composto (VPC):
+//   VP(member) = baseTokens × [(1 − k) + k × score]
+// dove k = competenceWeight / 10.000 (parametro configurabile al deploy).
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
@@ -41,6 +44,9 @@ PhD con 4 e Professor con 5.
     /// Massimo livello enum supportato (utile per UI/integrazioni).
     uint8 public constant MAX_DEGREE_LEVEL = 4;
 
+    /// Denominatore per i calcoli in basis points (100% = 10.000 bp).
+    uint256 public constant BASIS_POINTS = 10_000;
+
     /// Domain separator EIP-712 universale, precalcolato a compile-time.
     /// Identico al dominio usato off-chain da Veramo per firmare le VC.
     /// Essendo `constant`, il valore viene incorporato direttamente nel bytecode
@@ -67,6 +73,13 @@ PhD con 4 e Professor con 5.
 
     //Issuer attendibile che firma le VC (es. universita).
     address public trustedIssuer;
+
+    /// Peso della componente competenza nel Voting Power Composto (VPC).
+    /// Espresso in basis points (0–10.000):
+    ///   k = 0       → VP puramente economico (solo token depositati)
+    ///   k = 10.000  → VP = baseTokens × score (pieno merito, legacy)
+    ///   k intermedio → blend lineare delle due componenti
+    uint256 public immutable competenceWeight;
 
     /// Mappa grado -> coefficiente usato nei calcoli di mint/upgrade.
     mapping(CompetenceGrade => uint256) public competenceScore;
@@ -149,6 +162,7 @@ PhD con 4 e Professor con 5.
     error TreasuryNotSet();
     error TreasuryAlreadySet();
     error TreasuryTransferFailed();
+    error InvalidCompetenceWeight();
 
     // Errori dedicati al flusso DID/VC.
     error DIDAlreadyRegistered();
@@ -186,11 +200,14 @@ PhD con 4 e Professor con 5.
         ERC20Permit usa lo stesso nome per il dominio EIP-712 del permit.
     */
     constructor(
-        address _timelock
+        address _timelock,
+        uint256 _competenceWeight
     ) ERC20("CompetenceDAO Token", "COMP") ERC20Permit("CompetenceDAO Token") {
         if (_timelock == address(0)) revert ZeroAddress();
+        if (_competenceWeight > BASIS_POINTS) revert InvalidCompetenceWeight();
         timelock = _timelock;
         deployer = msg.sender;
+        competenceWeight = _competenceWeight;
 
         // Inizializzazione coefficienti economici.
         // Il valore cresce con il livello, quindi upgrade => maggiore potere economico/voto.
@@ -275,8 +292,8 @@ PhD con 4 e Professor con 5.
         uint256 newBaseTokens = msg.value * TOKENS_PER_ETH;
         // Coefficiente del grado attuale del membro.
         uint256 score = competenceScore[memberGrade[msg.sender]];
-        // Quantita finale da mintare.
-        uint256 tokensToMint = newBaseTokens * score;
+        // Quantita finale: usa la formula VPC che bilancia peso economico e competenza.
+        uint256 tokensToMint = computeVotingTokens(newBaseTokens, score);
 
         // Aggiorna base cumulata (usata nei bonus futuri) e minta.
         baseTokens[msg.sender] += newBaseTokens;
@@ -431,8 +448,8 @@ PhD con 4 e Professor con 5.
         uint256 oldScore = competenceScore[memberGrade[_member]];
         if (newScore <= oldScore) revert CannotDowngrade();
 
-        // Delta moltiplicatore applicato alla base contributiva del membro.
-        uint256 additionalTokens = baseTokens[_member] * (newScore - oldScore);
+        // Delta VPC: solo la componente competenza (peso k) genera token aggiuntivi.
+        uint256 additionalTokens = baseTokens[_member] * competenceWeight * (newScore - oldScore) / BASIS_POINTS;
 
         // Aggiorna grado/prova prima del mint per coerenza di stato.
         memberGrade[_member] = _newGrade;
@@ -452,6 +469,67 @@ PhD con 4 e Professor con 5.
         address _member
     ) external view returns (CompetenceGrade) {
         return memberGrade[_member];
+    }
+
+    // =====================================================================
+    //  Voting Power Composto (VPC) — Funzioni per la tesi
+    // =====================================================================
+
+    /*
+    Calcola i voting tokens per una data base e grado di competenza.
+    Implementa il modello di Voting Power Composto (VPC), che bilancia
+    contributo economico e merito accademico tramite il parametro k:
+
+        VP(member) = baseTokens × [(1 − k) + k × score]
+
+    dove k = competenceWeight / BASIS_POINTS, e score ∈ {1,2,3,4,5}.
+
+    Proprietà:
+      • k = 0       → VP = baseTokens           (pura partecipazione economica)
+      • k = 10.000  → VP = baseTokens × score   (pieno merito, legacy)
+      • k generico  → blend lineare tra le due componenti
+
+    Il voting power rimane interamente rappresentato come saldo token
+    ERC20Votes, garantendo piena compatibilità con il Governor OpenZeppelin.
+    */
+    function computeVotingTokens(
+        uint256 _baseTokens,
+        uint256 _score
+    ) public view returns (uint256) {
+        return
+            _baseTokens *
+            ((BASIS_POINTS - competenceWeight) +
+                competenceWeight *
+                _score) / BASIS_POINTS;
+    }
+
+    /*
+    Restituisce la scomposizione del voting power di un membro nelle sue
+    due componenti: economica e di competenza.
+    Utile per trasparenza e analisi nella tesi.
+
+        economica   = baseTokens × (1 − k)
+        competenza  = baseTokens × k × score
+        totale      = economica + competenza
+    */
+    function getVotingPowerBreakdown(
+        address _member
+    )
+        external
+        view
+        returns (
+            uint256 economicComponent,
+            uint256 competenceComponent,
+            uint256 totalVotingPower
+        )
+    {
+        uint256 base = baseTokens[_member];
+        uint256 score = competenceScore[memberGrade[_member]];
+        economicComponent =
+            base * (BASIS_POINTS - competenceWeight) / BASIS_POINTS;
+        competenceComponent =
+            base * competenceWeight * score / BASIS_POINTS;
+        totalVotingPower = economicComponent + competenceComponent;
     }
 
     // =====================================================================

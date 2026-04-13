@@ -30,6 +30,9 @@ async function main() {
     // Parametri di configurazione
     const TIMELOCK_DELAY = 3600;       // 1 ora di attesa prima dell'esecuzione
     const FOUNDER_DEPOSIT = "100";     // 100 ETH → 100.000 token per il deployer
+    // Peso della componente competenza nel Voting Power Composto (VPC).
+    // 0 = puramente economico, 10000 = pieno merito (legacy), 5000 = blend 50/50.
+    const COMPETENCE_WEIGHT = parseInt(process.env.COMPETENCE_WEIGHT ?? "5000");
 
     console.log("══════════════════════════════════════════════════");
     console.log("  CompetenceDAO — Deploy completo");
@@ -48,11 +51,11 @@ async function main() {
     console.log(`1️⃣  TimelockController: ${await timelock.getAddress()}`);
 
 
-    // Deploy del GovernanceToken. Riceve in inputl'indirizzo del Timelock, utilizzato dal token per fare gli upgrade.
+    // Deploy del GovernanceToken. Riceve l'indirizzo del Timelock e il peso VPC.
     const Token = await ethers.getContractFactory("GovernanceToken");
-    const token = await Token.deploy(await timelock.getAddress());
+    const token = await Token.deploy(await timelock.getAddress(), COMPETENCE_WEIGHT);
     await token.waitForDeployment();
-    console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}`);
+    console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}  (k=${COMPETENCE_WEIGHT} bp)`);
 
     // Deploy del contratto MyGovernor, impostando i parametri di governance principali.
     // Riceve come parametri token, timelock, votingDelay(1), votingPeriod(50),

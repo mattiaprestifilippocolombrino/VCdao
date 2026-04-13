@@ -20,7 +20,7 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 // ══════════════════════════════════════════════════════════════════════════
 
 /** Prezzo ETH in dollari (aggiornabile per la tesi) */
-const ETH_PRICE_USD = 2500;
+const ETH_PRICE_USD = 1900;
 
 /** Gas price. Il live network viene popolato usando ethers.provider.getFeeData() */
 let NETWORKS: { name: string; gasPrice: bigint }[] = [];
@@ -98,8 +98,8 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
 
         NETWORKS = [
             { name: "Live Network (Dynamic)", gasPrice: currentGasPrice },
-            { name: "Arbitrum (Ref)",         gasPrice: ethers.parseUnits("100", "mwei") },
-            { name: "Optimism (Ref)",         gasPrice: ethers.parseUnits("10", "mwei") },
+            { name: "Arbitrum (Ref)", gasPrice: ethers.parseUnits("100", "mwei") },
+            { name: "Optimism (Ref)", gasPrice: ethers.parseUnits("10", "mwei") },
         ];
 
         [deployer, alice, bob, issuer] = await ethers.getSigners();
@@ -109,7 +109,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 10000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -153,7 +153,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
     describe("Deploy", function () {
         it("GovernanceToken", async function () {
             const F = await ethers.getContractFactory("GovernanceToken");
-            const c = await F.deploy(await timelock.getAddress());
+            const c = await F.deploy(await timelock.getAddress(), 10000n);
             const r = await c.deploymentTransaction()!.wait();
             record("Deploy", "GovernanceToken", r!.gasUsed);
         });

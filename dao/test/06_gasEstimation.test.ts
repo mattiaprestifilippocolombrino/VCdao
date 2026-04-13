@@ -1,8 +1,5 @@
 // ============================================================================
-//  06_gasEstimation.test.ts — Stima precisa gas e costi USD per upgradeCompetenceWithVP
-//
-//  Tutte le conversioni gas→ETH→USD usano ethers.parseUnits / ethers.formatEther
-//  (funzioni di libreria) per garantire precisione aritmetica.
+//  06_gasEstimation.test.ts — Script che esegue una stima precisa su gas e costi USD per upgradeCompetenceWithVP
 // ============================================================================
 
 import { expect } from "chai";
@@ -11,41 +8,36 @@ import { mine, time } from "@nomicfoundation/hardhat-network-helpers";
 import { GovernanceToken, MyGovernor, Treasury, TimelockController } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
-// ══════════════════════════════════════════════════════════════════════════
-//  Parametri di mercato e funzioni di conversione (da libreria ethers.js)
-// ══════════════════════════════════════════════════════════════════════════
+//  Parametri di mercato e funzioni di conversione usando la libreria ethers.js)
+// Prezzo ETH in dollari, hardcoded
+const ETH_PRICE_USD = 1900;
 
-/** Prezzo ETH in dollari (aggiornabile per la tesi) */
-const ETH_PRICE_USD = 2500;
-
-/** Scenari di gas price. Il primo viene popolato dinamicamente via Hardhat/ethers */
+// Array di oggetti contenenti scenari di gas price, uno per ogni rete.
 let NETWORKS: { name: string; gasPrice: bigint }[] = [];
 
-/**
- * Calcola il costo in wei di una transazione (gas × gasPrice).
- * Usa la moltiplicazione nativa di bigint, identica a ethers internamente.
- */
+/*
+ Calcola il costo in wei di una transazione (gas × gasPrice).
+ Usa la moltiplicazione nativa di bigint, identica a ethers internamente.
+*/
 function gasCostInWei(gasUsed: bigint, gasPrice: bigint): bigint {
     return gasUsed * gasPrice;
 }
 
-/**
- * Converte il costo gas in ETH usando ethers.formatEther (libreria).
- * ethers.formatEther divide automaticamente per 10^18.
- */
+/*
+ Converte il costo gas in ETH usando ethers.formatEther, dividendo per 10^18.
+*/
 function gasCostInEth(gasUsed: bigint, gasPrice: bigint): string {
     return ethers.formatEther(gasCostInWei(gasUsed, gasPrice));
 }
 
-/**
- * Converte il costo gas in USD.
- * Il passaggio ETH→USD usa parseFloat su ethers.formatEther (libreria).
- */
+/*
+ Converte il costo gas in USD, moltiplicando il costo in ETH per il prezzo ETH in USD.
+*/
 function gasCostInUsd(gasUsed: bigint, gasPrice: bigint, ethPriceUsd: number = ETH_PRICE_USD): number {
     return parseFloat(ethers.formatEther(gasCostInWei(gasUsed, gasPrice))) * ethPriceUsd;
 }
 
-/** Formatta un valore USD per stampa tabellare */
+// Formatta un valore USD per stampa tabellare
 function fmtUsd(usd: number): string {
     if (usd < 0.0001) return `< $0.0001`;
     if (usd < 0.01) return `$${usd.toFixed(5)}`;
@@ -53,7 +45,7 @@ function fmtUsd(usd: number): string {
     return `$${usd.toFixed(2)}`;
 }
 
-/** Stampa tabella costi per diverse reti */
+// Stampa la tabella dei costi per diverse reti, chiamando le funzioni definite precedentemente
 function printCostTable(label: string, gasUsed: bigint) {
     console.log(`\n   ┌──────────────────────┬────────────────────┬─────────────────┐`);
     console.log(`   │ Rete                 │ Costo in ETH       │ Costo in USD    │`);
@@ -67,7 +59,7 @@ function printCostTable(label: string, gasUsed: bigint) {
     console.log(`   Gas price calcolato con ethers.parseUnits() | ETH = $${ETH_PRICE_USD}`);
 }
 
-// ── Tipi EIP-712 (identici a VPVerifier.sol) ─────────────────────────────
+// Schema VC EIP712 (identico a VPVerifier.sol)
 const VC_TYPES = {
     Issuer: [{ name: "id", type: "string" }],
     CredentialSubject: [
@@ -99,24 +91,26 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
     const TIMELOCK_DELAY = 3600;
 
     beforeEach(async function () {
-        // Fetch current dynamic gas price from provider via ethers
+        // Prende dinamicamente il prezzo del gas in ethers via ethers.provider.getFeeData()
         const feeData = await ethers.provider.getFeeData();
         const currentGasPrice = feeData.gasPrice ?? feeData.maxFeePerGas ?? ethers.parseUnits("1", "gwei");
 
+        // Popoliamo l'array con i prezzi del gas per ogni rete. 
         NETWORKS = [
             { name: "Live Network (Dynamic)", gasPrice: currentGasPrice },
-            { name: "Arbitrum One (Ref)",     gasPrice: ethers.parseUnits("100", "mwei") },
-            { name: "Optimism / Base (Ref)",  gasPrice: ethers.parseUnits("10", "mwei") },
+            { name: "Arbitrum One (Ref)", gasPrice: ethers.parseUnits("100", "mwei") },
+            { name: "Optimism / Base (Ref)", gasPrice: ethers.parseUnits("10", "mwei") },
         ];
 
         [deployer, member1, member2, issuer] = await ethers.getSigners();
 
+        //Deployamo timelock, token, treasury e governor. Settiamo treasuery e trusted issuer, e avviamo la DAO.
         const Timelock = await ethers.getContractFactory("TimelockController");
         timelock = await Timelock.deploy(TIMELOCK_DELAY, [], [], deployer.address);
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 10000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -136,11 +130,13 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         );
         await governor.waitForDeployment();
 
+        //Grantiamo i ruoli a governor e revochuamoli al deployer
         const governorAddr = await governor.getAddress();
         await timelock.grantRole(await timelock.PROPOSER_ROLE(), governorAddr);
         await timelock.grantRole(await timelock.EXECUTOR_ROLE(), ethers.ZeroAddress);
         await timelock.revokeRole(await timelock.DEFAULT_ADMIN_ROLE(), deployer.address);
 
+        //Colleghiamo alla DAO i due membri e deleghiamo il potere di voto
         await token.connect(member1).joinDAO({ value: ethers.parseEther("5") });
         await token.connect(member1).delegate(member1.address);
         await token.connect(member2).joinDAO({ value: ethers.parseEther("5") });
@@ -148,7 +144,7 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         await mine(1);
     });
 
-    // Helper: firma VC
+    // Funzione helper per firmare una VC di test
     async function signVC(holderDid: string, issuerDid: string, degreeTitle: string) {
         const vcData = {
             issuer: { id: issuerDid },
@@ -164,7 +160,7 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         return { vcData, signature };
     }
 
-    // Helper: impersona Timelock per chiamata diretta
+    // Funzione helper che impersona Timelock per chiamata diretta
     async function callAsTimelock<T>(fn: (signer: HardhatEthersSigner) => Promise<T>): Promise<T> {
         const addr = await timelock.getAddress();
         await network.provider.request({ method: "hardhat_impersonateAccount", params: [addr] });
@@ -175,9 +171,11 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         return result;
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    //  TEST A: Gas e costi USD per upgradeCompetenceWithVP
-    // ═════════════════════════════════════════════════════════════════════
+    /* TEST A: Gas e costi USD per upgradeCompetenceWithVP.
+       L'utente registra il proprio DID e poi chiama direttamente upgradeCompetenceWithVP, non si ha votazione.
+       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP. con tx.wait().gasUsed. 
+       Stampiamo il costo in ETH e USD per ogni rete.
+    */
     it("A) Gas esatto e costi in ETH/USD per upgradeCompetenceWithVP", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
@@ -195,9 +193,10 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         printCostTable("upgradeWithVP", gasUsed);
     });
 
-    // ═════════════════════════════════════════════════════════════════════
-    //  TEST B: Overhead verifica VC (VP - Legacy) con costi USD
-    // ═════════════════════════════════════════════════════════════════════
+    /* TEST B: Overhead verifica VC (VP - Legacy) con costi USD
+       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP e upgradeCompetence senza VP, e calcoliamo quanto overhead ha la verifica VC.
+       Simuliamo la chiamata diretta dal timelock per upgradeCompetence senza VP.
+    */
     it("B) Overhead verifica VC: VP vs Legacy", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
@@ -228,9 +227,10 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         expect(overhead).to.be.lessThan(100000n);
     });
 
-    // ═════════════════════════════════════════════════════════════════════
-    //  TEST C: Variazione gas per titolo
-    // ═════════════════════════════════════════════════════════════════════
+    /* TEST C: Variazione gas per titolo
+       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP con diversi titoli.
+       Stampiamo il costo in ETH e USD per ogni rete.
+    */
     it("C) Gas per titolo: BachelorDegree vs PhD vs Professor", async function () {
         const titles = ["BachelorDegree", "PhD", "Professor"];
         const members = [member1, member2, deployer];
@@ -262,9 +262,10 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         console.log(`   └──────────────────┴────────────────┴──────────────────┘`);
     });
 
-    // ═════════════════════════════════════════════════════════════════════
-    //  TEST D: Riepilogo completo per la tesi
-    // ═════════════════════════════════════════════════════════════════════
+    /* TEST D: Riepilogo completo per la tesi
+       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP con diversi titoli.
+       Stampiamo il costo in ETH e USD per ogni rete.
+    */
     it("D) Riepilogo costi completo per la tesi", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
