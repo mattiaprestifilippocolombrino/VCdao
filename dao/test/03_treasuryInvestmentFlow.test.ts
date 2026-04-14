@@ -29,7 +29,7 @@ describe("Treasury + Investment Flow", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress(), 10000n);
+        token = await Token.deploy(await timelock.getAddress());
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -39,13 +39,13 @@ describe("Treasury + Investment Flow", function () {
         await token.setTreasury(await treasury.getAddress());
 
         // Deployer entra con 10 ETH → 10.000 COMP (ETH vanno nel Treasury)
-        await token.joinDAO({ value: ethers.parseEther("10") });
+        await token.joinDAO({ value: ethers.parseEther("100") });
         await token.delegate(deployer.address);
 
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
+            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70, 5000n, 5000n
         );
         await governor.waitForDeployment();
 
@@ -62,7 +62,8 @@ describe("Treasury + Investment Flow", function () {
     it("accetta depositi ETH tramite deposit()", async function () {
         // Il Treasury ha già 10 ETH dal joinDAO() del deployer
         await treasury.deposit({ value: ethers.parseEther("5") });
-        expect(await treasury.getBalance()).to.equal(ethers.parseEther("15"));
+        const balance = await ethers.provider.getBalance(await treasury.getAddress());
+        expect(balance).to.equal(ethers.parseEther("105"));
     });
 
     it("invest() reverta se non dal Timelock", async function () {
@@ -100,8 +101,8 @@ describe("Treasury + Investment Flow", function () {
         await time.increase(TIMELOCK_DELAY + 1);
         await governor.execute(targets, values, calldatas, descHash);
 
-        // Treasury: 10 (joinDAO) + 5 (deposit) - 1 (investimento) = 14 ETH
-        expect(await treasury.getBalance()).to.equal(ethers.parseEther("14"));
+        // Treasury: 100 (joinDAO) + 5 (deposit) - 1 (investimento) = 104 ETH
+        expect(await treasury.getBalance()).to.equal(ethers.parseEther("104"));
         expect(await mockStartup.totalReceived()).to.equal(ethers.parseEther("1"));
     });
 });

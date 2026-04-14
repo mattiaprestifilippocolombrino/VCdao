@@ -26,7 +26,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress(), 10000n);
+        token = await Token.deploy(await timelock.getAddress());
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -40,12 +40,12 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
 
     it("joinDAO() minta 1.000 COMP per 1 ETH depositato", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
-        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("1000", 18));
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("1", 18));
     });
 
     it("joinDAO() minta 50.000 COMP per 50 ETH depositati", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("50") });
-        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("50000", 18));
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("50", 18));
     });
 
     it("joinDAO() registra il membro come Student", async function () {
@@ -56,7 +56,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
 
     it("joinDAO() salva i token base correttamente", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
-        expect(await token.baseTokens(alice.address)).to.equal(ethers.parseUnits("10000", 18));
+        expect(await token.baseTokens(alice.address)).to.equal(ethers.parseUnits("10", 18));
     });
 
     it("joinDAO() reverta senza ETH", async function () {
@@ -81,11 +81,11 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     // ── Coefficienti competenza ──
 
     it("competenceScore restituisce i valori corretti", async function () {
-        expect(await token.competenceScore(0)).to.equal(1); // Student
-        expect(await token.competenceScore(1)).to.equal(2); // Bachelor
-        expect(await token.competenceScore(2)).to.equal(3); // Master
-        expect(await token.competenceScore(3)).to.equal(4); // PhD
-        expect(await token.competenceScore(4)).to.equal(5); // Professor
+        expect(await token.competenceScore(0)).to.equal(0); // Student
+        expect(await token.competenceScore(1)).to.equal(25); // Bachelor
+        expect(await token.competenceScore(2)).to.equal(50); // Master
+        expect(await token.competenceScore(3)).to.equal(75); // PhD
+        expect(await token.competenceScore(4)).to.equal(100); // Professor
     });
 
     // ── Delega e voting power ──
@@ -107,11 +107,11 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await token.connect(bob).joinDAO({ value: ethers.parseEther("5") });
         await token.connect(bob).delegate(bob.address);
 
-        const transferAmt = ethers.parseUnits("2000", 18);
+        const transferAmt = ethers.parseUnits("2", 18);
         await token.connect(alice).transfer(bob.address, transferAmt);
 
-        expect(await token.getVotes(alice.address)).to.equal(ethers.parseUnits("8000", 18));
-        expect(await token.getVotes(bob.address)).to.equal(ethers.parseUnits("7000", 18));
+        expect(await token.getVotes(alice.address)).to.equal(ethers.parseUnits("8", 18));
+        expect(await token.getVotes(bob.address)).to.equal(ethers.parseUnits("7", 18));
     });
 
     it("getPastVotes restituisce snapshot storici", async function () {
@@ -120,10 +120,10 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         const blockBefore = await ethers.provider.getBlockNumber();
         await mine(1);
 
-        await token.connect(alice).transfer(bob.address, ethers.parseUnits("2000", 18));
+        await token.connect(alice).transfer(bob.address, ethers.parseUnits("2", 18));
         await mine(1);
 
-        expect(await token.getPastVotes(alice.address, blockBefore)).to.equal(ethers.parseUnits("10000", 18));
+        expect(await token.getPastVotes(alice.address, blockBefore)).to.equal(ethers.parseUnits("10", 18));
     });
 
     // ── upgradeCompetence access control ──
@@ -137,12 +137,12 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
 
     // ── mintTokens() ──
 
-    it("mintTokens() minta token con moltiplicatore Student (×1)", async function () {
+    it("mintTokens() minta token base (1000 COMP per ETH) pre-VPC", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") }); // 1.000 COMP
         await token.connect(alice).mintTokens({ value: ethers.parseEther("2") }); // 2.000 × 1 = 2.000
 
-        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("3000", 18));
-        expect(await token.baseTokens(alice.address)).to.equal(ethers.parseUnits("3000", 18));
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("3", 18));
+        expect(await token.baseTokens(alice.address)).to.equal(ethers.parseUnits("3", 18));
     });
 
     it("mintTokens() reverta se non membro", async function () {

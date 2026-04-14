@@ -31,7 +31,7 @@ describe("MyGovernor — Ciclo di vita delle proposte", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress(), 10000n);
+        token = await Token.deploy(await timelock.getAddress());
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -41,14 +41,14 @@ describe("MyGovernor — Ciclo di vita delle proposte", function () {
         await token.setTreasury(await treasury.getAddress());
 
         // Deployer entra nella DAO con 10 ETH → 10.000 COMP
-        await token.joinDAO({ value: ethers.parseEther("10") });
+        await token.joinDAO({ value: ethers.parseEther("100") });
         await token.delegate(deployer.address);
 
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
             VOTING_DELAY, VOTING_PERIOD, PROPOSAL_THRESHOLD,
-            QUORUM_PERCENT, SUPER_QUORUM
+            QUORUM_PERCENT, SUPER_QUORUM, 5000n, 5000n
         );
         await governor.waitForDeployment();
 
@@ -97,13 +97,14 @@ describe("MyGovernor — Ciclo di vita delle proposte", function () {
         await governor.execute(targets, values, calldatas, descHash);
         expect(await governor.state(proposalId)).to.equal(7); // Executed
 
-        // Voter ora ha: 5.000 base × 4 (PhD) = 20.000 COMP
-        expect(await token.balanceOf(voter.address)).to.equal(ethers.parseUnits("20000", 18));
+        // Voter non riceve nuovi token (anti-inflazione), ma solo l'aumento di scoreCompetenze
+        expect(await token.getScoreCompetenze(voter.address)).to.equal(75); // PhD
         expect(await token.getMemberGrade(voter.address)).to.equal(3); // PhD
     });
 
     it("proposta bocciata se la maggioranza vota contro", async function () {
-        await token.connect(voter).joinDAO({ value: ethers.parseEther("10") });
+        // Voter riceve 100 ETH in modo da avere VP identico al Deployer (che ha 100 ETH) e creare pareggio (Defeated).
+        await token.connect(voter).joinDAO({ value: ethers.parseEther("100") });
         await token.connect(voter).delegate(voter.address);
         await mine(1);
 

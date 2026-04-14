@@ -30,9 +30,11 @@ async function main() {
     // Parametri di configurazione
     const TIMELOCK_DELAY = 3600;       // 1 ora di attesa prima dell'esecuzione
     const FOUNDER_DEPOSIT = "100";     // 100 ETH → 100.000 token per il deployer
-    // Peso della componente competenza nel Voting Power Composto (VPC).
-    // 0 = puramente economico, 10000 = pieno merito (legacy), 5000 = blend 50/50.
-    const COMPETENCE_WEIGHT = parseInt(process.env.COMPETENCE_WEIGHT ?? "5000");
+    // Pesi formula VPC (basis points, devono sommare a 10.000).
+    const PESO_COMPETENZE = parseInt(process.env.PESO_COMPETENZE ?? "5000");
+    const PESO_SOLDI      = parseInt(process.env.PESO_SOLDI      ?? "5000");
+    if (PESO_COMPETENZE + PESO_SOLDI !== 10000)
+        throw new Error(`PESO_COMPETENZE + PESO_SOLDI deve essere 10000`);
 
     console.log("══════════════════════════════════════════════════");
     console.log("  CompetenceDAO — Deploy completo");
@@ -51,11 +53,12 @@ async function main() {
     console.log(`1️⃣  TimelockController: ${await timelock.getAddress()}`);
 
 
-    // Deploy del GovernanceToken. Riceve l'indirizzo del Timelock e il peso VPC.
+    // Deploy del GovernanceToken.
     const Token = await ethers.getContractFactory("GovernanceToken");
-    const token = await Token.deploy(await timelock.getAddress(), COMPETENCE_WEIGHT);
+    const token = await Token.deploy(await timelock.getAddress());
     await token.waitForDeployment();
-    console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}  (k=${COMPETENCE_WEIGHT} bp)`);
+    console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}`);
+    console.log(`   └─ scoreCompetenze: Student=0, Bachelor=25, Master=50, PhD=75, Professor=100`);
 
     // Deploy del contratto MyGovernor, impostando i parametri di governance principali.
     // Riceve come parametri token, timelock, votingDelay(1), votingPeriod(50),
@@ -71,10 +74,13 @@ async function main() {
         50,                             // votingPeriod: 50 blocchi per votare
         0,                              // proposalThreshold: 0 COMP per proporre
         20,                             // quorumPercent: 20% della supply
-        70                              // superQuorum: 70% → approvazione immediata
+        70,                             // superQuorum: 70% → approvazione immediata
+        PESO_COMPETENZE,                // peso accademico in bp
+        PESO_SOLDI                      // peso economico in bp
     );
     await governor.waitForDeployment();
     console.log(`3️⃣  MyGovernor:         ${await governor.getAddress()}`);
+    console.log(`   └─ pesoCompetenze=${PESO_COMPETENZE} bp | pesoSoldi=${PESO_SOLDI} bp`);
 
     // Deploy del Treasury della DAO. Riceve come parametro l'indirizzo del Timelock, 
     // in quanto solo il Timelock può chiamare invest().

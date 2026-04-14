@@ -46,7 +46,7 @@ describe("Competence Upgrade — via governance", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress(), 10000n);
+        token = await Token.deploy(await timelock.getAddress());
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -56,13 +56,13 @@ describe("Competence Upgrade — via governance", function () {
         await token.setTreasury(await treasury.getAddress());
         await token.setTrustedIssuer(issuer.address);
 
-        await token.joinDAO({ value: ethers.parseEther("10") }); // 10.000 COMP
+        await token.joinDAO({ value: ethers.parseEther("100") }); // 100.000 COMP
         await token.delegate(deployer.address);
 
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
+            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70, 5000n, 5000n
         );
         await governor.waitForDeployment();
 
@@ -154,18 +154,18 @@ describe("Competence Upgrade — via governance", function () {
     //  Test legacy (retrocompatibilità)
     // =========================================================================
 
-    it("upgrade legacy da Student a PhD: 5.000 × (4-1) = 15.000 aggiuntivi → 20.000 totali", async function () {
+    it("upgrade legacy da Student a PhD: aggiorna punteggio senza mintare nuovi token", async function () {
         await doUpgrade(member, 3, "PhD in AI, Politecnico di Milano, 2024");
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("20000", 18));
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
         expect(await token.competenceProof(member.address)).to.equal("PhD in AI, Politecnico di Milano, 2024");
     });
 
-    it("upgrade legacy da Student a Professor: 5.000 × (5-1) = 20.000 aggiuntivi → 25.000 totali", async function () {
+    it("upgrade legacy da Student a Professor: aggiorna punteggio senza mintare nuovi token", async function () {
         await doUpgrade(member, 4, "Professore Ordinario, UniMi");
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 
@@ -240,7 +240,7 @@ describe("Competence Upgrade — via governance", function () {
     //  Test VP-based upgrade (core della tesi)
     // =========================================================================
 
-    it("upgrade con VP valida: Student → PhD (5.000 × 3 = 15.000 aggiuntivi)", async function () {
+    it("upgrade con VP valida: Student → PhD (aggiorna punteggio senza mint)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
@@ -250,30 +250,30 @@ describe("Competence Upgrade — via governance", function () {
         // Esegui upgrade con VP firmata EIP-712
         await doUpgradeWithVP(member, "PhD", holderDid, issuerDid);
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("20000", 18));
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
         expect(await token.competenceProof(member.address)).to.contain("VP-EIP712:");
     });
 
-    it("upgrade con VP: Student → MasterDegree (5.000 × 2 = 10.000 aggiuntivi)", async function () {
+    it("upgrade con VP: Student → MasterDegree (aggiorna punteggio senza mint)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
         await token.connect(member).registerDID(holderDid);
         await doUpgradeWithVP(member, "MasterDegree", holderDid, issuerDid);
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("15000", 18));
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(2);
     });
 
-    it("upgrade con VP: Student → Professor (5.000 × 4 = 20.000 aggiuntivi)", async function () {
+    it("upgrade con VP: Student → Professor (aggiorna punteggio senza mint)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
         await token.connect(member).registerDID(holderDid);
         await doUpgradeWithVP(member, "Professor", holderDid, issuerDid);
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("25000", 18));
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 
@@ -328,12 +328,11 @@ describe("Competence Upgrade — via governance", function () {
 
         await token.connect(member).registerDID(holderDid);
 
-        const votesBefore = await token.getVotes(member.address);
+        const scoreBefore = await token.getScoreCompetenze(member.address);
         await doUpgradeWithVP(member, "PhD", holderDid, issuerDid);
-        await token.connect(member).delegate(member.address); // Re-delega
-
-        const votesAfter = await token.getVotes(member.address);
-        expect(votesAfter).to.be.greaterThan(votesBefore);
-        expect(votesAfter).to.equal(ethers.parseUnits("20000", 18));
+        
+        const scoreAfter = await token.getScoreCompetenze(member.address);
+        expect(scoreAfter).to.be.greaterThan(scoreBefore);
+        expect(scoreAfter).to.equal(75); // Score PhD = 75
     });
 });

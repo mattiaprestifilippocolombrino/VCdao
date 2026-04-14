@@ -109,7 +109,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress(), 10000n);
+        token = await Token.deploy(await timelock.getAddress());
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -122,7 +122,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
+            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70, 5000n, 5000n
         );
         await governor.waitForDeployment();
 
@@ -153,7 +153,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
     describe("Deploy", function () {
         it("GovernanceToken", async function () {
             const F = await ethers.getContractFactory("GovernanceToken");
-            const c = await F.deploy(await timelock.getAddress(), 10000n);
+            const c = await F.deploy(await timelock.getAddress());
             const r = await c.deploymentTransaction()!.wait();
             record("Deploy", "GovernanceToken", r!.gasUsed);
         });
@@ -161,7 +161,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
             const F = await ethers.getContractFactory("MyGovernor");
             const c = await F.deploy(
                 await token.getAddress(), await timelock.getAddress(),
-                1, 50, 0, 20, 70
+                1, 50, 0, 20, 70, 5000n, 5000n
             );
             const r = await c.deploymentTransaction()!.wait();
             record("Deploy", "MyGovernor", r!.gasUsed);
@@ -185,7 +185,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
     // ═══════════════════════════════════════════════════════════════════
     describe("Membership", function () {
         it("joinDAO()", async function () {
-            const tx = await token.connect(deployer).joinDAO({ value: ethers.parseEther("10") });
+            const tx = await token.connect(deployer).joinDAO({ value: ethers.parseEther("100") });
             record("Membership", "joinDAO()", (await tx.wait())!.gasUsed);
         });
         it("joinDAO() — 2° membro", async function () {
