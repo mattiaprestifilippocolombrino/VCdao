@@ -45,22 +45,11 @@ contract MyGovernor is
     GovernorTimelockControl
 {
     // =====================================================================
-    //  Voting Power Composto — stato e costruttore
+    //  Stato e costruttore
     // =====================================================================
 
-    /// Denominatore basis points (100% = 10.000 bp).
-    uint256 public constant BASIS_POINTS = 10_000;
-
-    /// Riferimento tipizzato al token per leggere i dati di scoring.
+    /// Riferimento tipizzato al token per accedere ai metodi custom, se necessario.
     GovernanceToken public immutable governanceToken;
-
-    /// Peso della componente accademica nella formula VPC (in basis points).
-    uint256 public immutable pesoCompetenze;
-
-    /// Peso della componente economica nella formula VPC (in basis points).
-    uint256 public immutable pesoSoldi;
-
-    error InvalidWeights();
 
     /// @param token_                Token ERC20Votes (chi lo possiede può votare)
     /// @param timelock_             TimelockController (delay di sicurezza)
@@ -69,8 +58,6 @@ contract MyGovernor is
     /// @param proposalThreshold_    Voti minimi per creare una proposta
     /// @param quorumNumerator_      Quorum in % (es. 4 = 4% della supply)
     /// @param superQuorumNumerator_ Superquorum in % (es. 20 = 20%, deve essere ≥ quorum)
-    /// @param pesoCompetenze_       Peso accademico in bp (es. 5000 = 50%)
-    /// @param pesoSoldi_            Peso economico in bp (es. 5000 = 50%)
     constructor(
         IVotes token_,
         TimelockController timelock_,
@@ -78,9 +65,7 @@ contract MyGovernor is
         uint32 votingPeriod_,
         uint256 proposalThreshold_,
         uint256 quorumNumerator_,
-        uint256 superQuorumNumerator_,
-        uint256 pesoCompetenze_,
-        uint256 pesoSoldi_
+        uint256 superQuorumNumerator_
     )
         Governor("MyGovernor")
         GovernorSettings(votingDelay_, votingPeriod_, proposalThreshold_)
@@ -89,11 +74,7 @@ contract MyGovernor is
         GovernorVotesSuperQuorumFraction(superQuorumNumerator_)
         GovernorTimelockControl(timelock_)
     {
-        if (pesoCompetenze_ + pesoSoldi_ != BASIS_POINTS)
-            revert InvalidWeights();
         governanceToken = GovernanceToken(address(token_));
-        pesoCompetenze = pesoCompetenze_;
-        pesoSoldi = pesoSoldi_;
     }
 
     // Override richiesti da Solidity per risolvere conflitti di ereditarietà.abi
@@ -187,54 +168,8 @@ contract MyGovernor is
         return super.proposalVotes(proposalId);
     }
 
-    // =====================================================================
-    //  Voting Power Composto (VPC) — Override _countVote
-    // =====================================================================
-
-    /*
-    Funzione in override che calcola il VotingPower effettivo del membro al momento del voto,
-    applicando la formula: ScoreTotale = pesoCompetenze × scoreCompetenze + pesoSoldi × scoreSoldi
-    dove:
-        scoreCompetenze ∈ {0, 25, 50, 75, 100}, in base alla competenza estratta dalla VC
-        scoreSoldi      = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100]
-        pesoCompetenze + pesoSoldi = 10.000
-    */
-    function _countVote(
-        uint256 proposalId,
-        address account,
-        uint8 support,
-        uint256 totalWeight, // SALDO TOKEN SNAPSHOTTATO, DELEGATO IN PASSATO
-        bytes memory params
-    ) internal override(Governor, GovernorCountingSimple) returns (uint256) {
-        uint256 scoreTotale = _computeVotingScore(account, totalWeight);
-        return
-            super._countVote(
-                proposalId,
-                account,
-                support,
-                scoreTotale * 1e18,
-                params
-            );
-    }
-
-    /*
-    Funzione Helper che applica la formula VPC calcando scoreSoldi dal saldo token snapshottato `totalWeight`.
-    */
-    function _computeVotingScore(
-        address account,
-        uint256 snapshottedTokens
-    ) internal view returns (uint256) {
-        uint256 scoreC = governanceToken.getScoreCompetenze(account); // [0, 100]
-        uint256 TOKEN_CAP = 100 * 10 ** 18;
-        uint256 scoreS;
-        if (snapshottedTokens >= TOKEN_CAP) {
-            scoreS = 100;
-        } else {
-            scoreS = (snapshottedTokens * 100) / TOKEN_CAP; // [0, 100]
-        }
-
-        return (pesoCompetenze * scoreC + pesoSoldi * scoreS) / BASIS_POINTS;
-    }
+    // _countVote rimosso, viene usato quello base di GovernorCountingSimple,
+    // dato che il token contiene già i VP assegnati correttamente.
 
     // ----- Stato della proposta (SuperQuorumFraction ↔ TimelockControl) -----
 

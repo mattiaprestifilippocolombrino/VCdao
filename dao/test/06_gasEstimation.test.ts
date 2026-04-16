@@ -110,7 +110,7 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -126,7 +126,7 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70, 5000n, 5000n
+            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
         );
         await governor.waitForDeployment();
 

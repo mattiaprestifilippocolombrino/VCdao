@@ -46,7 +46,7 @@ describe("Competence Upgrade — via governance", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -56,13 +56,13 @@ describe("Competence Upgrade — via governance", function () {
         await token.setTreasury(await treasury.getAddress());
         await token.setTrustedIssuer(issuer.address);
 
-        await token.joinDAO({ value: ethers.parseEther("100") }); // 100.000 COMP
+        await token.joinDAO({ value: ethers.parseEther("100") }); // 50 COMP (soldi max)
         await token.delegate(deployer.address);
 
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70, 5000n, 5000n
+            VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
         );
         await governor.waitForDeployment();
 
@@ -154,18 +154,26 @@ describe("Competence Upgrade — via governance", function () {
     //  Test legacy (retrocompatibilità)
     // =========================================================================
 
-    it("upgrade legacy da Student a PhD: aggiorna punteggio senza mintare nuovi token", async function () {
+    it("upgrade legacy da Student a PhD: minta la quota competenza e aggiorna il grado", async function () {
+        // Prima del joinDAO: member ha 0 token.
+        // joinDAO con 5 ETH: scoreSoldi = 5%  → pesoSoldi(5000) × 5 / 10000 = 2.5 token
+        // Upgrade Student(0) → PhD(75): pesoCompetenze(5000) × 75 / 10000 = 37.5 token
+        // Totale atteso: 2.5 + 37.5 = 40 token
         await doUpgrade(member, 3, "PhD in AI, Politecnico di Milano, 2024");
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
+        const expected = ethers.parseEther("40"); // 2.5 (soldi) + 37.5 (comp)
+        expect(await token.balanceOf(member.address)).to.equal(expected);
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
         expect(await token.competenceProof(member.address)).to.equal("PhD in AI, Politecnico di Milano, 2024");
     });
 
-    it("upgrade legacy da Student a Professor: aggiorna punteggio senza mintare nuovi token", async function () {
+    it("upgrade legacy da Student a Professor: minta la quota competenza e aggiorna il grado", async function () {
+        // Student(0) → Professor(100): pesoCompetenze(5000) × 100 / 10000 = 50 token
+        // + 2.5 token da joinDAO (5 ETH). Totale: 52.5 token
         await doUpgrade(member, 4, "Professore Ordinario, UniMi");
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
+        const expected = ethers.parseEther("52.5"); // 2.5 + 50
+        expect(await token.balanceOf(member.address)).to.equal(expected);
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 
@@ -240,40 +248,40 @@ describe("Competence Upgrade — via governance", function () {
     //  Test VP-based upgrade (core della tesi)
     // =========================================================================
 
-    it("upgrade con VP valida: Student → PhD (aggiorna punteggio senza mint)", async function () {
+    it("upgrade con VP valida: Student → PhD (minta i token per la competenza)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
-        // Registra il DID del membro
         await token.connect(member).registerDID(holderDid);
-
-        // Esegui upgrade con VP firmata EIP-712
         await doUpgradeWithVP(member, "PhD", holderDid, issuerDid);
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
+        // joinDAO 5 ETH → 2.5 token + PhD upgrade(75) → 37.5 token = 40 token
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseEther("40"));
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
         expect(await token.competenceProof(member.address)).to.contain("VP-EIP712:");
     });
 
-    it("upgrade con VP: Student → MasterDegree (aggiorna punteggio senza mint)", async function () {
+    it("upgrade con VP: Student → MasterDegree (minta i token per la competenza)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
         await token.connect(member).registerDID(holderDid);
         await doUpgradeWithVP(member, "MasterDegree", holderDid, issuerDid);
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
+        // joinDAO 5 ETH → 2.5 token + Master upgrade(50) → 25 token = 27.5 token
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseEther("27.5"));
         expect(await token.getMemberGrade(member.address)).to.equal(2);
     });
 
-    it("upgrade con VP: Student → Professor (aggiorna punteggio senza mint)", async function () {
+    it("upgrade con VP: Student → Professor (minta i token per la competenza)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
 
         await token.connect(member).registerDID(holderDid);
         await doUpgradeWithVP(member, "Professor", holderDid, issuerDid);
 
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseUnits("5", 18));
+        // joinDAO 5 ETH → 2.5 token + Professor upgrade(100) → 50 token = 52.5 token
+        expect(await token.balanceOf(member.address)).to.equal(ethers.parseEther("52.5"));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 

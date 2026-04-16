@@ -1,0 +1,138 @@
+Il problema viene dal fatto che facendo override, 
+deve ricalcolarsi oltre alla voting Power via formula anche quorum, 
+super quorum e Total supply. Inoltre c'è il non problema degli snapshot delle
+ completenze. Possiamo implementare la logica della formula nello stesso modo
+  riusando lo stesso token ERC20. Il token varrebbe come lo score totale 
+  calcolato nella formula, quindi come voting power.  
+Il token, con l'overhead per la sua gestione, lo usiamo comunque per
+ mintare via soldi.
+
+
+ Overhead su quorum() e superQuorum()
+Se fai il fix vero con _getVotes() custom, devi anche:
+
+introdurre getPastTotalVotingPower(timepoint)
+override di quorum()
+override di superQuorum()
+Questo aggiunge:
+
+lookup extra
+logica custom extra
+più superficie di bug
+Nel token-based invece GovernorVotesQuorumFraction e
+ GovernorVotesSuperQuorumFraction funzionano già con getPastTotalSupply() 
+ standard.
+
+Overhead di storage/checkpoint duplicati
+Con approccio _getVotes() ben fatto, devi mantenere checkpoint extra oltre a quelli già tenuti da ERC20Votes:
+
+snapshot della competenza
+snapshot del totale VPC
+eventualmente altra contabilità per tenere coerente il totale
+Quindi hai due strati:
+
+checkpoint standard del token
+checkpoint custom del VPC
+Nel token-based usi solo i checkpoint standard del token,
+ senza una seconda contabilità parallela.
+
+
+ getPastTotalSupply()
+Perché getPastTotalSupply() sfrutta checkpoint già mantenuti automaticamente da ERC20Votes.
+
+Con getPastTotalVotingPower() custom invece hai:
+
+il sistema standard dei checkpoint token
+in più un secondo sistema di checkpoint per il totale VPC
+
+
+Caso 2: implementazione sbagliata, senza checkpoint aggregato
+Se provi a fare getPastTotalVotingPower() sommando al volo il VP di tutti i membri:
+
+diventa molto costoso
+richiede iterare tutti i membri
+on-chain è praticamente da evitare
+******************************************
+l problema è questo: nel sistema standard con ERC20Votes, OpenZeppelin mantiene già automaticamente i
+checkpoint della total supply storica del token. Quindi quando chiami getPastTotalSupply(timepoint), 
+il contratto non deve fare calcoli pesanti: va semplicemente a leggere il valore storico già salvato in precedenza.
+
+Nel tuo caso, però, il quorum non vuoi più basarlo sulla totalSupply dei token, 
+ma sulla somma totale del Voting Power basato sulle competenze o VPC. 
+E questa cosa OpenZeppelin non te la mantiene da sola. 
+Quindi devi decidere come gestire anche la storia del totale VPC.
+Il modo corretto è questo: oltre ai checkpoint individuali del voting power dei singoli utenti, 
+devi mantenere anche un checkpoint aggregato del totale VPC globale. 
+In pratica, ogni volta che il VPC di qualcuno cambia, non aggiorni solo il suo peso personale, 
+ma aggiorni anche una variabile tipo totalVotingPower, e ne salvi il nuovo checkpoint storico. 
+Poi getPastTotalVotingPower(timepoint) leggerà da quella struttura, esattamente come getPastTotalSupply() 
+legge dai checkpoint di ERC20Votes.
+
+Quindi cosa devi fare, concretamente? Devi avere una struttura del tipo:
+Checkpoints.Trace208 private _totalVotingPowerCheckpoints;
+uint208 private _currentTotalVotingPower;
+Poi, ogni volta che un utente aumenta o diminuisce il proprio VPC, devi:
+leggere il vecchio peso dell’utente, calcolare il nuovo peso, fare la differenza,
+aggiornare _currentTotalVotingPower, pushare un nuovo checkpoint in _totalVotingPowerCheckpoints.
+
+L’idea è questa:
+function _updateVotingPower(address account, uint256 oldPower, uint256 newPower) internal {
+    if (newPower > oldPower) {
+        _currentTotalVotingPower += uint208(newPower - oldPower);
+    } else if (oldPower > newPower) {
+        _currentTotalVotingPower -= uint208(oldPower - newPower);
+    }
+
+    _totalVotingPowerCheckpoints.push(clock(), _currentTotalVotingPower);
+
+    // poi aggiorni anche i checkpoint individuali dell'account
+}
+
+E dopo ti serve una funzione tipo:
+
+function getPastTotalVotingPower(uint256 timepoint) public view returns (uint256) {
+    return _totalVotingPowerCheckpoints.upperLookupRecent(timepoint);
+}
+
+Poi il quorum lo fai su questa funzione, non sulla total supply del token.
+Il vantaggio enorme è il costo. Con i checkpoint aggregati, il costo viene pagato quando cambia il VPC di qualcuno,
+cioè in scrittura. Però la lettura storica del totale, che ti serve nelle proposte di governance,
+resta molto efficiente.
+
+Adesso veniamo alla parte “quanto è costoso”.
+Caso corretto: checkpoint aggregato del totale VPC.
+Il costo extra è moderato e assolutamente sensato. Ogni volta che cambia il VPC di un membro hai:
+un aggiornamento del checkpoint individuale; un aggiornamento del checkpoint globale del totale.
+Quindi rispetto a un sistema con soli checkpoint individuali, stai aggiungendo circa un ulteriore 
+push di checkpoint per ogni modifica di potere. 
+In termini di gas, non è gratis, ma è un overhead normale da governance contract. 
+Non ti esplode il costo finché gli aggiornamenti di competenze non sono frequentissimi.
+In pratica, il costo cresce con il numero di cambiamenti di competenza, 
+non con il numero totale dei membri quando fai il quorum. Questo è il punto fondamentale.
+Caso sbagliato: niente checkpoint aggregato, somma “al volo”.
+Se provi a implementare getPastTotalVotingPower() facendo ogni volta la somma del VP di tutti i membri, 
+il problema è gravissimo.
+
+Dovresti:
+tenere una lista di tutti i membri; iterare tutta la lista;
+per ciascuno leggere il suo voting power storico o corrente;
+sommarlo.
+Questo on-chain è quasi sempre una cattiva idea, perché il costo cresce linearmente con il numero dei membri. Quindi:
+
+
+ScoreTotale = pesoCompetenze × scoreCompetenze + pesoSoldi × scoreSoldi
+    dove:
+        scoreCompetenze ∈ {0, 25, 50, 75, 100}, in base alla competenza estratta dalla VC
+        scoreSoldi      = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100]
+        pesoCompetenze + pesoSoldi = 10.000
+
+
+
+, io gestisco tutto il voting power all'interno del token.
+ Al momento del mint via soldi, applico la formula della parte scoreSoldi, 
+ ossia scoreSoldi = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100], e poi lo moltiplico per il pesoSoldi, 
+ e ottengo i token mintati. Quando eseguo l'upgrade di competenza, prendo lo scoreCompetenze ∈ {0, 25, 50, 75, 100}
+  e lo moltiplico per pesoCompetenze, e lo aggiungo come token ai token che avevo in precedenza.
+   La formula diventa la stessa. Non si ha overhead ne problemi con totalSupply, snapshot, 
+   quorum e altro poichè usa in automatico i meccanismi di OpenZeppelin. 
+In piu, anche lato upgradeCompetenza, sono snapshotate col token a questo punto.        

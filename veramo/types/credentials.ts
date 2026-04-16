@@ -129,7 +129,7 @@ export const ALL_CREDENTIAL_FIELDS = ["degreeTitle", "university", "faculty", "g
 //Directory dove vengono salvate le VC
 export const CREDENTIALS_DIR = "./credentials"
 //Directory dove vengono salvate le VC condivise con la DAO
-export const DAO_SHARED_CREDENTIALS_DIR = "dao/scripts/shared-credentials"
+export const DAO_SHARED_CREDENTIALS_DIR = "shared-credentials"
 
 //Funzione che restituisce il percorso del file JSON della VC dato l'alias dell'holder
 export function getCredentialPath(holderAlias: string, baseDir: string = CREDENTIALS_DIR): string {

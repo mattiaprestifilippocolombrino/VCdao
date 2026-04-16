@@ -28,7 +28,7 @@ describe("SuperQuorum — Approvazione rapida", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -40,7 +40,7 @@ describe("SuperQuorum — Approvazione rapida", function () {
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            VOTING_DELAY, VOTING_PERIOD, 0, 20, 40, 5000n, 5000n
+            VOTING_DELAY, VOTING_PERIOD, 0, 20, 40
         );
         await governor.waitForDeployment();
 
@@ -73,9 +73,9 @@ describe("SuperQuorum — Approvazione rapida", function () {
     });
 
     it("sotto superquorum → resta Active fino alla fine del period", async function () {
-        // Deployer ha 40% del capitale (ma svalutato a 20% VP), Alice ha 60%
-        await token.joinDAO({ value: ethers.parseEther("4") });
-        await token.connect(alice).joinDAO({ value: ethers.parseEther("6") });
+        // Deployer ha 30% del capitale, Alice ha 70%
+        await token.joinDAO({ value: ethers.parseEther("3") });
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("7") });
         await token.delegate(deployer.address);
         await token.connect(alice).delegate(alice.address);
         await mine(1);
@@ -83,15 +83,9 @@ describe("SuperQuorum — Approvazione rapida", function () {
         const proposalId = await createDummyProposal("Test sotto superquorum");
         await mine(VOTING_DELAY + 1);
         
-        await governor.castVote(proposalId, 1); // Deployer vota FOR: VP = 2, supera Quorum(2) ma sottomesso a SuperQuorum(4)
+        await governor.castVote(proposalId, 1); // Deployer vota FOR: supera Quorum(20%) ma sottomesso a SuperQuorum(40%)
         
-        // --- ADDED ---
-        const vp = await governor.getVotes(deployer.address, await ethers.provider.getBlockNumber() - 1);
-        console.log("Deployed VP:", vp.toString());
-        const sq = await governor.superQuorum(await ethers.provider.getBlockNumber() - 1);
-        console.log("SuperQuorum:", sq.toString());
-        // --- END ---
-        
+
         expect(await governor.state(proposalId)).to.equal(1); // Active (sotto superquorum)
 
         await mine(VOTING_PERIOD + 1);

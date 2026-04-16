@@ -39,6 +39,9 @@ contract StartupRegistry {
     /// Emesso quando una startup viene disattivata
     event StartupDeactivated(uint256 indexed id);
 
+    /// Emesso quando una startup viene riattivata
+    event StartupReactivated(uint256 indexed id);
+
     // Errori
 
     /// Solo il TimelockController (governance) può eseguire questa azione
@@ -103,6 +106,15 @@ contract StartupRegistry {
         startups[_id].active = false;
 
         emit StartupDeactivated(_id);
+    }
+
+    /// @notice Riattiva una startup precedentemente disattivata
+    /// @param _id ID della startup da riattivare
+    function reactivateStartup(uint256 _id) external onlyTimelock {
+        if (_id >= startupCount) revert StartupNotFound();
+        startups[_id].active = true;
+
+        emit StartupReactivated(_id);
     }
 
     /// @notice Restituisce i dati completi di una startup

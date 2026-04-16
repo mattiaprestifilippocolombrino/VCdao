@@ -26,7 +26,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -37,15 +37,22 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     });
 
     // ── joinDAO() ──
+    // Con pesi pesoSoldi=5000/10000 e pesoCompetenze=5000/10000:
+    // token mintati per soldi = (scoreSoldi × pesoSoldi) / BASIS_POINTS
+    // scoreSoldi = min(ethDeposited / 100 ETH, 1) × 100
 
-    it("joinDAO() minta 1.000 COMP per 1 ETH depositato", async function () {
+    it("joinDAO() minta i token VPC corretti per 1 ETH (scoreSoldi=1 → 0.5 token)", async function () {
+        // scoreSoldi(1 ETH) = 1% × 100 = 1
+        // token = 1 × pesoSoldi(5000) / 10000 = 0.5 × 10^18
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
-        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("1", 18));
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("0.5"));
     });
 
-    it("joinDAO() minta 50.000 COMP per 50 ETH depositati", async function () {
+    it("joinDAO() minta i token VPC corretti per 50 ETH (scoreSoldi=50 → 25 token)", async function () {
+        // scoreSoldi(50 ETH) = 50% × 100 = 50
+        // token = 50 × pesoSoldi(5000) / 10000 = 25 × 10^18
         await token.connect(alice).joinDAO({ value: ethers.parseEther("50") });
-        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("50", 18));
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("25"));
     });
 
     it("joinDAO() registra il membro come Student", async function () {
@@ -54,9 +61,10 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(await token.getMemberGrade(alice.address)).to.equal(0); // Student
     });
 
-    it("joinDAO() salva i token base correttamente", async function () {
+    it("joinDAO() traccia correttamente ethDeposited", async function () {
+        // In precedenza si leggeva baseTokens; ora il mapping rilevante è ethDeposited.
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
-        expect(await token.baseTokens(alice.address)).to.equal(ethers.parseUnits("10", 18));
+        expect(await token.ethDeposited(alice.address)).to.equal(ethers.parseEther("10"));
     });
 
     it("joinDAO() reverta senza ETH", async function () {
@@ -102,28 +110,35 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     });
 
     it("trasferimento aggiorna i checkpoint", async function () {
+        // alice: joinDAO(10 ETH) → scoreSoldi=10 → 5 token
+        // bob:   joinDAO(5 ETH)  → scoreSoldi=5  → 2.5 token
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         await token.connect(alice).delegate(alice.address);
         await token.connect(bob).joinDAO({ value: ethers.parseEther("5") });
         await token.connect(bob).delegate(bob.address);
 
-        const transferAmt = ethers.parseUnits("2", 18);
+        // Trasferisce 2 token da alice a bob
+        const transferAmt = ethers.parseEther("2");
         await token.connect(alice).transfer(bob.address, transferAmt);
 
-        expect(await token.getVotes(alice.address)).to.equal(ethers.parseUnits("8", 18));
-        expect(await token.getVotes(bob.address)).to.equal(ethers.parseUnits("7", 18));
+        // alice: 5 - 2 = 3 token
+        // bob:   2.5 + 2 = 4.5 token
+        expect(await token.getVotes(alice.address)).to.equal(ethers.parseEther("3"));
+        expect(await token.getVotes(bob.address)).to.equal(ethers.parseEther("4.5"));
     });
 
     it("getPastVotes restituisce snapshot storici", async function () {
+        // alice: joinDAO(10 ETH) → scoreSoldi=10 → 5 token
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         await token.connect(alice).delegate(alice.address);
         const blockBefore = await ethers.provider.getBlockNumber();
         await mine(1);
 
-        await token.connect(alice).transfer(bob.address, ethers.parseUnits("2", 18));
+        await token.connect(alice).transfer(bob.address, ethers.parseEther("2"));
         await mine(1);
 
-        expect(await token.getPastVotes(alice.address, blockBefore)).to.equal(ethers.parseUnits("10", 18));
+        // Snapshot prima del trasferimento: alice aveva 5 token
+        expect(await token.getPastVotes(alice.address, blockBefore)).to.equal(ethers.parseEther("5"));
     });
 
     // ── upgradeCompetence access control ──
@@ -137,12 +152,15 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
 
     // ── mintTokens() ──
 
-    it("mintTokens() minta token base (1000 COMP per ETH) pre-VPC", async function () {
-        await token.connect(alice).joinDAO({ value: ethers.parseEther("1") }); // 1.000 COMP
-        await token.connect(alice).mintTokens({ value: ethers.parseEther("2") }); // 2.000 × 1 = 2.000
+    it("mintTokens() aggiunge i token VPC dell'incremento deposit", async function () {
+        // alice joinDAO(1 ETH): scoreSoldi=1 → 0.5 token
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("1") }); // 0.5 token
+        // mintTokens(2 ETH): oldDeposit=1 ETH, newDeposit=3 ETH
+        //   oldScore=1, newScore=3, Δscore=2 → 2×5000/10000 = 1 token
+        await token.connect(alice).mintTokens({ value: ethers.parseEther("2") });
 
-        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseUnits("3", 18));
-        expect(await token.baseTokens(alice.address)).to.equal(ethers.parseUnits("3", 18));
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("1.5")); // 0.5 + 1
+        expect(await token.ethDeposited(alice.address)).to.equal(ethers.parseEther("3"));
     });
 
     it("mintTokens() reverta se non membro", async function () {

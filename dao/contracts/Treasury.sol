@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 /*
 Contratto che conserva i fondi della DAO e permette di investirli in startup
 SOLO se l'operazione è stata approvata dalla governance e passa
@@ -19,9 +21,9 @@ FLUSSO:
 5. Dopo il delay, il Timelock esegue Treasury.invest() → ETH va alla startup
 */
 
-contract Treasury {
-    /// Indirizzo del TimelockController, l'unico che può ordinare investimenti
-    address public timelock;
+contract Treasury is ReentrancyGuard {
+    /// Indirizzo del TimelockController: immutable per sicurezza e risparmio gas.
+    address public immutable timelock;
 
     /// Mappa che mantiene lo storico di tutti gli investimenti effettuati,
     /// con chiave l'indirizzo startup e valore gli ETH investiti su di essa
@@ -77,15 +79,15 @@ contract Treasury {
     /// Prende in input l'indirizzo della startup destinataria e l'importo in wei da investire
     /// Viene chiamata dal Timelock dopo che una proposta di investimento è stata approvata e il delay è trascorso
     // Incrementa l'importo investito nella startup e trasferisce ETH alla startup
-    function invest(address _startup, uint256 _amount) external onlyTimelock {
+    function invest(address _startup, uint256 _amount) external onlyTimelock nonReentrant {
         // Controlli di sicurezza
         if (_startup == address(0)) revert ZeroAddress();
         if (address(this).balance < _amount) revert InsufficientBalance();
 
-        // Registra l'investimento nello storico
+        // Registra l'investimento nello storico (Effects prima di Interactions)
         investedIn[_startup] += _amount;
 
-        // Trasferisci ETH alla startup
+        // Trasferisci ETH alla startup (Interactions)
         (bool success, ) = _startup.call{value: _amount}("");
         if (!success) revert TransferFailed();
 

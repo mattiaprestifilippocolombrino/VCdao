@@ -1,3 +1,12 @@
+PER TESI: se faccio override di _countVote() cambio come vengono conteggiati i voti, ma non il voting power in se, quindi quorum super quorum e il resto si basano ancora sul token
+Se cambio _getVotes() cambio direttamente su cosa si basa il voting power del membro
+Oltre a _getVotes(), introduci anche getPastTotalVotingPower(timepoint).
+Fai override di quorum() e superQuorum() per usare quel totale VPC.
+Ho un altro problema, tenendo le competenze in un mapping, vengono prese live e non snapshottate al blocco in cui viene fatta la proposta
+Che in fondo puo non essere un male, perchè la competenza è data tramite VC e non è il caso del cretino che acquista token a raffica
+
+Nuova idea: Ma se al posto  di fare così, io gestisco tutto il voting power all'interno del token. Al momento del mint, applico la formula della parte scoreSoldi, ossia scoreSoldi = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100], e poi lo moltiplico per il pesoSoldi, e ottengo i token mintati. Quando eseguo l'upgrade di competenza, prendo lo scoreCompetenze ∈ {0, 25, 50, 75, 100} e lo moltiplico per pesoCompetenze, e lo aggiungo come token
+
 Progetto Tesi 3: Rilascio di credenziali con Veramo e Verifica on-chain
 Introduzione
 Questo progetto interconnette i moduli utilizzati nei progetti precedenti. Il modulo Veramo si occupa del rilascio di VC da parte di un Issuer, in questo caso l’università, a una serie di Holder, membri dell’università. Le VC rappresentano in particolare il grado ottenuto dall’Holder certificato dall’università.

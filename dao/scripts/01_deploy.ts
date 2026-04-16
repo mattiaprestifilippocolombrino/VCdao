@@ -4,6 +4,12 @@ ESECUZIONE: npx hardhat run scripts/01_deploy.ts --network localhost
 
 ORDINE DI DEPLOY:
 1. TimelockController: Esegue le azioni approvate dalla governance, dopo il periodo di attesa
+/*
+01_deploy.ts — Deploy di tutti i contratti + fondatore entra nella DAO
+ESECUZIONE: npx hardhat run scripts/01_deploy.ts --network localhost
+
+ORDINE DI DEPLOY:
+1. TimelockController: Esegue le azioni approvate dalla governance, dopo il periodo di attesa
 2. GovernanceToken: Token ERC20 con voting e membership (joinDAO)
 3. MyGovernor: Contratto di governance (proposte, voti, quorum)
 4. Treasury: Custodisce gli ETH della DAO
@@ -11,7 +17,7 @@ ORDINE DI DEPLOY:
 6. MockStartup: Startup fittizia per i test di investimento
 
 DOPO IL DEPLOY:
-Il fondatore (deployer) chiama joinDAO() con 100 ETH → 100.000 COMP
+Il fondatore (deployer) chiama joinDAO() con 100 ETH → riceve tokens in base a pesoSoldi  
 Gli ETH del fondatore vanno nel Treasury automaticamente
 Il fondatore delega i voti a sé stesso per poter votare
 I ruoli del Timelock vengono configurati (solo il Governor può proporre)
@@ -55,7 +61,7 @@ async function main() {
 
     // Deploy del GovernanceToken.
     const Token = await ethers.getContractFactory("GovernanceToken");
-    const token = await Token.deploy(await timelock.getAddress());
+    const token = await Token.deploy(await timelock.getAddress(), PESO_COMPETENZE, PESO_SOLDI);
     await token.waitForDeployment();
     console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}`);
     console.log(`   └─ scoreCompetenze: Student=0, Bachelor=25, Master=50, PhD=75, Professor=100`);
@@ -74,9 +80,9 @@ async function main() {
         50,                             // votingPeriod: 50 blocchi per votare
         0,                              // proposalThreshold: 0 COMP per proporre
         20,                             // quorumPercent: 20% della supply
-        70,                             // superQuorum: 70% → approvazione immediata
-        PESO_COMPETENZE,                // peso accademico in bp
-        PESO_SOLDI                      // peso economico in bp
+        70                              // superQuorum: 70% → approvazione immediata
+
+
     );
     await governor.waitForDeployment();
     console.log(`3️⃣  MyGovernor:         ${await governor.getAddress()}`);
@@ -108,11 +114,12 @@ async function main() {
     await token.setTrustedIssuer(issuerAddress);
     console.log(`   🏛️ Issuer fidato impostato: ${issuerAddress}`);
 
-    // Il deployer entra nella DAO e chiama joinDAO() con 100 ETH, ricevendo 100k token.
+    // Il deployer entra nella DAO e chiama joinDAO() con 100 ETH.
     // Gli ETH vengono trasferiti automaticamente al Treasury, poi delega i voti a sé stesso per attivare il voting power.
     await token.joinDAO({ value: ethers.parseEther(FOUNDER_DEPOSIT) });
     await token.delegate(deployer.address);
-    console.log(`   🔑 Fondatore: ${FOUNDER_DEPOSIT} ETH → ${Number(FOUNDER_DEPOSIT) * 1000} COMP (delegato)`);
+    const deployerBal = await token.balanceOf(deployer.address);
+    console.log(`   🔑 Fondatore: ${FOUNDER_DEPOSIT} ETH → ${ethers.formatEther(deployerBal)} COMP (delegato)`);
 
     // Deploy dei contratti StartupRegistry e MockStartup.
     const Registry = await ethers.getContractFactory("StartupRegistry");
@@ -137,7 +144,6 @@ async function main() {
     await timelock.grantRole(await timelock.CANCELLER_ROLE(), governorAddr);
     await timelock.revokeRole(await timelock.DEFAULT_ADMIN_ROLE(), deployer.address);
     console.log(`\n🔐 Ruoli Timelock configurati`);
-
 
     // Tutti gli indirizzi dei contratti vengono salvati in un file JSON, in modo che
     // gli script successivi possano riconnettersi ai contratti deployati.

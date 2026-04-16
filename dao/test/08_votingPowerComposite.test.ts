@@ -1,13 +1,14 @@
 // ============================================================================
 //  08_votingPowerComposite.test.ts — Test modello Voting Power Composto (VPC)
 //
-//  Verifica la formula imposta dal professore:
+//  Verifica la formula VPC implementata NEL TOKEN (non nel Governor):
 //    ScoreTotale = pesoCompetenze × scoreCompetenze + pesoSoldi × scoreSoldi
 //
 //  Proprietà testate:
 //    • scoreCompetenze ∈ {0, 25, 50, 75, 100} in base al grado.
 //    • scoreSoldi = min(ethDeposited / MAX_DEPOSIT, 1) × 100  ∈ [0, 100].
-//    • Il Governor conta i voti sovrascrivendo _countVote(..., totalWeight).
+//    • Il balance del token = ScoreTotale (in unità intere × 10^18).
+//    • Il Governor legge il balance snapshottato come voting power (no override).
 // ============================================================================
 
 import { expect } from "chai";
@@ -31,7 +32,7 @@ async function callAsTimelock(
     return result;
 }
 
-describe("Voting Power Composto (Formula Tesi) — Override _countVote", function () {
+describe("Voting Power Composto (Formula Tesi) — Token balance = ScoreTotale", function () {
     let deployer: HardhatEthersSigner;
     let alice: HardhatEthersSigner;
     let token: GovernanceToken;
@@ -47,7 +48,7 @@ describe("Voting Power Composto (Formula Tesi) — Override _countVote", functio
         await timelock.waitForDeployment();
 
         const Token = await ethers.getContractFactory("GovernanceToken");
-        token = await Token.deploy(await timelock.getAddress());
+        token = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
         await token.waitForDeployment();
 
         const Treasury_ = await ethers.getContractFactory("Treasury");
@@ -60,7 +61,7 @@ describe("Voting Power Composto (Formula Tesi) — Override _countVote", functio
         // Deploy governor con Pesi: 50% competenza, 50% soldi
         governor = await Governor.deploy(
             await token.getAddress(), await timelock.getAddress(),
-            1, 50, 0, 0, 70, 5000n, 5000n
+            1, 50, 0, 0, 70
         );
         await governor.waitForDeployment();
 
@@ -107,10 +108,12 @@ describe("Voting Power Composto (Formula Tesi) — Override _countVote", functio
         });
     });
 
-    describe("2. Integrazione MyGovernor (Override _countVote)", function () {
-        it("castVote usa il sistema a punti bypassando il balance del token ERC20", async function () {
-            // Alice entra con 10 ETH. scoreSoldi = 10, scoreCompetenze = 0 (Student).
-            // Pesi = 50/50. Formulazione: (5000*0 + 5000*10)/10000 = 5.
+    describe("2. Integrazione MyGovernor (token balance = ScoreTotale)", function () {
+        it("castVote conteggia il balance del token come ScoreTotale", async function () {
+            // Alice entra con 10 ETH:
+            //   scoreSoldi = 10, scoreCompetenze = 0 (Student)
+            //   token = pesoSoldi(5000) × scoreSoldi(10) / 10000 = 5 token
+            //   ScoreTotale = (5000×0 + 5000×10) / 10000 = 5  ✓
             await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
             await token.connect(alice).delegate(alice.address);
             await mine(1);
@@ -125,28 +128,26 @@ describe("Voting Power Composto (Formula Tesi) — Override _countVote", functio
             const proposalId = logs[0].args.proposalId;
 
             await mine(2); // Supera il voting delay
+            await governor.connect(alice).castVote(proposalId, 1); // FOR
 
-            // Alice vota "For" (support=1)
-            await governor.connect(alice).castVote(proposalId, 1);
-
-            // Verifichiamo i voti registrati
-            const { againstVotes, forVotes, abstainVotes } = await governor.proposalVotes(proposalId);
-            
-            // Il token balance di alice è 10.000 ether, ma il governor ha considerato il VPC!
-            // VPC = 5.
+            const { againstVotes, forVotes } = await governor.proposalVotes(proposalId);
+            // Il balance di alice è 5 token = ScoreTotale 5. Il Governor lo legge direttamente.
             expect(forVotes).to.equal(ethers.parseEther("5"));
             expect(againstVotes).to.equal(0n);
         });
 
-        it("castVote riflette il nuovo score dopo upgrade a Professore", async function () {
-            // Alice deposita 40 ETH (scoreSoldi = 40).
+        it("castVote riflette il nuovo score dopo upgrade a Professor", async function () {
+            // Alice deposita 40 ETH:
+            //   scoreSoldi = 40 → token soldi = 40 × 5000 / 10000 = 20 token
+            // Upgrade Student → Professor (scoreCompetenze = 100):
+            //   Δscore = 100, token comp = 100 × 5000 / 10000 = 50 token
+            // Balance totale = 20 + 50 = 70 token
+            // ScoreTotale = (5000×100 + 5000×40) / 10000 = 70  ✓
             await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
-            // Alice diventa professoressa (scoreCompetenze = 100).
             await callAsTimelock(timelock, deployer, s => token.connect(s).upgradeCompetence(alice.address, 4, ""));
             await token.connect(alice).delegate(alice.address);
-            
-            // Punti totali = (5000*100 + 5000*40) / 10000 = 70.
             await mine(1);
+
             await governor.connect(alice).propose([ethers.ZeroAddress], [0], ["0x"], "Prop 2");
             const logs = await governor.queryFilter(governor.filters.ProposalCreated(), -1);
             const proposalId = logs[0].args.proposalId;
@@ -155,7 +156,7 @@ describe("Voting Power Composto (Formula Tesi) — Override _countVote", functio
             await governor.connect(alice).castVote(proposalId, 1);
             const { forVotes } = await governor.proposalVotes(proposalId);
 
-            // Verifica che il voto pesi 70 punti precisi.
+            // Il voto pesa esattamente 70 punti = balance token = ScoreTotale
             expect(forVotes).to.equal(ethers.parseEther("70"));
         });
     });

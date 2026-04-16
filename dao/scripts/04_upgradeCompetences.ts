@@ -262,7 +262,7 @@ async function main() {
   const targets: string[] = [];
   const values: bigint[] = [];
   const calldatas: string[] = [];
-  const credsPath = path.join(__dirname, "shared-credentials");
+  const credsPath = path.join(__dirname, "..", "..", "shared-credentials");
 
   if (!fs.existsSync(credsPath)) {
     throw new Error(
