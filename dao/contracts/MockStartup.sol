@@ -4,12 +4,10 @@ pragma solidity ^0.8.28;
 /*
 Contratto che simula una startup che riceve investimenti dalla DAO.
 Verifica nei test che i fondi siano arrivati e registra automaticamente ogni investimento ricevuto.
-
 */
 /// @title MockStartup
 /// @notice Contratto fittizio che simula una startup ricevente investimenti.
-/// @dev In ambito Tesi, questo contratto rappresenta l'"End-Point" del ciclo vitale della DAO:
-/// dimostra che i fondi sono stati sbloccati dal Timelock e inviati correttamente.
+/// @dev Dimostra che i fondi sono stati sbloccati dal Timelock e inviati correttamente.
 contract MockStartup {
     // ── Variabili di stato ──
 

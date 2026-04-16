@@ -44,13 +44,16 @@ contract MyGovernor is
     GovernorVotesSuperQuorumFraction,
     GovernorTimelockControl
 {
-    // =====================================================================
     //  Stato e costruttore
-    // =====================================================================
 
     /// Riferimento tipizzato al token per accedere ai metodi custom, se necessario.
     GovernanceToken public immutable governanceToken;
 
+    /*  Il costruttore riceve in input il Token ERC20Votes, il TimelockController, il numero di blocchi di attesa
+    prima dell'inizio del voto, la durata della finestra di voto, la soglia minima di voti per poter 
+    creare una proposta, il quorum in % della supply totale votabile al blocco di snapshot della proposta, 
+    e il superquorum. I contratti ereditati vengono inizializzati con tali parametri.
+*/
     /// @param token_                Token ERC20Votes (chi lo possiede può votare)
     /// @param timelock_             TimelockController (delay di sicurezza)
     /// @param votingDelay_          Blocchi/secondi di attesa prima dell'inizio del voto

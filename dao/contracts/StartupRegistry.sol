@@ -5,10 +5,8 @@ pragma solidity ^0.8.28;
 Contratto che mantiene un registro on-chain di startup/progetti verso cui la DAO può investire.
 Invece di proporre investimenti verso indirizzi "random", la DAO può
 verificare che la startup sia registrata e attiva.
-
-Best practice DAO: solo la governance (TimelockController) può registrare o
-disattivare startup. Nessun singolo individuo può aggiungere target di
-investimento senza l'approvazione della comunità.
+Solo la governance (TimelockController) può registrare o
+disattivare startup.
 */
 
 contract StartupRegistry {
@@ -58,13 +56,11 @@ contract StartupRegistry {
     /// Permette l'accesso solo alla governance (TimelockController)
     modifier onlyTimelock() {
         if (msg.sender != timelock) revert OnlyTimelock();
-        _;    
+        _;
     }
 
     // Constructor
-
     /// Imposta il TimelockController come unica autorità del registro.
-    /// Best practice DAO: nessun owner singolo, solo governance decentralizzata.
     constructor(address _timelock) {
         if (_timelock == address(0)) revert ZeroAddress();
         timelock = _timelock;

@@ -22,7 +22,7 @@ FLUSSO:
 */
 
 contract Treasury is ReentrancyGuard {
-    /// Indirizzo del TimelockController: immutable per sicurezza e risparmio gas.
+    /// Indirizzo del TimelockController, l'unico che può ordinare investimenti
     address public immutable timelock;
 
     /// Mappa che mantiene lo storico di tutti gli investimenti effettuati,
@@ -79,7 +79,10 @@ contract Treasury is ReentrancyGuard {
     /// Prende in input l'indirizzo della startup destinataria e l'importo in wei da investire
     /// Viene chiamata dal Timelock dopo che una proposta di investimento è stata approvata e il delay è trascorso
     // Incrementa l'importo investito nella startup e trasferisce ETH alla startup
-    function invest(address _startup, uint256 _amount) external onlyTimelock nonReentrant {
+    function invest(
+        address _startup,
+        uint256 _amount
+    ) external onlyTimelock nonReentrant {
         // Controlli di sicurezza
         if (_startup == address(0)) revert ZeroAddress();
         if (address(this).balance < _amount) revert InsufficientBalance();
