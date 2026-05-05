@@ -2,25 +2,22 @@
 pragma solidity ^0.8.28;
 
 /*
-    Contratto che gestisce la governance della DAO, ovvero l'intero ciclo di vita
-    delle proposte di investimento: propose → vote → queue → (delay) → execute
-    Eredita 7 moduli OpenZeppelin che lavorano insieme:
-    Governor (core): Fornisce la struttura di base per gestire le proposte
-    GovernorSettings: Fornisce i parametri di voto: votingDelay, votingPeriod, threshold
-    GovernorCountingSimple: Fornisce le funzioni di conteggio: For / Against / Abstain
-    GovernorVotes: Collega il token ERC20Votes al Governor
-    GovernorVotesQuorumFraction: Gestisce i parametri di quorum: Quorum in % della supply totale
-    GovernorVotesSuperQuorumFraction: Gestisce i parametri di superquorum per l'approvazione rapida
-    GovernorTimelockControl: Gestisce il timelock, che fornisce un delay di sicurezza prima dell'esecuzione. 
-    Il flusso di esecuzione di una proposta è il seguente: 
-    1. propose()   → crea la proposta, stato = Pending
-    2. (voting delay passa) → stato = Active
-    3. castVote()  → i membri votano For/Against/Abstain
-    4. (voting period finisce) → stato = Succeeded o Defeated
-       OPPURE: se superquorum raggiunto → Succeeded prima della scadenza!
-    5. queue()     → mette la proposta nel Timelock (stato = Queued)
-    6. (timelock delay passa)
-    7. execute()   → il Timelock esegue l'operazione (stato = Executed)
+MyGovernor — Contratto di governance multi-topic per CompetenceDAO.
+
+Flusso propose → vote → queue → execute invariato.
+Novità rispetto alla versione base:
+  - Ogni proposta è associata a un topicId (0=CS, 1=CE, 2=EE).
+  - Il voting power di ogni membro per quella proposta è:
+      VP = stakeVP (ERC20Votes snapshot) + skillVP(account, topicId, snapshot)
+  - Quorum e SuperQuorum usano la supply totale del topic specifico.
+
+API pubblica nuova:
+  proposeWithTopic(targets, values, calldatas, description, topicId)
+    → crea una proposta e ne memorizza il topic.
+
+Voter: usa castVoteWithReasonAndParams(proposalId, support, "", abi.encode(topicId))
+oppure semplicemente castVote() — in entrambi i casi il topicId viene iniettato
+automaticamente da _castVote() a partire da proposalTopic[proposalId].
 */
 
 import "@openzeppelin/contracts/governance/Governor.sol";
@@ -30,7 +27,7 @@ import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorVotesSuperQuorumFraction.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
-
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/governance/TimelockController.sol";
 import "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import "./GovernanceToken.sol";
@@ -44,23 +41,26 @@ contract MyGovernor is
     GovernorVotesSuperQuorumFraction,
     GovernorTimelockControl
 {
-    //  Stato e costruttore
+    // =========================================================================
+    //  Stato
+    // =========================================================================
 
-    /// Riferimento tipizzato al token per accedere ai metodi custom, se necessario.
+    /// Riferimento tipizzato al token per accedere ai metodi skill custom.
     GovernanceToken public immutable governanceToken;
 
-    /*  Il costruttore riceve in input il Token ERC20Votes, il TimelockController, il numero di blocchi di attesa
-    prima dell'inizio del voto, la durata della finestra di voto, la soglia minima di voti per poter 
-    creare una proposta, il quorum in % della supply totale votabile al blocco di snapshot della proposta, 
-    e il superquorum. I contratti ereditati vengono inizializzati con tali parametri.
-*/
-    /// @param token_                Token ERC20Votes (chi lo possiede può votare)
-    /// @param timelock_             TimelockController (delay di sicurezza)
-    /// @param votingDelay_          Blocchi/secondi di attesa prima dell'inizio del voto
-    /// @param votingPeriod_         Durata della finestra di voto
-    /// @param proposalThreshold_    Voti minimi per creare una proposta
-    /// @param quorumNumerator_      Quorum in % (es. 4 = 4% della supply)
-    /// @param superQuorumNumerator_ Superquorum in % (es. 20 = 20%, deve essere ≥ quorum)
+    /// Associa ogni proposalId al suo topicId (0=CS, 1=CE, 2=EE).
+    mapping(uint256 => uint256) public proposalTopic;
+
+    // =========================================================================
+    //  Errori
+    // =========================================================================
+
+    error InvalidTopicId(uint256 topicId);
+
+    // =========================================================================
+    //  Costruttore
+    // =========================================================================
+
     constructor(
         IVotes token_,
         TimelockController timelock_,
@@ -80,133 +80,210 @@ contract MyGovernor is
         governanceToken = GovernanceToken(address(token_));
     }
 
-    // Override richiesti da Solidity per risolvere conflitti di ereditarietà.abi
-    // Il contratto esegue l'override delle funzioni votingDelay, votingPeriod, proposalThreshold, quorum, clock,
-    // e _execute.
+    // =========================================================================
+    //  Creazione proposte con topic
+    // =========================================================================
 
-    // ----- Parametri di governance (GovernorSettings ↔ Governor) -----
+    /*
+    Crea una proposta associandola a un topicId.
+    Deve essere usata al posto di propose() per le proposte topic-aware.
 
-    /// @notice Ritardo prima dell'inizio della votazione
-    /// @dev Override necessario: sia Governor che GovernorSettings definiscono questa funzione
-    function votingDelay()
-        public
-        view
-        override(Governor, GovernorSettings)
-        returns (uint256)
+    @param topicId  0 = Computer Science, 1 = Computer Engineering, 2 = Electronic Engineering
+    */
+    function proposeWithTopic(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        uint256 topicId
+    ) external returns (uint256 proposalId) {
+        if (topicId >= governanceToken.NUM_TOPICS()) revert InvalidTopicId(topicId);
+        proposalId = propose(targets, values, calldatas, description);
+        proposalTopic[proposalId] = topicId;
+    }
+
+    // =========================================================================
+    //  Override _castVote — inietta automaticamente il topicId nei params
+    //
+    //  Questo garantisce che il topicId usato in _getVotes sia sempre quello
+    //  associato alla proposta, indipendentemente da ciò che il voter passa.
+    // =========================================================================
+
+    function _castVote(
+        uint256 proposalId,
+        address account,
+        uint8 support,
+        string memory reason,
+        bytes memory /* params */
+    ) internal override returns (uint256) {
+        // Inietta il topicId corretto dalla storage, ignorando i params del chiamante.
+        bytes memory topicParams = abi.encode(proposalTopic[proposalId]);
+        return super._castVote(proposalId, account, support, reason, topicParams);
+    }
+
+    // =========================================================================
+    //  Override _getVotes — somma stake VP + skill VP per il topic della proposta
+    // =========================================================================
+
+    /*
+    VP_totale(account, timepoint, topic) =
+        token.getPastVotes(account, timepoint)           [stake, ERC20Votes]
+      + governanceToken.getPastSkillVotes(account, topic, timepoint)  [skill, custom]
+    */
+    function _getVotes(
+        address account,
+        uint256 timepoint,
+        bytes memory params
+    ) internal view override(Governor, GovernorVotes) returns (uint256) {
+        uint256 topicId = abi.decode(params, (uint256));
+
+        uint256 stakeVotes = super._getVotes(account, timepoint, params);
+        uint256 skillVotes = governanceToken.getPastSkillVotes(account, topicId, timepoint);
+
+        return stakeVotes + skillVotes;
+    }
+
+    // =========================================================================
+    //  Quorum e SuperQuorum topic-specifici
+    //
+    //  Problema: quorum(timepoint) non riceve il proposalId, quindi non conosce
+    //  il topic. Soluzione: override di _quorumReached e _superQuorumReached
+    //  (che hanno accesso al proposalId) con il calcolo topic-aware.
+    //  quorum(timepoint) rimane per compatibilità interfaccia/display,
+    //  usando la supply stake come base conservativa.
+    // =========================================================================
+
+    /// @dev Supply totale VP per il topic: stake + skill del topic.
+    function _totalVotingPowerForTopic(uint256 topicId, uint256 timepoint)
+        internal view returns (uint256)
     {
+        uint256 stakeSupply = governanceToken.getPastTotalSupply(timepoint);
+        uint256 skillSupply = governanceToken.getPastTotalSkillSupply(topicId, timepoint);
+        return stakeSupply + skillSupply;
+    }
+
+    /// @dev Quorum assoluto per il topic al timepoint.
+    function _quorumForTopic(uint256 topicId, uint256 timepoint) internal view returns (uint256) {
+        return Math.mulDiv(
+            _totalVotingPowerForTopic(topicId, timepoint),
+            quorumNumerator(timepoint),
+            quorumDenominator()
+        );
+    }
+
+    /// @dev SuperQuorum assoluto per il topic al timepoint.
+    function _superQuorumForTopic(uint256 topicId, uint256 timepoint) internal view returns (uint256) {
+        return Math.mulDiv(
+            _totalVotingPowerForTopic(topicId, timepoint),
+            superQuorumNumerator(timepoint),
+            quorumDenominator()
+        );
+    }
+
+    /*
+    Override _quorumReached: usa il quorum del topic specifico della proposta.
+    Sostituisce GovernorCountingSimple._quorumReached che chiamerebbe quorum(timepoint).
+    */
+    function _quorumReached(uint256 proposalId)
+        internal view override(Governor, GovernorCountingSimple) returns (bool)
+    {
+        uint256 snapshot = proposalSnapshot(proposalId);
+        uint256 topicId  = proposalTopic[proposalId];
+        uint256 q = _quorumForTopic(topicId, snapshot);
+
+        (, uint256 forVotes, uint256 abstainVotes) = proposalVotes(proposalId);
+        return q <= forVotes + abstainVotes;
+    }
+
+    /*
+    Override _superQuorumReached: usa il superquorum del topic specifico.
+    Sostituisce GovernorSuperQuorum._superQuorumReached che chiamerebbe superQuorum(timepoint).
+    */
+    function _superQuorumReached(uint256 proposalId)
+        internal view override returns (bool)
+    {
+        uint256 snapshot = proposalSnapshot(proposalId);
+        uint256 topicId  = proposalTopic[proposalId];
+        uint256 sq = _superQuorumForTopic(topicId, snapshot);
+
+        (, uint256 forVotes,) = proposalVotes(proposalId);
+        return sq <= forVotes;
+    }
+
+    /*
+    quorum(timepoint) — compatibilità interfaccia IGovernor.
+    Ritorna il quorum sulla sola supply stake (conservativo, per display esterno).
+    L'enforcement reale avviene in _quorumReached.
+    */
+    function quorum(uint256 timepoint)
+        public view override(Governor, GovernorVotesQuorumFraction) returns (uint256)
+    {
+        return Math.mulDiv(
+            governanceToken.getPastTotalSupply(timepoint),
+            quorumNumerator(timepoint),
+            quorumDenominator()
+        );
+    }
+
+    /*
+    superQuorum(timepoint) — compatibilità display.
+    Come quorum(), usa solo la supply stake.
+    */
+    function superQuorum(uint256 timepoint)
+        public view override returns (uint256)
+    {
+        return Math.mulDiv(
+            governanceToken.getPastTotalSupply(timepoint),
+            superQuorumNumerator(timepoint),
+            quorumDenominator()
+        );
+    }
+
+    // =========================================================================
+    //  Override boilerplate richiesti da Solidity (conflitti ereditarietà)
+    // =========================================================================
+
+    function votingDelay() public view override(Governor, GovernorSettings) returns (uint256) {
         return super.votingDelay();
     }
 
-    /// @notice Durata della finestra di voto
-    function votingPeriod()
-        public
-        view
-        override(Governor, GovernorSettings)
-        returns (uint256)
-    {
+    function votingPeriod() public view override(Governor, GovernorSettings) returns (uint256) {
         return super.votingPeriod();
     }
 
-    /// @notice Soglia minima di voti per poter creare una proposta
-    function proposalThreshold()
-        public
-        view
-        override(Governor, GovernorSettings)
-        returns (uint256)
-    {
+    function proposalThreshold() public view override(Governor, GovernorSettings) returns (uint256) {
         return super.proposalThreshold();
     }
 
-    // ----- Quorum (GovernorVotesQuorumFraction ↔ Governor) -----
-
-    /// @notice Numero minimo di voti richiesti perché la proposta sia valida
-    /// @dev Il quorum è calcolato come percentuale della supply totale votabile
-    ///      al blocco di snapshot della proposta
-    function quorum(
-        uint256 timepoint
-    )
-        public
-        view
-        override(Governor, GovernorVotesQuorumFraction)
-        returns (uint256)
-    {
-        return super.quorum(timepoint);
-    }
-
-    // ----- Clock (GovernorVotes ↔ Governor) -----
-
-    /// @notice Clock corrente (blocco o timestamp, dipende dal token)
-    function clock()
-        public
-        view
-        override(Governor, GovernorVotes)
-        returns (uint48)
-    {
+    function clock() public view override(Governor, GovernorVotes) returns (uint48) {
         return super.clock();
     }
 
-    /// @notice Modalità del clock (es. "mode=blocknumber&from=default")
-    function CLOCK_MODE()
-        public
-        view
-        override(Governor, GovernorVotes)
-        returns (string memory)
-    {
+    function CLOCK_MODE() public view override(Governor, GovernorVotes) returns (string memory) {
         return super.CLOCK_MODE();
     }
 
-    // ----- Conteggio voti (GovernorCountingSimple ↔ GovernorSuperQuorum) -----
-
-    /// @notice Restituisce i voti di una proposta: contrari, favorevoli, astenuti
-    /// @dev Serve sia a GovernorCountingSimple (conteggio) sia a GovernorSuperQuorum
-    ///      (verifica se il superquorum è stato raggiunto)
-    function proposalVotes(
-        uint256 proposalId
-    )
-        public
-        view
-        override(GovernorCountingSimple, GovernorSuperQuorum)
+    function proposalVotes(uint256 proposalId)
+        public view override(GovernorCountingSimple, GovernorSuperQuorum)
         returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes)
     {
         return super.proposalVotes(proposalId);
     }
 
-    // _countVote rimosso, viene usato quello base di GovernorCountingSimple,
-    // dato che il token contiene già i VP assegnati correttamente.
-
-    // ----- Stato della proposta (SuperQuorumFraction ↔ TimelockControl) -----
-
-    /// @notice Stato corrente di una proposta
-    /// @dev Unisce DUE logiche:
-    ///      1. Superquorum: può far passare la proposta PRIMA della scadenza
-    ///      2. Timelock: gestisce stati Queued → Executed / Canceled
-    function state(
-        uint256 proposalId
-    )
-        public
-        view
-        override(
-            Governor,
-            GovernorVotesSuperQuorumFraction,
-            GovernorTimelockControl
-        )
+    function state(uint256 proposalId)
+        public view
+        override(Governor, GovernorVotesSuperQuorumFraction, GovernorTimelockControl)
         returns (ProposalState)
     {
         return super.state(proposalId);
     }
 
-    // ----- Timelock: coda, esecuzione, cancellazione -----
-
-    /// @notice Indica se la proposta necessita di essere messa in coda (timelock)
-    /// @dev Ritorna true perché usiamo GovernorTimelockControl
-    function proposalNeedsQueuing(
-        uint256 proposalId
-    ) public view override(Governor, GovernorTimelockControl) returns (bool) {
+    function proposalNeedsQueuing(uint256 proposalId)
+        public view override(Governor, GovernorTimelockControl) returns (bool)
+    {
         return super.proposalNeedsQueuing(proposalId);
     }
 
-    /// @notice Mette in coda le operazioni della proposta nel TimelockController
-    /// @dev Viene chiamata internamente da queue()
     function _queueOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -214,18 +291,9 @@ contract MyGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(Governor, GovernorTimelockControl) returns (uint48) {
-        return
-            super._queueOperations(
-                proposalId,
-                targets,
-                values,
-                calldatas,
-                descriptionHash
-            );
+        return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
-    /// @notice Esegue le operazioni della proposta tramite il TimelockController
-    /// @dev Viene chiamata internamente da execute()
     function _executeOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -233,16 +301,9 @@ contract MyGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(Governor, GovernorTimelockControl) {
-        super._executeOperations(
-            proposalId,
-            targets,
-            values,
-            calldatas,
-            descriptionHash
-        );
+        super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
-    /// @notice Cancella una proposta (e rimuove l'operazione dal timelock se in coda)
     function _cancel(
         address[] memory targets,
         uint256[] memory values,
@@ -252,26 +313,12 @@ contract MyGovernor is
         return super._cancel(targets, values, calldatas, descriptionHash);
     }
 
-    /// @notice Indirizzo che esegue le azioni (il TimelockController)
-    /// @dev Le azioni NON vengono eseguite dal Governor ma dal Timelock
-    function _executor()
-        internal
-        view
-        override(Governor, GovernorTimelockControl)
-        returns (address)
-    {
+    function _executor() internal view override(Governor, GovernorTimelockControl) returns (address) {
         return super._executor();
     }
 
-    // ----- Aggiornamento quorum (QuorumFraction ↔ SuperQuorumFraction) -----
-
-    /// @notice Aggiorna il numeratore del quorum
-    /// @dev Assicura che il quorum resti sempre ≤ superquorum
-    function _updateQuorumNumerator(
-        uint256 newQuorumNumerator
-    )
-        internal
-        override(GovernorVotesQuorumFraction, GovernorVotesSuperQuorumFraction)
+    function _updateQuorumNumerator(uint256 newQuorumNumerator)
+        internal override(GovernorVotesQuorumFraction, GovernorVotesSuperQuorumFraction)
     {
         super._updateQuorumNumerator(newQuorumNumerator);
     }

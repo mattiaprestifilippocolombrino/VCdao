@@ -29,19 +29,20 @@ async function main() {
     const treasury = await ethers.getContractAt("Treasury", addresses.treasury);
 
     // Lista dei membri che mintano token aggiuntivi.
-    // I Professors hanno più ETH rimasti → depositano di più.
-    // I token mintati vengono moltiplicati per il coefficiente di competenza
-    // (dopo gli upgrade dello script 04).
+    // I Professors depositano quantitativi arbitrari di ETH per aumentare il loro stake VP.
+    // I token mintati (COMP) rappresentano ora SOLO la componente economica (stake).
+    // La componente legata alle skill (competenze) viene tracciata separatamente via Checkpoint manuali
+    // (aggiornati dallo script 04) e NON influisce sul numero di token mintati.
     const mints = [
-        { signer: signers[0], eth: "50", label: "Professor 1" },  // 50 × 1.000 × 5 = 250.000
-        { signer: signers[1], eth: "40", label: "Professor 2" },  // 40 × 1.000 × 5 = 200.000
-        { signer: signers[2], eth: "45", label: "Professor 3" },  // 45 × 1.000 × 5 = 225.000
-        { signer: signers[3], eth: "35", label: "Professor 4" },  // 35 × 1.000 × 5 = 175.000
-        { signer: signers[4], eth: "30", label: "Professor 5" },  // 30 × 1.000 × 5 = 150.000
-        { signer: signers[5], eth: "10", label: "PhD 1" },        // 10 × 1.000 × 4 =  40.000
-        { signer: signers[6], eth: "8", label: "PhD 2" },        //  8 × 1.000 × 4 =  32.000
-        { signer: signers[8], eth: "5", label: "Master 1" },     //  5 × 1.000 × 3 =  15.000
-        { signer: signers[10], eth: "2", label: "Bachelor 1" },   //  2 × 1.000 × 2 =   4.000
+        { signer: signers[0], eth: "50", label: "Professor CS 1" }, 
+        { signer: signers[1], eth: "40", label: "Professor CS 2" }, 
+        { signer: signers[2], eth: "45", label: "Professor CS 3" }, 
+        { signer: signers[3], eth: "35", label: "Professor CE 1" }, 
+        { signer: signers[4], eth: "30", label: "Professor EE 1" }, 
+        { signer: signers[5], eth: "10", label: "PhD CS 1" },       
+        { signer: signers[6], eth: "8",  label: "PhD CS 2" },       
+        { signer: signers[8], eth: "5",  label: "Master CS 1" },    
+        { signer: signers[10], eth: "2", label: "Master CE 1" },    
     ];
 
     // Per ogni membro:

@@ -56,7 +56,7 @@ async function main() {
     // Solo quelle con stato Queued (5) vengono eseguite.
     // L'execute() ricostruisce la stessa chiamata invest() e la invia via Timelock.
     const LABELS = ["A", "B", "C", "D"];
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 4; i++) {
         const p = pState.proposals[i];
 
         // Verifica che la proposta sia in stato Queued (5)

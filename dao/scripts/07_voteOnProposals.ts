@@ -1,172 +1,160 @@
-/* 
-07_voteOnProposals.ts — Votazione e Queue delle proposte
+/*
+07_voteOnProposals.ts — Votazione + Queue delle proposte multi-topic
 
-Script che avanza il votingDelay (1 blocco) per entrare nella fase di voto, 
-i membri votano sulle 4 proposte create nello script precedente, 
-avanza il votingPeriod (50 blocchi) per chiudere le votazioni e 
-mette in coda le proposte vincenti nel Timelock.
+Il voting power di ogni membro dipende dal topic della proposta:
+  VP = stakeVP + skillVP(topic)
 
-SUPPLY TOTALE: ~3.507.000 COMP (dopo upgrade + mint)
-QUORUM (20%):       ~701.400 COMP — minimo di voti FOR per validità
-SUPERQUORUM (70%): ~2.454.900 COMP — soglia per approvazione immediata
+Il voto viene emesso con castVote() — il topicId viene iniettato automaticamente
+dal contratto MyGovernor._castVote() a partire da proposalTopic[proposalId].
 
-SCENARIO DI VOTO:
-────────────────
-A — SUPERQUORUM (70%): Prof1 (750k) + Prof2 (600k) + Prof3 (675k) + Prof4 (525k)
-                          = 2.550.000 FOR (72.7%) → supera il 70% → Succeeded subito!
-B — ~63% WIN:    Prof1 (750k) + PhD1 (160k) votano FOR (910.000)
-                   Prof5 (450k) + PhD3 (80k) votano AGAINST (530.000)
-                   → 63% FOR, quorum raggiunto → approvata a fine period
-C — QUORUM MA PERDE: Prof5 (450k) + PhD1 (160k) + PhD2 (132k) votano FOR (742.000)
-                   Prof1 (750k) + Prof2 (600k) votano AGAINST (1.350.000)
-                   → 35% FOR → bocciata
-D — SOTTO QUORUM: Bachelor2 (10k) + Bachelor3 (12k) + Student1 (2k) + Student2 (1k)
-                   = 25.000 FOR → molto sotto il 20% → bocciata
+Distribuzione signer post-upgrade (signerIndex → grado → VP per topic):
+  0: ProfessorCS → CS:100%, CE:75%, EE:75% score
+  1: ProfessorCS → idem
+  2: ProfessorCS → idem
+  3: ProfessorCE → CE:100%, CS:75%, EE:75%
+  4: ProfessorEE → EE:100%, CS:75%, CE:75%
+  5: PhDCS       → CS:75%, CE:50%, EE:50%
+  6: PhDCS       → idem
+  7: PhDCE       → CE:75%, CS:50%, EE:50%
+  8: MasterCS    → CS:50%, CE:25%, EE:25%
+  9: MasterCS    → idem
+  10: MasterCE   → CE:50%, CS:25%, EE:25%
+  11: BachelorCS → CS:25%, CE:0%, EE:0%
+  12: BachelorCS → idem
 
-VALORI DI VOTO: 0 = AGAINST (contrario), 1 = FOR (favorevole)
+Supply stimate (con pesoSoldi=pesoCompetenze=5000bp, 100ETH deposito):
+  Stake supply: 50 COMP × 13 = 650 COMP (per comodità esempio)
+  Skill supply varia per topic.
 
 ESECUZIONE: npx hardhat run scripts/07_voteOnProposals.ts --network localhost
 */
+
 import { ethers } from "hardhat";
-import { mine } from "@nomicfoundation/hardhat-network-helpers";
-import * as fs from "fs";
-import * as path from "path";
+import { mine }   from "@nomicfoundation/hardhat-network-helpers";
+import * as fs    from "fs";
+import * as path  from "path";
 
-// Costanti per i voti (OpenZeppelin GovernorCountingSimple)
-const FOR = 1, AGAINST = 0;
+const FOR     = 1;
+const AGAINST = 0;
 
-// Mappa degli stati delle proposte (enum ProposalState in Governor)
 const STATES: Record<number, string> = {
-    0: "Pending", 1: "Active", 3: "Defeated", 4: "Succeeded", 5: "Queued", 7: "Executed",
+  0: "Pending", 1: "Active", 2: "Canceled",
+  3: "Defeated", 4: "Succeeded", 5: "Queued",
+  6: "Expired",  7: "Executed",
 };
 
+const TOPIC_LABELS: Record<number, string> = { 0: "CS", 1: "CE", 2: "EE" };
+
 async function main() {
-    const signers = await ethers.getSigners();
+  const signers = await ethers.getSigners();
 
-    console.log("══════════════════════════════════════════════════");
-    console.log("  CompetenceDAO — Votazione + Queue");
-    console.log("══════════════════════════════════════════════════\n");
+  console.log("══════════════════════════════════════════════════");
+  console.log("  CompetenceDAO — Votazione + Queue (multi-topic)");
+  console.log("══════════════════════════════════════════════════\n");
 
-    // Carica indirizzi contratti e stato delle proposte
-    const addresses = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8"));
-    const governor = await ethers.getContractAt("MyGovernor", addresses.governor);
-    const treasury = await ethers.getContractAt("Treasury", addresses.treasury);
-    const token = await ethers.getContractAt("GovernanceToken", addresses.token);
-    const pState = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8"));
-    const [pA, pB, pC, pD] = pState.proposals;
+  const addresses = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8"));
+  const governor  = await ethers.getContractAt("MyGovernor",      addresses.governor);
+  const treasury  = await ethers.getContractAt("Treasury",        addresses.treasury);
+  const token     = await ethers.getContractAt("GovernanceToken", addresses.token);
+  const pState    = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8"));
+  const [pA, pB, pC, pD] = pState.proposals;
 
-    // Stampa supply e soglie calcolate
-    const supply = await token.totalSupply();
-    console.log(`📊 Supply totale: ${ethers.formatUnits(supply, 18)} COMP`);
-    console.log(`   Quorum (20%):       ${ethers.formatUnits(supply * 20n / 100n, 18)} COMP`);
-    console.log(`   Superquorum (70%):  ${ethers.formatUnits(supply * 70n / 100n, 18)} COMP\n`);
+  // Stampa supply e quorum stimati (su base stake only, per display).
+  const stakeSupply = await token.totalSupply();
+  console.log(`📊 Supply stake totale: ${ethers.formatUnits(stakeSupply, 18)} COMP`);
+  for (let t = 0; t < 3; t++) {
+    const skillSup = await token.getTotalSkillSupply(t);
+    console.log(`   Supply skill ${TOPIC_LABELS[t]}: ${ethers.formatUnits(skillSup, 18)} VP`);
+  }
+  console.log();
 
-    // Avanziamo il votingDelay (1 blocco + 1) per entrare nella fase Active
-    console.log("⏳ Avanzamento votingDelay...");
-    await mine(2);
+  // Avanzamento del votingDelay.
+  console.log("⏳ Avanzamento votingDelay (1 blocco)...");
+  await mine(2);
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  PROPOSTA A — SUPERQUORUM (approvazione immediata con >70% FOR)
-    // ══════════════════════════════════════════════════════════════════════
-    //  4 Professors votano FOR:
-    //    Prof1 (750k) + Prof2 (600k) + Prof3 (675k) + Prof4 (525k) = 2.550.000
-    //    2.550.000 / 3.507.000 = 72.7% → supera il superquorum del 70%!
-    console.log("\n🅰️  PROPOSTA A — Superquorum (70%):");
-    await governor.connect(signers[0]).castVote(pA.id, FOR);  // Prof1: 750k
-    console.log("   🗳️ Prof 1 vota FOR (750.000)");
-    await governor.connect(signers[1]).castVote(pA.id, FOR);  // Prof2: 600k
-    console.log("   🗳️ Prof 2 vota FOR (600.000)");
-    await governor.connect(signers[2]).castVote(pA.id, FOR);  // Prof3: 675k
-    console.log("   🗳️ Prof 3 vota FOR (675.000)");
-    await governor.connect(signers[3]).castVote(pA.id, FOR);  // Prof4: 525k
-    console.log("   🗳️ Prof 4 vota FOR (525.000)");
+  // Helper: stampa stato proposta.
+  async function printProposalStatus(label: string, proposal: any) {
+    const [against, forV, abstain] = await governor.proposalVotes(proposal.id);
+    const total = forV + against;
+    const state = STATES[Number(await governor.state(proposal.id))];
+    const pct   = total > 0n ? Number((forV * 100n) / total) : 0;
+    console.log(`   📊 ${label} [topic ${TOPIC_LABELS[proposal.topicId]}]: FOR=${ethers.formatUnits(forV,18)} AGAINST=${ethers.formatUnits(against,18)} (${pct}% FOR) → ${state}`);
+  }
 
-    // proposalVotes() restituisce [againstVotes, forVotes, abstainVotes]
-    const [, fA] = await governor.proposalVotes(pA.id);
-    const pctA = Number(fA * 100n / supply);
-    const stateA = STATES[Number(await governor.state(pA.id))];
-    console.log(`   📊 Totale FOR: ${ethers.formatUnits(fA, 18)} (${pctA}%) → Stato: ${stateA}`);
+  // ══════════════════════════════════════════════════════════════════════
+  //  PROPOSTA A — topic CS — SUPERQUORUM
+  //  ProfessorCS (signers 0,1,2) hanno VP massimo su CS → superquorum atteso
+  // ══════════════════════════════════════════════════════════════════════
+  console.log("🅰️  PROPOSTA A — topic CS — Superquorum:");
+  await governor.connect(signers[0]).castVote(pA.id, FOR);  // ProfessorCS 1
+  await governor.connect(signers[1]).castVote(pA.id, FOR);  // ProfessorCS 2
+  await governor.connect(signers[2]).castVote(pA.id, FOR);  // ProfessorCS 3
+  await governor.connect(signers[3]).castVote(pA.id, FOR);  // ProfessorCE (75% su CS)
+  await printProposalStatus("Proposta A", pA);
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  PROPOSTA B — Quorum raggiunto + maggioranza FOR (~63%)
-    // ══════════════════════════════════════════════════════════════════════
-    //  FOR: Prof1 (750k) + PhD1 (160k) = 910.000 → supera quorum 20% (701.400)
-    //  AGAINST: Prof5 (450k) + PhD3 (80k) = 530.000
-    //  FOR% = 910k / 1.440k = 63% → approvata a fine period
-    console.log("\n🅱️  PROPOSTA B — Quorum + ~63% FOR:");
-    await governor.connect(signers[0]).castVote(pB.id, FOR);     // Prof1: 750k
-    await governor.connect(signers[5]).castVote(pB.id, FOR);     // PhD1: 160k
-    await governor.connect(signers[4]).castVote(pB.id, AGAINST); // Prof5: 450k
-    await governor.connect(signers[7]).castVote(pB.id, AGAINST); // PhD3: 80k
+  // ══════════════════════════════════════════════════════════════════════
+  //  PROPOSTA B — topic CE — Quorum + >50% FOR
+  //  ProfessorCE (signer 3) e PhDCE (signer 7) → FOR
+  //  ProfessorCS (signer 0) vota AGAINST (ha 75% su CE)
+  // ══════════════════════════════════════════════════════════════════════
+  console.log("\n🅱️  PROPOSTA B — topic CE — Quorum raggiunto + maggioranza FOR:");
+  await governor.connect(signers[3]).castVote(pB.id, FOR);    // ProfessorCE
+  await governor.connect(signers[7]).castVote(pB.id, FOR);    // PhDCE
+  await governor.connect(signers[10]).castVote(pB.id, FOR);   // MasterCE
+  await governor.connect(signers[0]).castVote(pB.id, AGAINST);// ProfessorCS (75% su CE)
+  await printProposalStatus("Proposta B", pB);
 
-    const [agB, fB] = await governor.proposalVotes(pB.id);
-    console.log(`   FOR: ${ethers.formatUnits(fB, 18)} | AGAINST: ${ethers.formatUnits(agB, 18)} (${Number(fB * 100n / (fB + agB))}% FOR)`);
+  // ══════════════════════════════════════════════════════════════════════
+  //  PROPOSTA C — topic EE — Quorum raggiunto ma AGAINST vince
+  //  ProfessorEE (signer 4) → FOR
+  //  ProfessorCS (signers 0,1,2) → AGAINST (hanno 75% su EE)
+  // ══════════════════════════════════════════════════════════════════════
+  console.log("\n🅲  PROPOSTA C — topic EE — Quorum raggiunto, perde:");
+  await governor.connect(signers[4]).castVote(pC.id, FOR);     // ProfessorEE
+  await governor.connect(signers[5]).castVote(pC.id, FOR);     // PhDCS (50% su EE)
+  await governor.connect(signers[0]).castVote(pC.id, AGAINST); // ProfessorCS (75% su EE)
+  await governor.connect(signers[1]).castVote(pC.id, AGAINST); // ProfessorCS (75% su EE)
+  await governor.connect(signers[2]).castVote(pC.id, AGAINST); // ProfessorCS (75% su EE)
+  await printProposalStatus("Proposta C", pC);
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  PROPOSTA C — Quorum raggiunto, ma la maggioranza vota AGAINST
-    // ══════════════════════════════════════════════════════════════════════
-    //  FOR: Prof5 (450k) + PhD1 (160k) + PhD2 (132k) = 742.000 → supera quorum (701.400)
-    //  AGAINST: Prof1 (750k) + Prof2 (600k) = 1.350.000 → maggioranza contraria
-    //  FOR% = 742k / 2.092k = 35% → Defeated
-    console.log("\n🅲  PROPOSTA C — Quorum raggiunto, ma perde:");
-    await governor.connect(signers[4]).castVote(pC.id, FOR);     // Prof5: 450k
-    await governor.connect(signers[5]).castVote(pC.id, FOR);     // PhD1: 160k
-    await governor.connect(signers[6]).castVote(pC.id, FOR);     // PhD2: 132k
-    await governor.connect(signers[0]).castVote(pC.id, AGAINST); // Prof1: 750k
-    await governor.connect(signers[1]).castVote(pC.id, AGAINST); // Prof2: 600k
+  // ══════════════════════════════════════════════════════════════════════
+  //  PROPOSTA D — topic CS — Sotto quorum
+  //  Solo BachelorCS (signers 11,12) votano FOR — partecipazione insufficiente
+  // ══════════════════════════════════════════════════════════════════════
+  console.log("\n🅳  PROPOSTA D — topic CS — Sotto quorum:");
+  await governor.connect(signers[11]).castVote(pD.id, FOR); // BachelorCS
+  await governor.connect(signers[12]).castVote(pD.id, FOR); // BachelorCS
+  await printProposalStatus("Proposta D", pD);
 
-    const [agC, fC] = await governor.proposalVotes(pC.id);
-    console.log(`   FOR: ${ethers.formatUnits(fC, 18)} | AGAINST: ${ethers.formatUnits(agC, 18)} (${Number(fC * 100n / (fC + agC))}% FOR)`);
+  // Avanza il voting period.
+  console.log("\n⏳ Avanzamento voting period (50 blocchi)...");
+  await mine(51);
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  PROPOSTA D — Sotto quorum (partecipazione insufficiente)
-    // ══════════════════════════════════════════════════════════════════════
-    //  FOR: Bachelor2 (10k) + Bachelor3 (12k) + Student1 (2k) + Student2 (1k) = 25.000
-    //  25.000 / 3.507.000 = 0.7% → molto sotto il quorum del 20% (701.400)
-    console.log("\n🅳  PROPOSTA D — Sotto quorum:");
-    await governor.connect(signers[11]).castVote(pD.id, FOR);    // Bachelor2: 10k
-    await governor.connect(signers[12]).castVote(pD.id, FOR);    // Bachelor3: 12k
-    await governor.connect(signers[13]).castVote(pD.id, FOR);    // Student1: 2k
-    await governor.connect(signers[14]).castVote(pD.id, FOR);    // Student2: 1k
+  // Stato finale.
+  console.log("\n📊 Stato finale:");
+  const LABELS = ["A", "B", "C", "D"];
+  for (let i = 0; i < 4; i++) {
+    const s    = Number(await governor.state(pState.proposals[i].id));
+    const icon = s === 4 ? "✅" : "❌";
+    console.log(`   ${icon} Proposta ${LABELS[i]} [${TOPIC_LABELS[pState.proposals[i].topicId]}]: ${STATES[s]}`);
+  }
 
-    const [, fD] = await governor.proposalVotes(pD.id);
-    console.log(`   FOR: ${ethers.formatUnits(fD, 18)} (${Number(fD * 100n / supply)}% — sotto quorum del 20%)`);
+  // Queue delle proposte vincenti.
+  console.log("\n🔒 Queue delle proposte vincenti...");
+  for (let i = 0; i < 4; i++) {
+    const p = pState.proposals[i];
+    if (Number(await governor.state(p.id)) !== 4) continue;
 
-    // ── Fine del voting period ──
-    // Avanziamo di 51 blocchi per chiudere le votazioni.
-    // Solo dopo la chiusura le proposte cambiano stato: Succeeded o Defeated.
-    console.log("\n⏳ Avanzamento voting period (50 blocchi)...");
-    await mine(51);
+    const calldata = treasury.interface.encodeFunctionData("invest", [
+      addresses.mockStartup, ethers.parseEther(p.amount),
+    ]);
+    await governor.queue([addresses.treasury], [0n], [calldata], ethers.id(p.desc));
+    console.log(`   🔒 Proposta ${LABELS[i]} [${TOPIC_LABELS[p.topicId]}] in coda`);
+  }
 
-    // ── Stampa lo stato finale di ogni proposta ──
-    const LABELS = ["A", "B", "C", "D"];
-    console.log("\n📊 Stato finale:");
-    for (let i = 0; i < 4; i++) {
-        const s = Number(await governor.state(pState.proposals[i].id));
-        const icon = s === 4 ? "✅" : "❌";
-        console.log(`   ${icon} Proposta ${LABELS[i]}: ${STATES[s]}`);
-    }
-
-    // ── Queue delle proposte vincenti (A e B) ──
-    // Solo le proposte con stato Succeeded (4) possono essere messe in coda.
-    // Il queue() inserisce la proposta nel Timelock con il delay configurato (1 ora).
-    console.log("\n🔒 Queue delle proposte vincenti...");
-    for (let i = 0; i < 2; i++) {
-        const p = pState.proposals[i];
-        if (Number(await governor.state(p.id)) !== 4) continue; // Salta se non Succeeded
-
-        // Ricostruiamo il calldata per la queue (deve essere identico alla proposta)
-        const calldata = treasury.interface.encodeFunctionData("invest", [
-            addresses.mockStartup, ethers.parseEther(p.amount),
-        ]);
-        // Il descHash (keccak256 della descrizione) identifica univocamente la proposta
-        await governor.queue([addresses.treasury], [0n], [calldata], ethers.id(p.desc));
-        console.log(`   🔒 Proposta ${LABELS[i]} in coda`);
-    }
-
-    console.log("\n══════════════════════════════════════════════════");
-    console.log("  ✅ Voto e queue completati! Prossimo: 08_executeProposals.ts");
-    console.log("══════════════════════════════════════════════════");
+  console.log("\n══════════════════════════════════════════════════");
+  console.log("  ✅ Voto e queue completati! Prossimo: 08_executeProposals.ts");
+  console.log("══════════════════════════════════════════════════");
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1; });
+main().catch(e => { console.error(e); process.exitCode = 1; });
