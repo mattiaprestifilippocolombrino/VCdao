@@ -21,6 +21,20 @@ pragma solidity ^0.8.28;
     5. queue()     → mette la proposta nel Timelock (stato = Queued)
     6. (timelock delay passa)
     7. execute()   → il Timelock esegue l'operazione (stato = Executed)
+
+    SEPARAZIONE DEL VOTING POWER:
+    Il VP totale di ogni membro è composto da due componenti indipendenti:
+      - Componente economica: derivata dal saldo ERC20 (token mintati al depositoETH).
+        Tracciata da GovernorVotes tramite token.getPastVotes(account, timepoint).
+      - Componente competenza: derivata dagli upgrade via Verifiable Credential.
+        NON è rappresentata da token; è tracciata in checkpoint Checkpoints.Trace208
+        separati dentro GovernanceToken (getPastSkillVotes / getPastTotalSkillSupply).
+
+    Coerenza quorum/superQuorum:
+    Entrambe le soglie sono calcolate sulla base votante totale:
+      totalVotingPower(t) = token.getPastTotalSupply(t) + token.getPastTotalSkillSupply(t)
+    In questo modo le percentuali di quorum e superquorum sono sempre riferite all'intera
+    capacità votante della DAO, senza distorsioni tra le due componenti.
 */
 
 import "@openzeppelin/contracts/governance/Governor.sol";
@@ -30,6 +44,7 @@ import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorVotesSuperQuorumFraction.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "@openzeppelin/contracts/governance/TimelockController.sol";
 import "@openzeppelin/contracts/governance/utils/IVotes.sol";
@@ -46,7 +61,7 @@ contract MyGovernor is
 {
     //  Stato e costruttore
 
-    /// Riferimento tipizzato al token per accedere ai metodi custom, se necessario.
+    /// Riferimento tipizzato al token per accedere ai metodi custom di skill VP.
     GovernanceToken public immutable governanceToken;
 
     /*  Il costruttore riceve in input il Token ERC20Votes, il TimelockController, il numero di blocchi di attesa
@@ -59,7 +74,7 @@ contract MyGovernor is
     /// @param votingDelay_          Blocchi/secondi di attesa prima dell'inizio del voto
     /// @param votingPeriod_         Durata della finestra di voto
     /// @param proposalThreshold_    Voti minimi per creare una proposta
-    /// @param quorumNumerator_      Quorum in % (es. 4 = 4% della supply)
+    /// @param quorumNumerator_      Quorum in % (es. 4 = 4% della supply totale combinata)
     /// @param superQuorumNumerator_ Superquorum in % (es. 20 = 20%, deve essere ≥ quorum)
     constructor(
         IVotes token_,
@@ -80,14 +95,105 @@ contract MyGovernor is
         governanceToken = GovernanceToken(address(token_));
     }
 
-    // Override richiesti da Solidity per risolvere conflitti di ereditarietà.abi
-    // Il contratto esegue l'override delle funzioni votingDelay, votingPeriod, proposalThreshold, quorum, clock,
-    // e _execute.
+    // =====================================================================
+    //  Override del voting power: componente economica + componente skill
+    //
+    //  GovernorVotes._getVotes() legge solo token.getPastVotes(account, t),
+    //  che restituisce la componente economica (ERC20 balance snapshot).
+    //  L'override qui aggiunge la componente skill letta dai checkpoint
+    //  manuali di GovernanceToken.getPastSkillVotes(account, t).
+    //
+    //  Questa è l'unica funzione che deve essere toccata per il conteggio
+    //  voti: GovernorCountingSimple accumula direttamente il valore restituito
+    //  qui, quindi non è necessario fare override di _countVote.
+    // =====================================================================
+
+    /*
+    Restituisce il voting power totale dell'account al blocco `timepoint`.
+    VP_totale = VP_economico (ERC20Votes snapshot) + VP_competenza (skill checkpoint).
+    */
+    function _getVotes(
+        address account,
+        uint256 timepoint,
+        bytes memory params
+    ) internal view override(Governor, GovernorVotes) returns (uint256) {
+        // Componente economica: saldo ERC20 delegato al blocco timepoint.
+        uint256 economicVotes = super._getVotes(account, timepoint, params);
+
+        // Componente competenza: skill VP dal checkpoint manuale al blocco timepoint.
+        uint256 skillVotes = governanceToken.getPastSkillVotes(account, timepoint);
+
+        return economicVotes + skillVotes;
+    }
+
+    // =====================================================================
+    //  Override del quorum: basato sulla supply totale combinata
+    //
+    //  GovernorVotesQuorumFraction.quorum() usa token.getPastTotalSupply(t),
+    //  che include solo i token ERC20 (componente economica).
+    //  L'override qui somma anche getPastTotalSkillSupply(t) per includere
+    //  l'intera base votante nel calcolo della soglia minima.
+    //
+    //  La formula è la stessa di OZ: supply_totale × numeratore / denominatore.
+    //  Il numeratore e il denominatore sono quelli di GovernorVotesQuorumFraction
+    //  (storici, gestiti con i propri checkpoint interni di OZ).
+    // =====================================================================
+
+    /*
+    Numero minimo di voti richiesti perché una proposta sia valida, calcolato al
+    blocco di snapshot della proposta.
+    Quorum = (totalEconomicSupply + totalSkillSupply) × quorumNumerator / quorumDenominator
+    */
+    function quorum(
+        uint256 timepoint
+    )
+        public
+        view
+        override(Governor, GovernorVotesQuorumFraction)
+        returns (uint256)
+    {
+        // Supply economica al timepoint (token ERC20 mintati dagli stake).
+        uint256 economicSupply = governanceToken.getPastTotalSupply(timepoint);
+
+        // Supply di competenza al timepoint (skill VP aggregato di tutti i membri).
+        uint256 skillSupply = governanceToken.getPastTotalSkillSupply(timepoint);
+
+        uint256 totalSupply = economicSupply + skillSupply;
+
+        // Stessa formula di GovernorVotesQuorumFraction, applicata alla supply combinata.
+        return Math.mulDiv(totalSupply, quorumNumerator(timepoint), quorumDenominator());
+    }
+
+    // =====================================================================
+    //  Override del superQuorum: coerente con quorum()
+    //
+    //  GovernorVotesSuperQuorumFraction.superQuorum() usa anch'esso
+    //  token.getPastTotalSupply(t). L'override qui applica la stessa
+    //  logica del quorum() sopra, usando la supply totale combinata.
+    //  In questo modo le due soglie (quorum e superquorum) sono sempre
+    //  proporzionate allo stesso universo di voti potenziali.
+    // =====================================================================
+
+    /*
+    Numero di voti "For" richiesti per far passare una proposta anticipatamente
+    (prima della scadenza del votingPeriod).
+    SuperQuorum = (totalEconomicSupply + totalSkillSupply) × superQuorumNumerator / quorumDenominator
+    */
+    function superQuorum(
+        uint256 timepoint
+    ) public view override returns (uint256) {
+        uint256 economicSupply = governanceToken.getPastTotalSupply(timepoint);
+        uint256 skillSupply = governanceToken.getPastTotalSkillSupply(timepoint);
+        uint256 totalSupply = economicSupply + skillSupply;
+
+        return Math.mulDiv(totalSupply, superQuorumNumerator(timepoint), quorumDenominator());
+    }
+
+    // Override richiesti da Solidity per risolvere conflitti di ereditarietà.
 
     // ----- Parametri di governance (GovernorSettings ↔ Governor) -----
 
     /// @notice Ritardo prima dell'inizio della votazione
-    /// @dev Override necessario: sia Governor che GovernorSettings definiscono questa funzione
     function votingDelay()
         public
         view
@@ -117,25 +223,9 @@ contract MyGovernor is
         return super.proposalThreshold();
     }
 
-    // ----- Quorum (GovernorVotesQuorumFraction ↔ Governor) -----
-
-    /// @notice Numero minimo di voti richiesti perché la proposta sia valida
-    /// @dev Il quorum è calcolato come percentuale della supply totale votabile
-    ///      al blocco di snapshot della proposta
-    function quorum(
-        uint256 timepoint
-    )
-        public
-        view
-        override(Governor, GovernorVotesQuorumFraction)
-        returns (uint256)
-    {
-        return super.quorum(timepoint);
-    }
-
     // ----- Clock (GovernorVotes ↔ Governor) -----
 
-    /// @notice Clock corrente (blocco o timestamp, dipende dal token)
+    /// @notice Clock corrente (numero di blocco, coerente con ERC20Votes e i checkpoint skill)
     function clock()
         public
         view
@@ -158,8 +248,6 @@ contract MyGovernor is
     // ----- Conteggio voti (GovernorCountingSimple ↔ GovernorSuperQuorum) -----
 
     /// @notice Restituisce i voti di una proposta: contrari, favorevoli, astenuti
-    /// @dev Serve sia a GovernorCountingSimple (conteggio) sia a GovernorSuperQuorum
-    ///      (verifica se il superquorum è stato raggiunto)
     function proposalVotes(
         uint256 proposalId
     )
@@ -170,9 +258,6 @@ contract MyGovernor is
     {
         return super.proposalVotes(proposalId);
     }
-
-    // _countVote rimosso, viene usato quello base di GovernorCountingSimple,
-    // dato che il token contiene già i VP assegnati correttamente.
 
     // ----- Stato della proposta (SuperQuorumFraction ↔ TimelockControl) -----
 
@@ -198,7 +283,6 @@ contract MyGovernor is
     // ----- Timelock: coda, esecuzione, cancellazione -----
 
     /// @notice Indica se la proposta necessita di essere messa in coda (timelock)
-    /// @dev Ritorna true perché usiamo GovernorTimelockControl
     function proposalNeedsQueuing(
         uint256 proposalId
     ) public view override(Governor, GovernorTimelockControl) returns (bool) {
@@ -206,7 +290,6 @@ contract MyGovernor is
     }
 
     /// @notice Mette in coda le operazioni della proposta nel TimelockController
-    /// @dev Viene chiamata internamente da queue()
     function _queueOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -225,7 +308,6 @@ contract MyGovernor is
     }
 
     /// @notice Esegue le operazioni della proposta tramite il TimelockController
-    /// @dev Viene chiamata internamente da execute()
     function _executeOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -253,7 +335,6 @@ contract MyGovernor is
     }
 
     /// @notice Indirizzo che esegue le azioni (il TimelockController)
-    /// @dev Le azioni NON vengono eseguite dal Governor ma dal Timelock
     function _executor()
         internal
         view

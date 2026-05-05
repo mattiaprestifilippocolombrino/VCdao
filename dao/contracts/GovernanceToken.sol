@@ -7,38 +7,44 @@ Chiunque può unirsi alla DAO chiamando joinDAO() e inviando ETH.
 Per aumentare il proprio potere di voto, un membro puo effettuare un UPGRADE DI COMPETENZA
 presentando una Verifiable Credential (SSI).
 
-Formula per calcolare il voting power di un membro: Il numero totale dei token rappresenta
-il potere di voto del membro. Viene calcolato usando la seguente formula:
+Formula per calcolare il voting power di un membro:
 ScoreTotale =  pesoSoldi × scoreSoldi + pesoCompetenze × scoreCompetenze
 dove:
    scoreCompetenze ∈ {0, 25, 50, 75, 100}, a secondo del grado accademico presente nella VC
    scoreSoldi      = min(ethDeposited / MAX_DEPOSIT, 1) × 100  ∈ [0, 100]
    pesoCompetenze + pesoSoldi = 10.000 bp (configurabili al deploy del Token)
-Si nota che ScoreTotale = parteCompetenze + parteSoldi. 
-La parteSoldi della formula viene calcolata al momento del minting di token via deposito di ETH, (joinDAO / mintTokens)
- sottoforma di token, usando la prima parte della formula.
-La parteCompetenze viene calcolata al momento dell'upgrade competenze via VC, ottenendo token secondo
-la seconda parte della formula. 
-Il totale dei token del membro = ScoreTotale (in unità intere × 10^18).
+
+Il Voting Power è ora diviso in due componenti separate:
+  - Componente economica (parteSoldi): rappresentata da token ERC20 mintati al joinDAO/mintTokens.
+    Il bilancio token (e il relativo getPastVotes di ERC20Votes) traccia SOLO questa parte.
+  - Componente competenza (parteCompetenze): NON genera token. Viene tracciata tramite
+    checkpoint manuali Checkpoints.Trace208 (stesso tipo/clock usato da ERC20Votes),
+    aggiornati ad ogni upgrade via _performUpgrade.
+Il Governor combina le due componenti in _getVotes() e quorum()/superQuorum().
 */
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
+import "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/utils/Nonces.sol";
 import "./VPVerifier.sol";
 
 /* Il token eredita ERC20 per le funzionalità base del token (transfer, balanceOf, ecc.),
- e ERC20Votes per la gestione del potere di voto nella DAO, con checkpoint basati sul
-blocco di inizio votazione e delega del potere di voto.
+ e ERC20Votes per la gestione del potere di voto economico nella DAO, con checkpoint basati
+ sul blocco di inizio votazione e delega del potere di voto.
+ I checkpoint delle skill seguono lo stesso standard (Checkpoints.Trace208, clock a blocchi).
 */
 contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
+    using Checkpoints for Checkpoints.Trace208;
+
     // Enumerazione che rappresenta i gradi di competenza.
     enum CompetenceGrade {
-        Student, // 0, scoreCompetenze =   0 (partenza, nessuna credenziale)
-        BachelorDegree, // 1, scoreCompetenze =  25
-        MasterDegree, // 2, scoreCompetenze =  50
-        PhD, // 3, scoreCompetenze =  75
-        Professor // 4, scoreCompetenze = 100 (massimo)
+        Student,       // 0, scoreCompetenze =   0 (partenza, nessuna credenziale)
+        BachelorDegree,// 1, scoreCompetenze =  25
+        MasterDegree,  // 2, scoreCompetenze =  50
+        PhD,           // 3, scoreCompetenze =  75
+        Professor      // 4, scoreCompetenze = 100 (massimo)
     }
 
     //  Costanti
@@ -52,8 +58,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     /// Denominatore basis points per effettuare i calcoli in %, che rappresenta il 100% = 10.000 bp.
     uint256 public constant BASIS_POINTS = 10_000;
 
-    /// Domain separator EIP-712 universale, precalcolato a compile-time, identico al dominio usato off-chain da Veramo per firmare le VC.
-    /// Essendo `constant`, il valore viene incorporato direttamente nel bytecode senza occupare storage e senza costi di SLOAD (risparmio ~600 gas).
+    /// Domain separator EIP-712 universale, precalcolato a compile-time.
     bytes32 public constant UNIVERSAL_DOMAIN_SEPARATOR =
         keccak256(
             abi.encode(
@@ -71,23 +76,22 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     /// Peso della componente economica nella formula VPC, in percentuale bp.
     uint256 public immutable pesoSoldi;
 
-    /// Indirizzo del TimelockController, usato per eseguire le operazioni approvate dalla governance.
-    /// è immutable per sicurezza e risparmio gas.
+    /// Indirizzo del TimelockController.
     address public immutable timelock;
 
-    //Indirizzo del Treasury, usato per inviare gli ETH ricevuti dai joinDAO() e dai mintTokens()
+    //Indirizzo del Treasury.
     address public treasury;
 
-    //Indirizzo del deployer, usato per chiamare setTreasury() al deploy della DAO
+    //Indirizzo del deployer.
     address public immutable deployer;
 
-    //Issuer attendibile che firma le VC (es. universita).
+    //Issuer attendibile che firma le VC.
     address public trustedIssuer;
 
     /// Mapping che tiene traccia di quanti ETH ha depositato ogni membro (in wei).
     mapping(address => uint256) public ethDeposited;
 
-    /// Mappa che associa ad ogni grado di competenza il relativo score, usato per calcolare il potere di voto del membro.
+    /// Mappa che associa ad ogni grado di competenza il relativo score.
     mapping(CompetenceGrade => uint256) public competenceScore;
 
     /// Mappa che associa ad ogni membro il suo grado di competenza.
@@ -96,16 +100,34 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     /// Mappa che tiene traccia degli indirizzi membri della DAO.
     mapping(address => bool) public isMember;
 
-    /// Mappa che tiene  traccia per ogni utente della proof dell'upgrade piu recente.
+    /// Mappa che tiene traccia per ogni utente della proof dell'upgrade piu recente.
     mapping(address => string) public competenceProof;
 
     // ----- Binding DID <-> Address (1:1) -----
 
-    /// Mappa che associa ogni membro al suo DID. Viene usato per verificare coerenza identitaria durante upgrade via VC.
+    /// Mappa che associa ogni membro al suo DID.
     mapping(address => string) public memberDID;
 
-    /// Mappa che associa ogni DID al suo indirizzo, per garantire l'unicita dei DID nella DAO.
+    /// Mappa che associa ogni DID al suo indirizzo.
     mapping(bytes32 => address) public didToAddress;
+
+    // =====================================================================
+    //  Checkpoint delle skill (componente competenza del voting power)
+    //
+    //  Stessa struttura usata da Votes/_delegateCheckpoints in ERC20Votes:
+    //  Checkpoints.Trace208 con chiave uint48 (numero di blocco, clock()).
+    //
+    //  _skillVotesCheckpoints[account]: storico cumulativo del skill-VP di
+    //    ogni utente, in wei. Cresce ad ogni upgrade; non può decrementare.
+    //  _totalSkillSupplyCheckpoints: somma cumulativa di tutti i skill-VP
+    //    emessi nella DAO, in wei. Usata dal Governor per quorum/superQuorum.
+    // =====================================================================
+
+    /// Storico per-utente del voting power di competenza (in wei).
+    mapping(address => Checkpoints.Trace208) private _skillVotesCheckpoints;
+
+    /// Storico della totalSupply del voting power di competenza (in wei).
+    Checkpoints.Trace208 private _totalSkillSupplyCheckpoints;
 
     //  Eventi
 
@@ -128,7 +150,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     event CompetenceUpgraded(
         address indexed member,
         CompetenceGrade newGrade,
-        uint256 additionalTokens,
+        uint256 skillVotingPowerAdded,
         string proof
     );
 
@@ -206,7 +228,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         pesoSoldi = _pesoSoldi;
 
         // Punteggi di competenza nel range [0, 100].
-        // Corrispondono alla componente scoreCompetenze della formula VPC.
         competenceScore[CompetenceGrade.Student] = 0;
         competenceScore[CompetenceGrade.BachelorDegree] = 25;
         competenceScore[CompetenceGrade.MasterDegree] = 50;
@@ -246,16 +267,13 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     }
 
     // =====================================================================
-    //  Membership e mint
+    //  Membership e mint (componente economica)
     // =====================================================================
 
     /*
     Funzione che calcola i token da mintare per la componente economica della formula VPC.
     Formula applicata: pesoSoldi × ΔscoreSoldi (solo l'incremento dello score)
     dove scoreSoldi = min(ethDeposited / MAX_DEPOSIT, 1) × 100  ∈ [0, 100]
-    Prende il vecchio score, il nuovo score, effettua la differenza, e moltiplica per il pesoSoldi,
-    calcolando i token da mintare. Il risultato è in wei (× 10^18).
-    Es: pesoSoldi=5000 bp, oldDeposited=5, amount = 3, newDeposited=8 → oldScore=50, newScore=80 → ΔscoreSoldi=30 → (30 × 5000 × 10^18) / 10000 = + 15 × 10^18 token
     */
     function _calculateMintedTokensForSoldi(
         uint256 depositAmt,
@@ -289,19 +307,17 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         if (treasury == address(0)) revert TreasuryNotSet();
         if (isMember[msg.sender]) revert AlreadyMember();
         if (msg.value == 0) revert ZeroDeposit();
-        // Il deposito iniziale non può superare MAX_DEPOSIT.
         if (msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
 
         uint256 tokenAmount = _calculateMintedTokensForSoldi(msg.value, 0);
-        // Se il membro deposita 0 ETH, non riceve token e non diventa membro, poichè non avrebbe voting power.
         if (tokenAmount == 0) revert DepositTooSmall();
 
         // Persistenza stato membro.
         isMember[msg.sender] = true;
         memberGrade[msg.sender] = CompetenceGrade.Student;
-        ethDeposited[msg.sender] = msg.value; // traccia ETH cumulativi per scoreSoldi
+        ethDeposited[msg.sender] = msg.value;
 
-        // Mint al membro e inoltro ETH al treasury.
+        // Mint al membro (solo componente economica) e inoltro ETH al treasury.
         _mint(msg.sender, tokenAmount);
         (bool success, ) = treasury.call{value: msg.value}("");
         if (!success) revert TreasuryTransferFailed();
@@ -310,19 +326,12 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     }
 
     /* Funzione che minta i token successivamente all'ingresso nella DAO, inviando ETH.
-       La funzione controlla che il membro sia effettivamente un membro della DAO, che il treasury abbia un indirizzo assegnato
-       e che il deposito inviato sia superiore a 0.
-       Controlla che gli ETH depositati dal membro sommati a quelli che sta per depositare non superino MAX_DEPOSIT.
-       Calcola il numero di token da ricevere in base al deposito effettuato via formula VPC.
-       In particolare la parte pesoSoldi × scoreSoldi. Si tiene conto degli ETH già depositati per il calcolo dello score.
-       Viene aggiornato il conto degli ETH depositati dall'utente. Vengono mintati i token.
-        Gli ETH vengono trasferiti direttamente al Treasury.
+       Calcola e minta solo la componente economica aggiuntiva (pesoSoldi × ΔscoreSoldi).
     */
     function mintTokens() external payable {
         if (!isMember[msg.sender]) revert NotMember();
         if (msg.value == 0) revert ZeroDeposit();
         if (treasury == address(0)) revert TreasuryNotSet();
-        // CAP cumulativo: la somma di tutti i depositi non può superare MAX_DEPOSIT.
         if (ethDeposited[msg.sender] + msg.value > MAX_DEPOSIT)
             revert ExceedsMaxDeposit();
 
@@ -330,7 +339,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
             msg.value,
             ethDeposited[msg.sender]
         );
-        // Protezione: deposito troppo piccolo per produrre token aggiuntivi.
         if (newTokens == 0) revert DepositTooSmall();
 
         // Aggiorna tracking ETH e balance token.
@@ -349,11 +357,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         );
     }
 
-    /*  Funzione per la registrazione del DID di un membro. Un membro puo registrare un solo DID
-        e lo stesso DID non puo essere usato da due address.
+    /*  Funzione per la registrazione del DID di un membro.
         Verifica che il msg.sender sia un membro della DAO e che non abbia gia registrato un DID.
-        Effettua l'hash del DID, controlla che non sia già stato registrato. 
-        In tal caso, registra nei mapping le associazioni address -> DID e DID -> address.
     */
     function registerDID(string calldata _did) external {
         if (!isMember[msg.sender]) revert NotMember();
@@ -370,8 +375,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         emit DIDRegistered(msg.sender, _did);
     }
 
-    // Funzione legacy, usata per i test, in cui un membro esegue l'upgrade di competenza senza verifica VC, passando un grado di competenza
-    // e una proof testuale. Solo il timelock puo chiamare questa funzione.
+    // Funzione legacy per i test: upgrade di competenza senza verifica VC. Solo il timelock può chiamarla.
     function upgradeCompetence(
         address _member,
         CompetenceGrade _newGrade,
@@ -383,42 +387,28 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
     /*
     Funzione che esegue l'upgrade di competenza di un membro tramite VC. 
-    Usa la libreria VPVerifier per verificare una VC firmata e applica l'upgrade se la VC è valida.
-    La funzione controlla se il membro è esistente e se è configurato nella DAO l'issuer fidato.
-    Controlla se il DID del membro è coerente con il DID nel credentialSubject.
-    Il typehash del dominio EIP-712 è precalcolato come constant (0 gas di hashing).
-    Recupera l'address del firmatario usando le funzioni della libreria VPVerifier sulla firma EIP-712 
-    contenuta nella VC.
-    Controlla se l'issuer recuperato è uguale al trustedIssuer. 
-    In caso positivo, mappa il titolo testuale nell'enum di grado di competenza.
-    Costruisce una stringa proof sintetica persistita on-chain. 
-    Esegue l'aggiornamento del grado del membro, tramite la funzione _performUpgrade, senza passare dalla governance.
+    Usa la libreria VPVerifier per verificare una VC firmata EIP-712 e applica l'upgrade se valida.
     */
     function upgradeCompetenceWithVP(
         VPVerifier.VerifiableCredential memory _vc,
         bytes memory _issuerSignature
     ) external {
-        // Il chiamante (msg.sender) è il membro che presenta la propria VC.
         if (!isMember[msg.sender]) revert NotMember();
         if (trustedIssuer == address(0)) revert TrustedIssuerNotSet();
 
-        // Verifica binding DID: il DID nel credentialSubject deve corrispondere
-        // al DID registrato dal membro, garantendo che nessuno possa usare
-        // la VC di un altro.
+        // Verifica binding DID.
         if (bytes(memberDID[msg.sender]).length == 0) revert NoDIDRegistered();
         if (
             keccak256(bytes(_vc.credentialSubject.id)) !=
             keccak256(bytes(memberDID[msg.sender]))
         ) revert DIDMismatch();
 
-        // Recupera l'address del firmatario usando la libreria VPVerifier.
-        // Il domain separator è precalcolato come constant (0 gas di hashing).
+        // Recupera l'address del firmatario.
         address recoveredIssuer = VPVerifier.recoverIssuer(
             _vc,
             _issuerSignature,
             UNIVERSAL_DOMAIN_SEPARATOR
         );
-        // Verifica crittografica: solo le VC firmate dal trustedIssuer sono valide.
         if (recoveredIssuer != trustedIssuer) revert UntrustedIssuer();
 
         // Mappa il titolo testuale nell'enum di grado.
@@ -431,10 +421,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
             abi.encodePacked("VP-EIP712:", _vc.issuer.id)
         );
 
-        // Esegue direttamente l'upgrade, senza passare dalla governance.
         _performUpgrade(msg.sender, newGrade, proof);
 
-        // Evento dedicato per audit analytics del percorso VC.
         emit CompetenceUpgradedWithVP(
             msg.sender,
             newGrade,
@@ -444,7 +432,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     }
 
     /// Parser semantico che ritorna l'enum del grado di competenza, a partire dalla stringa del titolo di studio.
-    /// Usa hash per confronto stringhe gas-efficient.
     function _getGradeFromTitle(
         string memory _degreeTitle
     ) internal pure returns (CompetenceGrade) {
@@ -460,15 +447,22 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     }
 
     /*
- Funzione di upgrade di competenza, che si occupa di effettuare nella DAO le modifiche,
- dopo che la VC è stata verificata. La funzione calcola il vecchio e il nuovo punteggio di competenza del membro.
- Calcola i token aggiuntivi da mintare in base alla formula di VP, in particolare alla parte: pesoCompetenze × ΔscoreCompetenze.
- Si ha ΔscoreCompetenze = newScore - oldScore  ∈ {25, 50, 75, 100}
- Viene quindi effettuata la differenza tra il vecchio score e il nuovo, e viene moltiplicata
-  per il pesoCompetenze e divisa per 10000, mintando i token aggiuntivi al membro.
- Aggiorna il grado del membro e inserisce la proof di competenza on-chain.
- Es: Upgrade Student→PhD (Δ=75), pesoCompetenze=5000 bp → (75 × 5000 × 10^18) / 10000 = 37.5 × 10^18 token
-   */
+    Funzione interna di upgrade di competenza.
+
+    IMPORTANTE - Separazione del VP:
+    La componente di competenza NON viene più mintata come token ERC20.
+    Viene invece calcolata la nuova quantità cumulativa di skill-VP del membro
+    e salvata nei checkpoint manuali (stessa struttura Trace208 usata da ERC20Votes,
+    con chiave = blocco corrente via clock()).
+
+    In questo modo:
+      - balanceOf(member)     → solo componente economica
+      - getSkillVotes(member) → solo componente competenza
+    Il Governor somma le due in _getVotes() per il VP totale.
+
+    Formula: skillVP = (pesoCompetenze × scoreCompetenze × 10^18) / BASIS_POINTS
+    Es: PhD, pesoCompetenze=5000 bp → (75 × 5000 × 10^18) / 10000 = 37.5 × 10^18
+    */
     function _performUpgrade(
         address _member,
         CompetenceGrade _newGrade,
@@ -480,20 +474,91 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
         // ΔscoreCompetenze = newScore - oldScore  ∈ {25, 50, 75, 100}
         uint256 scoreDiff = newScore - oldScore;
-        // pesoCompetenze × ΔscoreCompetenze / BASIS_POINTS (scalato 10^18)
-        // NB: se pesoCompetenze=0 (DAO puramente economica), tokensToMint=0 ma
-        // lo stato (grado, proof) viene comunque aggiornato correttamente.
-        uint256 tokensToMint = (scoreDiff * pesoCompetenze * 10 ** 18) /
-            BASIS_POINTS;
 
+        // Calcola il VP aggiuntivo di competenza in wei.
+        // Se pesoCompetenze=0 (DAO puramente economica), skillVPAdded=0 ma
+        // lo stato (grado, proof) viene comunque aggiornato correttamente.
+        uint256 skillVPAdded = (scoreDiff * pesoCompetenze * 10 ** 18) / BASIS_POINTS;
+
+        // Aggiorna stato del membro.
         memberGrade[_member] = _newGrade;
         competenceProof[_member] = _proof;
 
-        if (tokensToMint > 0) {
-            _mint(_member, tokensToMint);
+        // Aggiorna i checkpoint skill solo se c'è VP da aggiungere.
+        if (skillVPAdded > 0) {
+            // Chiave = blocco corrente (uint48), coerente con clock() di ERC20Votes.
+            uint48 currentBlock = clock();
+
+            // Skill VP cumulativo dell'utente: vecchio valore + delta.
+            uint208 oldUserSkill = _skillVotesCheckpoints[_member].latest();
+            uint208 newUserSkill = oldUserSkill + SafeCast.toUint208(skillVPAdded);
+            _skillVotesCheckpoints[_member].push(currentBlock, newUserSkill);
+
+            // Total skill supply: vecchio valore + delta.
+            uint208 oldTotalSkill = _totalSkillSupplyCheckpoints.latest();
+            uint208 newTotalSkill = oldTotalSkill + SafeCast.toUint208(skillVPAdded);
+            _totalSkillSupplyCheckpoints.push(currentBlock, newTotalSkill);
         }
 
-        emit CompetenceUpgraded(_member, _newGrade, tokensToMint, _proof);
+        emit CompetenceUpgraded(_member, _newGrade, skillVPAdded, _proof);
+    }
+
+    // =====================================================================
+    //  Lettura del voting power di competenza (con storico a blocchi)
+    //
+    //  Queste funzioni sono il punto di accesso del Governor ai checkpoint
+    //  della componente skill. Seguono la stessa convenzione di ERC20Votes:
+    //  - getSkillVotes()          → valore corrente (latest checkpoint)
+    //  - getPastSkillVotes()      → ricerca binaria sul blocco passato
+    //  - getPastTotalSkillSupply()→ ricerca binaria sulla supply skill passata
+    //
+    //  La guardia "timepoint < clock()" replica _validateTimepoint di Votes
+    //  per prevenire lookup nel futuro.
+    // =====================================================================
+
+    /// Restituisce il voting power di competenza corrente del membro (non storico).
+    function getSkillVotes(address account) public view returns (uint256) {
+        return _skillVotesCheckpoints[account].latest();
+    }
+
+    /*
+    Restituisce il voting power di competenza del membro al blocco `timepoint`.
+    Usa upperLookupRecent (ottimizzato per checkpoint recenti) coerentemente con
+    come ERC20Votes legge i suoi checkpoint in getPastVotes().
+    Requisito: timepoint deve essere un blocco già minato (< clock()).
+    */
+    function getPastSkillVotes(
+        address account,
+        uint256 timepoint
+    ) public view returns (uint256) {
+        // Replica la guardia di Votes._validateTimepoint.
+        uint48 currentBlock = clock();
+        if (timepoint >= currentBlock)
+            revert ERC5805FutureLookup(timepoint, currentBlock);
+        return _skillVotesCheckpoints[account].upperLookupRecent(
+            SafeCast.toUint48(timepoint)
+        );
+    }
+
+    /// Restituisce la totalSupply corrente del voting power di competenza (non storico).
+    function getTotalSkillSupply() public view returns (uint256) {
+        return _totalSkillSupplyCheckpoints.latest();
+    }
+
+    /*
+    Restituisce la totalSupply del voting power di competenza al blocco `timepoint`.
+    Usata dal Governor in quorum() e superQuorum() per includere la componente
+    skill nel calcolo della base votante totale.
+    */
+    function getPastTotalSkillSupply(
+        uint256 timepoint
+    ) public view returns (uint256) {
+        uint48 currentBlock = clock();
+        if (timepoint >= currentBlock)
+            revert ERC5805FutureLookup(timepoint, currentBlock);
+        return _totalSkillSupplyCheckpoints.upperLookupRecent(
+            SafeCast.toUint48(timepoint)
+        );
     }
 
     //  Funzioni di lettura
@@ -509,14 +574,13 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
     /*
     Si ha scoreCompetenze ∈ {0, 25, 50, 75, 100}, a secondo del grado accademico del membro.
-    (Student → 0, BachelorDegree → 25, MasterDegree → 50, PhD → 75, Professor → 100)
     */
     function getScoreCompetenze(address _member) public view returns (uint256) {
         return competenceScore[memberGrade[_member]];
     }
 
     /*
-    Restituisce lo scoreSoldi attuale del membro. Si ha scoreSoldi = min(ethDeposited / MAX_DEPOSIT, 1) × 100  ∈ [0, 100].
+    Restituisce lo scoreSoldi attuale del membro.
     */
     function getScoreSoldi(address _member) public view returns (uint256) {
         return getScoreSoldiForDeposit(ethDeposited[_member]);
@@ -524,15 +588,11 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
     /*
     Calcola lo ScoreTotale VPC attuale del membro in wei.
-    Si ricorda che ScoreTotale_wei = (pesoCompetenze × scoreCompetenze + pesoSoldi × scoreSoldi) × 10^18 / BASIS_POINTS
-    Proprietà garantita: getScoreTotale(m) == balanceOf(m). Funzione usata per i test.
+    ScoreTotale_wei = parteSoldi (balanceOf) + parteCompetenze (getSkillVotes).
+    Proprietà: getScoreTotale(m) == balanceOf(m) + getSkillVotes(m).
     */
     function getScoreTotale(address _member) public view returns (uint256) {
-        uint256 scoreC = getScoreCompetenze(_member);
-        uint256 scoreS = getScoreSoldi(_member);
-        return
-            ((pesoCompetenze * scoreC + pesoSoldi * scoreS) * 10 ** 18) /
-            BASIS_POINTS;
+        return balanceOf(_member) + getSkillVotes(_member);
     }
 
     //  Override OZ richiesti da ereditarieta multipla (ERC20 + ERC20Votes + Permit)
