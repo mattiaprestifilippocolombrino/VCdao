@@ -262,11 +262,11 @@ async function main() {
   const targets: string[] = [];
   const values: bigint[] = [];
   const calldatas: string[] = [];
-  const credsPath = path.join(__dirname, "..", "..", "shared-credentials");
+  const credsPath = path.join(__dirname, "shared-credentials");
 
   if (!fs.existsSync(credsPath)) {
     throw new Error(
-      `Cartella credenziali non trovata: ${credsPath}. Esegui prima veramo/scripts/2-issue-credential.ts (o issue-for-dao.ts).`
+      `Cartella credenziali non trovata: ${credsPath}. Esegui prima veramo/scripts/issue-for-dao.ts.`
     );
   }
 

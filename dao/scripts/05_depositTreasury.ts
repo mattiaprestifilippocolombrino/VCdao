@@ -33,15 +33,14 @@ async function main() {
     // I token mintati vengono moltiplicati per il coefficiente di competenza
     // (dopo gli upgrade dello script 04).
     const mints = [
-        { signer: signers[0], eth: "50", label: "Professor 1" },  // 50 × 1.000 × 5 = 250.000
-        { signer: signers[1], eth: "40", label: "Professor 2" },  // 40 × 1.000 × 5 = 200.000
-        { signer: signers[2], eth: "45", label: "Professor 3" },  // 45 × 1.000 × 5 = 225.000
-        { signer: signers[3], eth: "35", label: "Professor 4" },  // 35 × 1.000 × 5 = 175.000
-        { signer: signers[4], eth: "30", label: "Professor 5" },  // 30 × 1.000 × 5 = 150.000
-        { signer: signers[5], eth: "10", label: "PhD 1" },        // 10 × 1.000 × 4 =  40.000
-        { signer: signers[6], eth: "8", label: "PhD 2" },        //  8 × 1.000 × 4 =  32.000
-        { signer: signers[8], eth: "5", label: "Master 1" },     //  5 × 1.000 × 3 =  15.000
-        { signer: signers[10], eth: "2", label: "Bachelor 1" },   //  2 × 1.000 × 2 =   4.000
+        { signer: signers[1], eth: "20", label: "Professor 2" },  // 80 + 20 = 100
+        { signer: signers[2], eth: "10", label: "Professor 3" },  // 90 + 10 = 100
+        { signer: signers[3], eth: "30", label: "Professor 4" },  // 70 + 30 = 100
+        { signer: signers[4], eth: "30", label: "Professor 5" },  // 60 + 30 = 90
+        { signer: signers[5], eth: "10", label: "PhD 1" },        // 30 + 10 = 40
+        { signer: signers[6], eth: "8", label: "PhD 2" },         // 25 + 8 = 33
+        { signer: signers[8], eth: "5", label: "Master 1" },      // 15 + 5 = 20
+        { signer: signers[10], eth: "2", label: "Bachelor 1" },   // 8 + 2 = 10
     ];
 
     // Per ogni membro:
