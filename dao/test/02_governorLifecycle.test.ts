@@ -8,6 +8,10 @@ import { mine, time } from "@nomicfoundation/hardhat-network-helpers";
 import { GovernanceToken, MyGovernor, Treasury, TimelockController } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
+function hashLegacyProof(proof: string): string {
+    return ethers.keccak256(ethers.toUtf8Bytes(proof));
+}
+
 describe("MyGovernor — Ciclo di vita delle proposte", function () {
     let token: GovernanceToken;
     let treasury: Treasury;
@@ -72,15 +76,15 @@ describe("MyGovernor — Ciclo di vita delle proposte", function () {
 
         // Proposta: upgrade voter a PhD
         const tokenAddr = await token.getAddress();
-        const calldata = token.interface.encodeFunctionData("upgradeCompetence", [
-            voter.address, 3, "PhD in Computer Science, 2024"
+        const calldata = token.interface.encodeFunctionData("upgradeSkill", [
+            voter.address, 3, hashLegacyProof("PhD in Computer Science, 2024")
         ]);
         const targets = [tokenAddr];
         const values = [0n];
         const calldatas = [calldata];
         const description = "Upgrade voter a PhD";
 
-        const tx = await governor.propose(targets, values, calldatas, description);
+        const tx = await governor.proposeWithTopic(targets, values, calldatas, description, 0);
         const receipt = await tx.wait();
         const proposalId = receipt!.logs
             .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })
@@ -97,29 +101,29 @@ describe("MyGovernor — Ciclo di vita delle proposte", function () {
         await governor.execute(targets, values, calldatas, descHash);
         expect(await governor.state(proposalId)).to.equal(7); // Executed
 
-        // Con la nuova architettura, l'upgrade MINTA token per la quota accademica.
-        // voter: joinDAO(5 ETH) → 2.5 token; upgrade a PhD → +37.5 token = 40 token totali
-        expect(await token.getScoreCompetenze(voter.address)).to.equal(75); // PhD
-        expect(await token.getMemberGrade(voter.address)).to.equal(3); // PhD
+        // La skill viene salvata nei checkpoint separati, il balance ERC20 stake non cambia.
+        expect(await token.balanceOf(voter.address)).to.equal(ethers.parseEther("2.5"));
+        expect(await token.getSkillScoreForTopic(voter.address, 0)).to.equal(75); // PhDCS su topic CS
+        expect(await token.getMemberGrade(voter.address)).to.equal(3); // PhDCS
     });
 
     it("proposta bocciata se la maggioranza vota contro", async function () {
-        // Voter con 100 ETH ha scoreSoldi=100 → 50 token (peso 50%).
+        // Voter con 100 ETH ha stakeScore=100 → 50 token (peso 50%).
         // Deployer ha già 100 ETH → 50 token. Pareggio 50/50 → Defeated.
         await token.connect(voter).joinDAO({ value: ethers.parseEther("100") });
         await token.connect(voter).delegate(voter.address);
         await mine(1);
 
         const tokenAddr = await token.getAddress();
-        const calldata = token.interface.encodeFunctionData("upgradeCompetence", [
-            voter.address, 4, "Professor" // dummy
+        const calldata = token.interface.encodeFunctionData("upgradeSkill", [
+            voter.address, 4, hashLegacyProof("ProfessorCS") // dummy
         ]);
         const targets = [tokenAddr];
         const values = [0n];
         const calldatas = [calldata];
         const description = "Upgrade bocciato";
 
-        const tx = await governor.propose(targets, values, calldatas, description);
+        const tx = await governor.proposeWithTopic(targets, values, calldatas, description, 0);
         const receipt = await tx.wait();
         const proposalId = receipt!.logs
             .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })

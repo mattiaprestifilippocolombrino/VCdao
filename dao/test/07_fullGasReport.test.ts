@@ -66,6 +66,10 @@ const VC_TYPES = {
 };
 const EIP712_DOMAIN = { name: "Universal VC Protocol", version: "1" };
 
+function hashLegacyProof(proof: string): string {
+    return ethers.keccak256(ethers.toUtf8Bytes(proof));
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  TEST SUITE
 // ══════════════════════════════════════════════════════════════════════════
@@ -196,11 +200,11 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
             const tx = await token.connect(deployer).delegate(deployer.address);
             record("Membership", "delegate(self)", (await tx.wait())!.gasUsed);
         });
-        it("mintTokens()", async function () {
+        it("increaseStake()", async function () {
             await token.connect(alice).delegate(alice.address);
             await mine(1);
-            const tx = await token.connect(alice).mintTokens({ value: ethers.parseEther("2") });
-            record("Membership", "mintTokens()", (await tx.wait())!.gasUsed);
+            const tx = await token.connect(alice).increaseStake({ value: ethers.parseEther("2") });
+            record("Membership", "increaseStake()", (await tx.wait())!.gasUsed);
         });
     });
 
@@ -213,7 +217,7 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
             const tx = await token.connect(alice).registerDID(did);
             record("SSI", "registerDID()", (await tx.wait())!.gasUsed);
         });
-        it("upgradeCompetenceWithVP() — verifica on-chain (self-sovereign)", async function () {
+        it("upgradeSkillWithVC() — verifica on-chain (self-sovereign)", async function () {
             const holderDid = "did:ethr:sepolia:0x" + alice.address.slice(2);
             const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
             const vcData = {
@@ -221,20 +225,20 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
                 issuanceDate: "2026-01-15T10:00:00Z",
                 credentialSubject: {
                     id: holderDid, university: "University of Pisa",
-                    faculty: "Computer Science", degreeTitle: "MasterDegree", grade: "110/110",
+                    faculty: "Computer Science", degreeTitle: "MasterCS", grade: "110/110",
                 },
             };
             const signature = await issuer.signTypedData(EIP712_DOMAIN, VC_TYPES, vcData);
             // Self-sovereign: il membro chiama direttamente, nessun voto
-            const tx = await token.connect(alice).upgradeCompetenceWithVP(vcData, signature);
-            record("SSI", "upgradeCompetenceWithVP()", (await tx.wait())!.gasUsed);
+            const tx = await token.connect(alice).upgradeSkillWithVC(vcData, signature);
+            record("SSI", "upgradeSkillWithVC()", (await tx.wait())!.gasUsed);
         });
-        it("upgradeCompetence() — legacy", async function () {
+        it("upgradeSkill() — legacy", async function () {
             await token.connect(bob).joinDAO({ value: ethers.parseEther("3") });
             const tx = await callAsTimelock(s =>
-                token.connect(s).upgradeCompetence(bob.address, 3, "PhD in CS")
+                token.connect(s).upgradeSkill(bob.address, 3, hashLegacyProof("PhDCS"))
             );
-            record("SSI", "upgradeCompetence() [legacy]", (await (tx as any).wait())!.gasUsed);
+            record("SSI", "upgradeSkill() [legacy]", (await (tx as any).wait())!.gasUsed);
         });
     });
 
@@ -248,19 +252,19 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
         let propCalldatas: string[];
         const propDescription = "Test proposal — upgrade bob to Professor";
 
-        it("propose()", async function () {
+        it("proposeWithTopic()", async function () {
             await mine(1);
             propTargets = [await token.getAddress()];
             propValues = [0n];
-            propCalldatas = [token.interface.encodeFunctionData("upgradeCompetence", [
-                bob.address, 4, "Professor upgrade"
+            propCalldatas = [token.interface.encodeFunctionData("upgradeSkill", [
+                bob.address, 4, "ProfessorCS upgrade"
             ])];
-            const tx = await governor.propose(propTargets, propValues, propCalldatas, propDescription);
+            const tx = await governor.proposeWithTopic(propTargets, propValues, propCalldatas, propDescription, 0);
             const r = await tx.wait();
             proposalId = r!.logs
                 .map((l: any) => { try { return governor.interface.parseLog(l); } catch { return null; } })
                 .find((p: any) => p?.name === "ProposalCreated")?.args?.proposalId;
-            record("Governance", "propose()", r!.gasUsed);
+            record("Governance", "proposeWithTopic()", r!.gasUsed);
         });
         it("castVote()", async function () {
             await mine(VOTING_DELAY + 1);
@@ -324,11 +328,11 @@ describe("Full Gas Report — Tutte le operazioni DAO + SSI", function () {
         console.log(`╠${SEP}╣`);
 
         // Overhead VC
-        const vpGas = gasData.find(d => d.op.includes("upgradeCompetenceWithVP"))?.gas ?? 0n;
+        const vpGas = gasData.find(d => d.op.includes("upgradeSkillWithVC"))?.gas ?? 0n;
         const legGas = gasData.find(d => d.op.includes("[legacy]"))?.gas ?? 0n;
         const overhead = vpGas > legGas ? vpGas - legGas : 0n;
 
-        console.log(`║  OVERHEAD VERIFICA VC ON-CHAIN (upgradeCompetenceWithVP − upgradeCompetence)${" ".repeat(W - 77)}║`);
+        console.log(`║  OVERHEAD VERIFICA VC ON-CHAIN (upgradeSkillWithVC − upgradeSkill)${" ".repeat(W - 77)}║`);
         console.log(`║  VP: ${String(vpGas).padStart(8)} gas  │  Legacy: ${String(legGas).padStart(8)} gas  │  Overhead: +${String(overhead).padStart(8)} gas${" ".repeat(W - 76)}║`);
         console.log(`║${" ".repeat(W)}║`);
 

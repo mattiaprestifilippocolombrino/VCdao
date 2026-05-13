@@ -10,7 +10,12 @@ disattivare startup.
 */
 
 contract StartupRegistry {
-    // Struttura dati per una startup
+    /*
+    Struttura dati che rappresenta una startup investibile.
+    Il wallet è l'indirizzo che riceverà gli ETH dal Treasury.
+    Il flag active permette alla governance di sospendere una startup senza cancellare
+    lo storico o cambiare gli ID già usati nelle proposte.
+    */
     struct Startup {
         string name; // Nome della startup
         address wallet; // Indirizzo wallet che riceverà gli investimenti
@@ -59,8 +64,11 @@ contract StartupRegistry {
         _;
     }
 
-    // Constructor
-    /// Imposta il TimelockController come unica autorità del registro.
+    /*
+    Costruttore che imposta il TimelockController come unica autorità del registry.
+    In questo modo registrazioni, disattivazioni e riattivazioni possono arrivare
+    solo da proposte approvate dalla governance.
+    */
     constructor(address _timelock) {
         if (_timelock == address(0)) revert ZeroAddress();
         timelock = _timelock;
@@ -68,11 +76,17 @@ contract StartupRegistry {
 
     // Funzioni pubbliche
 
-    /// Registra una nuova startup nel registro
-    /// @param _name        Nome della startup
-    /// @param _wallet      Indirizzo wallet della startup
-    /// @param _description Breve descrizione del progetto
-    /// @return id           ID assegnato alla startup
+    /*
+    Registra una nuova startup nel registro.
+    L'ID assegnato è il valore corrente di startupCount e viene poi incrementato.
+    Solo il Timelock può chiamare questa funzione, quindi ogni inserimento deve essere
+    stato approvato tramite il normale ciclo di governance.
+
+    @param _name        Nome della startup.
+    @param _wallet      Indirizzo wallet della startup.
+    @param _description Breve descrizione del progetto.
+    @return id          ID assegnato alla startup.
+    */
     function registerStartup(
         string calldata _name,
         address _wallet,
@@ -95,8 +109,11 @@ contract StartupRegistry {
         emit StartupRegistered(id, _name, _wallet);
     }
 
-    /// @notice Disattiva una startup (non potrà più ricevere investimenti)
-    /// @param _id ID della startup da disattivare
+    /*
+    Disattiva una startup registrata.
+    Una startup disattivata resta nello storico, ma il Treasury non potrà più
+    investire verso di essa finché non viene riattivata.
+    */
     function deactivateStartup(uint256 _id) external onlyTimelock {
         if (_id >= startupCount) revert StartupNotFound();
         startups[_id].active = false;
@@ -104,8 +121,7 @@ contract StartupRegistry {
         emit StartupDeactivated(_id);
     }
 
-    /// @notice Riattiva una startup precedentemente disattivata
-    /// @param _id ID della startup da riattivare
+    /// Riattiva una startup precedentemente disattivata dalla governance.
     function reactivateStartup(uint256 _id) external onlyTimelock {
         if (_id >= startupCount) revert StartupNotFound();
         startups[_id].active = true;
@@ -113,12 +129,10 @@ contract StartupRegistry {
         emit StartupReactivated(_id);
     }
 
-    /// @notice Restituisce i dati completi di una startup
-    /// @param _id ID della startup
-    /// @return name        Nome
-    /// @return wallet      Indirizzo wallet
-    /// @return description Descrizione
-    /// @return active      Stato attivo/disattivo
+    /*
+    Restituisce i dati completi di una startup.
+    È usata dal Treasury prima di investire per recuperare wallet e stato active.
+    */
     function getStartup(
         uint256 _id
     )
@@ -136,9 +150,7 @@ contract StartupRegistry {
         return (s.name, s.wallet, s.description, s.active);
     }
 
-    /// @notice Verifica se una startup è attiva
-    /// @param _id ID della startup
-    /// @return true se la startup è attiva
+    /// Verifica se una startup è attiva e quindi potenzialmente investibile.
     function isActive(uint256 _id) external view returns (bool) {
         if (_id >= startupCount) revert StartupNotFound();
         return startups[_id].active;

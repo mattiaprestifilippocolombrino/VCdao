@@ -1,7 +1,7 @@
 /**
  * Single source of truth per il modello VC usato da tutto il progetto:
  * - modulo Veramo (issue/verify/disclosure)
- * - modulo DAO (upgradeCompetenceWithVP on-chain)
+ * - modulo DAO (upgradeSkillWithVC on-chain)
  *
  * I degreeTitle ora includono il suffisso topic: CS / CE / EE.
  * Esempio: "ProfessorCS", "PhDCE", "MasterEE".

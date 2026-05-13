@@ -1,5 +1,5 @@
 // ============================================================================
-//  06_gasEstimation.test.ts — Script che esegue una stima precisa su gas e costi USD per upgradeCompetenceWithVP
+//  06_gasEstimation.test.ts — Script che esegue una stima precisa su gas e costi USD per upgradeSkillWithVC
 // ============================================================================
 
 import { expect } from "chai";
@@ -76,7 +76,11 @@ const VC_TYPES = {
     ],
 };
 
-describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function () {
+function hashLegacyProof(proof: string): string {
+    return ethers.keccak256(ethers.toUtf8Bytes(proof));
+}
+
+describe("Gas Estimation — upgradeSkillWithVC (costi esatti)", function () {
     let token: GovernanceToken;
     let treasury: Treasury;
     let timelock: TimelockController;
@@ -171,31 +175,31 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         return result;
     }
 
-    /* TEST A: Gas e costi USD per upgradeCompetenceWithVP.
-       L'utente registra il proprio DID e poi chiama direttamente upgradeCompetenceWithVP, non si ha votazione.
-       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP. con tx.wait().gasUsed. 
+    /* TEST A: Gas e costi USD per upgradeSkillWithVC.
+       L'utente registra il proprio DID e poi chiama direttamente upgradeSkillWithVC, non si ha votazione.
+       Calcoliamo il costo in ETH e USD per upgradeSkillWithVC. con tx.wait().gasUsed. 
        Stampiamo il costo in ETH e USD per ogni rete.
     */
-    it("A) Gas esatto e costi in ETH/USD per upgradeCompetenceWithVP", async function () {
+    it("A) Gas esatto e costi in ETH/USD per upgradeSkillWithVC", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
         await token.connect(member1).registerDID(holderDid);
-        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhD");
+        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhDCS");
 
         // Self-sovereign: il membro chiama direttamente, nessun voto
-        const tx = await token.connect(member1).upgradeCompetenceWithVP(vcData, signature);
+        const tx = await token.connect(member1).upgradeSkillWithVC(vcData, signature);
         const receipt = await tx.wait();
         const gasUsed: bigint = receipt!.gasUsed;
 
         expect(await token.getMemberGrade(member1.address)).to.equal(3);
 
-        console.log(`\n   ⛽ Gas misurato (upgradeCompetenceWithVP): ${gasUsed.toLocaleString()} gas`);
+        console.log(`\n   ⛽ Gas misurato (upgradeSkillWithVC): ${gasUsed.toLocaleString()} gas`);
         printCostTable("upgradeWithVP", gasUsed);
     });
 
     /* TEST B: Overhead verifica VC (VP - Legacy) con costi USD
-       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP e upgradeCompetence senza VP, e calcoliamo quanto overhead ha la verifica VC.
-       Simuliamo la chiamata diretta dal timelock per upgradeCompetence senza VP.
+       Calcoliamo il costo in ETH e USD per upgradeSkillWithVC e upgradeSkill senza VP, e calcoliamo quanto overhead ha la verifica VC.
+       Simuliamo la chiamata diretta dal timelock per upgradeSkill senza VP.
     */
     it("B) Overhead verifica VC: VP vs Legacy", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
@@ -203,36 +207,36 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
 
         // Legacy (member2 → PhD)
         const txLegacy = await callAsTimelock(s =>
-            token.connect(s).upgradeCompetence(member2.address, 3, "PhD in CS, UniPi 2025")
+            token.connect(s).upgradeSkill(member2.address, 3, hashLegacyProof("PhD in CS, UniPi 2025"))
         );
         const gasLegacy: bigint = (await (txLegacy as any).wait())!.gasUsed;
 
         // VP (member1 → PhD) — Self-sovereign: il membro chiama direttamente
         await token.connect(member1).registerDID(holderDid);
-        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhD");
-        const txVP = await token.connect(member1).upgradeCompetenceWithVP(vcData, signature);
+        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhDCS");
+        const txVP = await token.connect(member1).upgradeSkillWithVC(vcData, signature);
         const gasVP: bigint = (await txVP.wait())!.gasUsed;
         const overhead = gasVP - gasLegacy;
 
         console.log(`\n   ┌───────────────────────────────────┬────────────────┐`);
         console.log(`   │ Operazione                        │ Gas            │`);
         console.log(`   ├───────────────────────────────────┼────────────────┤`);
-        console.log(`   │ upgradeCompetence (legacy)        │ ${String(gasLegacy).padStart(14)} │`);
-        console.log(`   │ upgradeCompetenceWithVP           │ ${String(gasVP).padStart(14)} │`);
+        console.log(`   │ upgradeSkill (legacy)        │ ${String(gasLegacy).padStart(14)} │`);
+        console.log(`   │ upgradeSkillWithVC           │ ${String(gasVP).padStart(14)} │`);
         console.log(`   │ OVERHEAD verifica VC on-chain     │+${String(overhead).padStart(13)} │`);
         console.log(`   └───────────────────────────────────┴────────────────┘`);
 
         printCostTable("Overhead VC sola", overhead);
 
-        expect(overhead).to.be.lessThan(100000n);
+        expect(overhead).to.be.lessThan(200000n);
     });
 
     /* TEST C: Variazione gas per titolo
-       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP con diversi titoli.
+       Calcoliamo il costo in ETH e USD per upgradeSkillWithVC con diversi titoli.
        Stampiamo il costo in ETH e USD per ogni rete.
     */
-    it("C) Gas per titolo: BachelorDegree vs PhD vs Professor", async function () {
-        const titles = ["BachelorDegree", "PhD", "Professor"];
+    it("C) Gas per titolo: BachelorCS vs PhDCS vs ProfessorCS", async function () {
+        const titles = ["BachelorCS", "PhDCS", "ProfessorCS"];
         const members = [member1, member2, deployer];
         const results: { title: string; gas: bigint }[] = [];
 
@@ -243,7 +247,7 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
             await token.connect(m).registerDID(holderDid);
             const { vcData, signature } = await signVC(holderDid, issuerDid, titles[i]);
             // Self-sovereign: il membro chiama direttamente
-            const tx = await token.connect(m).upgradeCompetenceWithVP(vcData, signature);
+            const tx = await token.connect(m).upgradeSkillWithVC(vcData, signature);
             const r = await tx.wait();
             results.push({ title: titles[i], gas: r!.gasUsed });
         }
@@ -263,21 +267,21 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
     });
 
     /* TEST D: Riepilogo completo per la tesi
-       Calcoliamo il costo in ETH e USD per upgradeCompetenceWithVP con diversi titoli.
+       Calcoliamo il costo in ETH e USD per upgradeSkillWithVC con diversi titoli.
        Stampiamo il costo in ETH e USD per ogni rete.
     */
     it("D) Riepilogo costi completo per la tesi", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
         await token.connect(member1).registerDID(holderDid);
-        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhD");
+        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhDCS");
 
         // VP — Self-sovereign: il membro chiama direttamente
-        const txVP = await token.connect(member1).upgradeCompetenceWithVP(vcData, signature);
+        const txVP = await token.connect(member1).upgradeSkillWithVC(vcData, signature);
         const gasTotal: bigint = (await txVP.wait())!.gasUsed;
 
         const txLeg = await callAsTimelock(s =>
-            token.connect(s).upgradeCompetence(member2.address, 3, "PhD")
+            token.connect(s).upgradeSkill(member2.address, 3, hashLegacyProof("PhDCS"))
         );
         const gasLegacy: bigint = (await (txLeg as any).wait())!.gasUsed;
         const overhead = gasTotal - gasLegacy;
@@ -285,8 +289,8 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         console.log(`\n   ╔════════════════════════════════════════════════════════════════════════╗`);
         console.log(`   ║  RIEPILOGO PER LA TESI — Verifica VC On-Chain (EIP-712)               ║`);
         console.log(`   ╠════════════════════════════════════════════════════════════════════════╣`);
-        console.log(`   ║  Gas upgradeCompetenceWithVP:  ${String(gasTotal).padStart(10)} gas                        ║`);
-        console.log(`   ║  Gas upgradeCompetence legacy: ${String(gasLegacy).padStart(10)} gas                        ║`);
+        console.log(`   ║  Gas upgradeSkillWithVC:  ${String(gasTotal).padStart(10)} gas                        ║`);
+        console.log(`   ║  Gas upgradeSkill legacy: ${String(gasLegacy).padStart(10)} gas                        ║`);
         console.log(`   ║  Overhead verifica VC:        +${String(overhead).padStart(10)} gas                        ║`);
         console.log(`   ╠════════════════════════════════════════════════════════════════════════╣`);
 
@@ -311,6 +315,6 @@ describe("Gas Estimation — upgradeCompetenceWithVP (costi esatti)", function (
         console.log(`   ╚════════════════════════════════════════════════════════════════════════╝`);
 
         expect(gasTotal).to.be.greaterThan(50000n);
-        expect(gasTotal).to.be.lessThan(300000n);
+        expect(gasTotal).to.be.lessThan(600000n);
     });
 });

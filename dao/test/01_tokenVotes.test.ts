@@ -37,20 +37,20 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     });
 
     // ── joinDAO() ──
-    // Con pesi pesoSoldi=5000/10000 e pesoCompetenze=5000/10000:
-    // token mintati per soldi = (scoreSoldi × pesoSoldi) / BASIS_POINTS
-    // scoreSoldi = min(ethDeposited / 100 ETH, 1) × 100
+    // Con pesi weightStake=5000/10000 e weightSkill=5000/10000:
+    // stake token mintati = (stakeScore × weightStake) / BASIS_POINTS
+    // stakeScore = min(stakeDeposited / 100 ETH, 1) × 100
 
-    it("joinDAO() minta i token VPC corretti per 1 ETH (scoreSoldi=1 → 0.5 token)", async function () {
-        // scoreSoldi(1 ETH) = 1% × 100 = 1
-        // token = 1 × pesoSoldi(5000) / 10000 = 0.5 × 10^18
+    it("joinDAO() minta i token VPC corretti per 1 ETH (stakeScore=1 → 0.5 token)", async function () {
+        // stakeScore(1 ETH) = 1% × 100 = 1
+        // token = 1 × weightStake(5000) / 10000 = 0.5 × 10^18
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("0.5"));
     });
 
-    it("joinDAO() minta i token VPC corretti per 50 ETH (scoreSoldi=50 → 25 token)", async function () {
-        // scoreSoldi(50 ETH) = 50% × 100 = 50
-        // token = 50 × pesoSoldi(5000) / 10000 = 25 × 10^18
+    it("joinDAO() minta i token VPC corretti per 50 ETH (stakeScore=50 → 25 token)", async function () {
+        // stakeScore(50 ETH) = 50% × 100 = 50
+        // token = 50 × weightStake(5000) / 10000 = 25 × 10^18
         await token.connect(alice).joinDAO({ value: ethers.parseEther("50") });
         expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("25"));
     });
@@ -61,10 +61,10 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(await token.getMemberGrade(alice.address)).to.equal(0); // Student
     });
 
-    it("joinDAO() traccia correttamente ethDeposited", async function () {
-        // In precedenza si leggeva baseTokens; ora il mapping rilevante è ethDeposited.
+    it("joinDAO() traccia correttamente stakeDeposited", async function () {
+        // Mapping rilevante per la componente economica dello stake.
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
-        expect(await token.ethDeposited(alice.address)).to.equal(ethers.parseEther("10"));
+        expect(await token.stakeDeposited(alice.address)).to.equal(ethers.parseEther("10"));
     });
 
     it("joinDAO() reverta senza ETH", async function () {
@@ -86,15 +86,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         ).to.be.revertedWithCustomError(token, "AlreadyMember");
     });
 
-    // ── Coefficienti competenza ──
-
-    it("competenceScore restituisce i valori corretti", async function () {
-        expect(await token.competenceScore(0)).to.equal(0); // Student
-        expect(await token.competenceScore(1)).to.equal(25); // Bachelor
-        expect(await token.competenceScore(2)).to.equal(50); // Master
-        expect(await token.competenceScore(3)).to.equal(75); // PhD
-        expect(await token.competenceScore(4)).to.equal(100); // Professor
-    });
+    // ── Coefficienti competenza (Rimossi/Testati in altri file) ──
 
     // ── Delega e voting power ──
 
@@ -110,8 +102,8 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     });
 
     it("trasferimento aggiorna i checkpoint", async function () {
-        // alice: joinDAO(10 ETH) → scoreSoldi=10 → 5 token
-        // bob:   joinDAO(5 ETH)  → scoreSoldi=5  → 2.5 token
+        // alice: joinDAO(10 ETH) → stakeScore=10 → 5 token
+        // bob:   joinDAO(5 ETH)  → stakeScore=5  → 2.5 token
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         await token.connect(alice).delegate(alice.address);
         await token.connect(bob).joinDAO({ value: ethers.parseEther("5") });
@@ -128,7 +120,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     });
 
     it("getPastVotes restituisce snapshot storici", async function () {
-        // alice: joinDAO(10 ETH) → scoreSoldi=10 → 5 token
+        // alice: joinDAO(10 ETH) → stakeScore=10 → 5 token
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         await token.connect(alice).delegate(alice.address);
         const blockBefore = await ethers.provider.getBlockNumber();
@@ -141,46 +133,49 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(await token.getPastVotes(alice.address, blockBefore)).to.equal(ethers.parseEther("5"));
     });
 
-    // ── upgradeCompetence access control ──
+    // ── upgradeSkill access control ──
 
-    it("upgradeCompetence reverta se non dal Timelock", async function () {
+    it("upgradeSkill reverta se non dal Timelock", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         await expect(
-            token.upgradeCompetence(alice.address, 4, "Professore")
+            token.upgradeSkill(alice.address, 4, hashLegacyProof("Professore"))
         ).to.be.revertedWithCustomError(token, "OnlyTimelock");
     });
 
-    // ── mintTokens() ──
+    // ── increaseStake() ──
 
-    it("mintTokens() aggiunge i token VPC dell'incremento deposit", async function () {
-        // alice joinDAO(1 ETH): scoreSoldi=1 → 0.5 token
+    it("increaseStake() aggiunge i token VPC dell'incremento deposit", async function () {
+        // alice joinDAO(1 ETH): stakeScore=1 → 0.5 token
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") }); // 0.5 token
-        // mintTokens(2 ETH): oldDeposit=1 ETH, newDeposit=3 ETH
+        // increaseStake(2 ETH): oldDeposit=1 ETH, newDeposit=3 ETH
         //   oldScore=1, newScore=3, Δscore=2 → 2×5000/10000 = 1 token
-        await token.connect(alice).mintTokens({ value: ethers.parseEther("2") });
+        await token.connect(alice).increaseStake({ value: ethers.parseEther("2") });
 
         expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("1.5")); // 0.5 + 1
-        expect(await token.ethDeposited(alice.address)).to.equal(ethers.parseEther("3"));
+        expect(await token.stakeDeposited(alice.address)).to.equal(ethers.parseEther("3"));
     });
 
-    it("mintTokens() reverta se non membro", async function () {
+    it("increaseStake() reverta se non membro", async function () {
         await expect(
-            token.connect(alice).mintTokens({ value: ethers.parseEther("1") })
+            token.connect(alice).increaseStake({ value: ethers.parseEther("1") })
         ).to.be.revertedWithCustomError(token, "NotMember");
     });
 
-    it("mintTokens() reverta senza ETH", async function () {
+    it("increaseStake() reverta senza ETH", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         await expect(
-            token.connect(alice).mintTokens({ value: 0 })
+            token.connect(alice).increaseStake({ value: 0 })
         ).to.be.revertedWithCustomError(token, "ZeroDeposit");
     });
 
-    it("mintTokens() invia ETH al Treasury", async function () {
+    it("increaseStake() invia ETH al Treasury", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         const balBefore = await treasury.getBalance();
-        await token.connect(alice).mintTokens({ value: ethers.parseEther("2") });
+        await token.connect(alice).increaseStake({ value: ethers.parseEther("2") });
         const balAfter = await treasury.getBalance();
         expect(balAfter - balBefore).to.equal(ethers.parseEther("2"));
     });
 });
+function hashLegacyProof(proof: string): string {
+    return ethers.keccak256(ethers.toUtf8Bytes(proof));
+}

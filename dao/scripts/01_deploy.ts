@@ -4,12 +4,6 @@ ESECUZIONE: npx hardhat run scripts/01_deploy.ts --network localhost
 
 ORDINE DI DEPLOY:
 1. TimelockController: Esegue le azioni approvate dalla governance, dopo il periodo di attesa
-/*
-01_deploy.ts — Deploy di tutti i contratti + fondatore entra nella DAO
-ESECUZIONE: npx hardhat run scripts/01_deploy.ts --network localhost
-
-ORDINE DI DEPLOY:
-1. TimelockController: Esegue le azioni approvate dalla governance, dopo il periodo di attesa
 2. GovernanceToken: Token ERC20 con voting e membership (joinDAO)
 3. MyGovernor: Contratto di governance (proposte, voti, quorum)
 4. Treasury: Custodisce gli ETH della DAO
@@ -17,7 +11,7 @@ ORDINE DI DEPLOY:
 6. MockStartup: Startup fittizia per i test di investimento
 
 DOPO IL DEPLOY:
-Il fondatore (deployer) chiama joinDAO() con 100 ETH → riceve tokens in base a pesoSoldi  
+Il fondatore (deployer) chiama joinDAO() con 100 ETH → riceve token in base a weightStake
 Gli ETH del fondatore vanno nel Treasury automaticamente
 Il fondatore delega i voti a sé stesso per poter votare
 I ruoli del Timelock vengono configurati (solo il Governor può proporre)
@@ -37,10 +31,10 @@ async function main() {
     const TIMELOCK_DELAY = 3600;       // 1 ora di attesa prima dell'esecuzione
     const FOUNDER_DEPOSIT = "100";     // 100 ETH → 100.000 token per il deployer
     // Pesi formula VPC (basis points, devono sommare a 10.000).
-    const PESO_COMPETENZE = parseInt(process.env.PESO_COMPETENZE ?? "5000");
-    const PESO_SOLDI      = parseInt(process.env.PESO_SOLDI      ?? "5000");
-    if (PESO_COMPETENZE + PESO_SOLDI !== 10000)
-        throw new Error(`PESO_COMPETENZE + PESO_SOLDI deve essere 10000`);
+    const WEIGHT_SKILL = parseInt(process.env.WEIGHT_SKILL ?? "5000");
+    const WEIGHT_STAKE = parseInt(process.env.WEIGHT_STAKE ?? "5000");
+    if (WEIGHT_SKILL + WEIGHT_STAKE !== 10000)
+        throw new Error(`WEIGHT_SKILL + WEIGHT_STAKE deve essere 10000`);
 
     console.log("══════════════════════════════════════════════════");
     console.log("  CompetenceDAO — Deploy completo");
@@ -61,10 +55,10 @@ async function main() {
 
     // Deploy del GovernanceToken.
     const Token = await ethers.getContractFactory("GovernanceToken");
-    const token = await Token.deploy(await timelock.getAddress(), PESO_COMPETENZE, PESO_SOLDI);
+    const token = await Token.deploy(await timelock.getAddress(), WEIGHT_SKILL, WEIGHT_STAKE);
     await token.waitForDeployment();
     console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}`);
-    console.log(`   └─ scoreCompetenze: Student=0, Bachelor=25, Master=50, PhD=75, Professor=100`);
+    console.log(`   └─ skillScore: Student=0, Bachelor=25, Master=50, PhD=75, Professor=100`);
 
     // Deploy del contratto MyGovernor, impostando i parametri di governance principali.
     // Riceve come parametri token, timelock, votingDelay(1), votingPeriod(50),
@@ -86,7 +80,7 @@ async function main() {
     );
     await governor.waitForDeployment();
     console.log(`3️⃣  MyGovernor:         ${await governor.getAddress()}`);
-    console.log(`   └─ pesoCompetenze=${PESO_COMPETENZE} bp | pesoSoldi=${PESO_SOLDI} bp`);
+    console.log(`   └─ weightSkill=${WEIGHT_SKILL} bp | weightStake=${WEIGHT_STAKE} bp`);
 
     // Deploy del Treasury della DAO. Riceve come parametro l'indirizzo del Timelock, 
     // in quanto solo il Timelock può chiamare invest().
@@ -96,7 +90,7 @@ async function main() {
     console.log(`4️⃣  Treasury:           ${await treasury.getAddress()}`);
 
     // Viene effettuato il collegamento tra Token e Treasury, in modo che il token sappia 
-    // dove inviare gli ETH mintati dagli utenti che entrano nella DAO. 
+    // dove inviare gli ETH depositati dagli utenti che entrano nella DAO.
     // setTreasury() può essere chiamata una sola volta dal deployer.
     await token.setTreasury(await treasury.getAddress());
     console.log(`   🔗 Token → Treasury collegato`);
@@ -128,8 +122,33 @@ async function main() {
     const MS = await ethers.getContractFactory("MockStartup");
     const mockStartup = await MS.deploy();
     await mockStartup.waitForDeployment();
+    await treasury.setStartupRegistry(await registry.getAddress());
     console.log(`5️⃣  StartupRegistry:    ${await registry.getAddress()}`);
     console.log(`6️⃣  MockStartup:        ${await mockStartup.getAddress()}`);
+    console.log(`   🔗 Treasury → StartupRegistry collegato`);
+
+    // Demo locale: registra la MockStartup come ID 0 impersonando il Timelock.
+    // In produzione questa registrazione deve essere una normale proposta di governance.
+    const timelockAddr = await timelock.getAddress();
+    let impersonatedTimelock = false;
+    try {
+        await ethers.provider.send("hardhat_impersonateAccount", [timelockAddr]);
+        impersonatedTimelock = true;
+        await deployer.sendTransaction({ to: timelockAddr, value: ethers.parseEther("1") });
+        const timelockSigner = await ethers.getSigner(timelockAddr);
+        await registry.connect(timelockSigner).registerStartup(
+            "MockStartup",
+            await mockStartup.getAddress(),
+            "Startup dimostrativa registrata per il flusso locale"
+        );
+        console.log(`   🏢 MockStartup registrata nel registry con ID 0`);
+    } catch {
+        console.log(`   ℹ️  Registry collegato. Registra le startup via governance prima di investire.`);
+    } finally {
+        if (impersonatedTimelock) {
+            await ethers.provider.send("hardhat_stopImpersonatingAccount", [timelockAddr]);
+        }
+    }
 
     // Configurazione ruoli del Timelock
     // PROPOSER_ROLE → solo il Governor può mettere in coda le proposte
@@ -155,6 +174,7 @@ async function main() {
         treasury: await treasury.getAddress(),   // Conto corrente della DAO
         registry: await registry.getAddress(),   // Anagrafica startup supportate
         mockStartup: await mockStartup.getAddress(), // Startup fittizia del test finale
+        mockStartupId: 0,
         deployer: deployer.address,              // Chi ha avviato il setup
         issuer: issuerAddress,                   // Università fidata
     };

@@ -49,11 +49,7 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
     // Account del deployer (primo account Hardhat)
     const deployer = m.getAccount(0);
 
-    // ── 1. GovernanceToken ──
-    // Token ERC20 con voti delegabili. Il deployer riceve 1.000.000 INV.
-    const token = m.contract("GovernanceToken");
-
-    // ── 2. TimelockController ──
+    // ── 1. TimelockController ──
     // Strato di sicurezza: impone un ritardo (1h) prima di eseguire operazioni.
     // - proposers/executors vuoti: li configuriamo dopo con grantRole
     // - admin = deployer (temporaneo, verrà revocato)
@@ -63,6 +59,10 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
         [],              // executors (vuoto, configuriamo dopo)
         deployer,        // admin temporaneo
     ]);
+
+    // ── 2. GovernanceToken ──
+    // Token ERC20Votes per la sola componente stake; la skill e' tracciata da checkpoint separati.
+    const token = m.contract("GovernanceToken", [timelock, 5000, 5000]);
 
     // ── 3. MyGovernor ──
     // Il "cervello" della DAO: proposte, voti, quorum, superquorum, timelock.
@@ -76,13 +76,16 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
         SUPER_QUORUM_PERCENT,   // Superquorum 70%
     ]);
 
+    // ── 5. StartupRegistry ──
+    // Registro delle startup: solo il Timelock puo' registrare/disattivare startup.
+    const registry = m.contract("StartupRegistry", [timelock]);
+
     // ── 4. Treasury ──
-    // Custodisce gli ETH della DAO. Solo il Timelock può chiamare invest().
+    // Custodisce gli ETH della DAO. Solo il Timelock può chiamare investStartup().
     const treasury = m.contract("Treasury", [timelock]);
 
-    // ── 5. StartupRegistry ──
-    // Registro delle startup (didattico, rende il progetto realistico).
-    const registry = m.contract("StartupRegistry");
+    m.call(token, "setTreasury", [treasury], { id: "setTokenTreasury" });
+    m.call(treasury, "setStartupRegistry", [registry], { id: "setTreasuryRegistry" });
 
     // ── 6. MockStartup ──
     // Startup fittizia per test e demo.

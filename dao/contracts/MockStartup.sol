@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 /*
 Contratto che simula una startup che riceve investimenti dalla DAO.
 Verifica nei test che i fondi siano arrivati e registra automaticamente ogni investimento ricevuto.
+Non contiene logica di access control perché rappresenta solo un destinatario passivo di ETH.
 */
 /// @title MockStartup
 /// @notice Contratto fittizio che simula una startup ricevente investimenti.
@@ -26,8 +27,11 @@ contract MockStartup {
 
     // ── Funzione receive ──
 
-    /// Permette al contratto di ricevere ETH e registra l'investimento
-    /// Viene chiamata automaticamente quando qualcuno invia ETH al contratto
+    /*
+    Permette al contratto di ricevere ETH e registra l'investimento.
+    Nei test viene chiamata quando il Treasury trasferisce fondi alla startup
+    dopo l'esecuzione di una proposta approvata.
+    */
     receive() external payable {
         // Aggiorna il contatore e il totale
         totalReceived += msg.value;

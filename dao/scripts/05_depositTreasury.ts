@@ -1,9 +1,9 @@
 /*
-05_depositTreasury.ts — Mint aggiuntivo di token (ETH → Treasury)
-Script in cui i membri della DAOmintano nuovi token inviando ETH tramite mintTokens().
-I token ricevuti tengono conto del grado di competenza attuale.
+05_depositTreasury.ts — Aumento stake token (ETH → Treasury)
+Script in cui i membri della DAO aumentano lo stake inviando ETH tramite increaseStake().
+I token ricevuti rappresentano la componente stake del voting power.
 Gli ETH vengono automaticamente trasferiti al Treasury della DAO.
-I baseTokens del membro vengono aggiornati per futuri calcoli di upgrade.
+Lo stake depositato viene aggiornato per i calcoli successivi.
 
 ESECUZIONE: npx hardhat run scripts/05_depositTreasury.ts --network localhost
 // ============================================================================
@@ -17,7 +17,7 @@ async function main() {
     const signers = await ethers.getSigners();
 
     console.log("══════════════════════════════════════════════════");
-    console.log("  CompetenceDAO — Mint aggiuntivo di token");
+    console.log("  CompetenceDAO — Aumento stake token");
     console.log("══════════════════════════════════════════════════\n");
 
     // Carica gli indirizzi dei contratti salvati dallo script 01
@@ -28,10 +28,10 @@ async function main() {
     const token = await ethers.getContractAt("GovernanceToken", addresses.token);
     const treasury = await ethers.getContractAt("Treasury", addresses.treasury);
 
-    // Lista dei membri che mintano token aggiuntivi.
+    // Lista dei membri che aumentano lo stake.
     // I Professors depositano quantitativi arbitrari di ETH per aumentare il loro stake VP.
     // I token mintati (COMP) rappresentano ora SOLO la componente economica (stake).
-    // La componente legata alle skill (competenze) viene tracciata separatamente via Checkpoint manuali
+    // La componente skill viene tracciata separatamente via checkpoint manuali
     // (aggiornati dallo script 04) e NON influisce sul numero di token mintati.
     const mints = [
         { signer: signers[0], eth: "50", label: "Professor CS 1" }, 
@@ -47,11 +47,11 @@ async function main() {
 
     // Per ogni membro:
     //   1. Salva il saldo token prima del mint
-    //   2. Chiama mintTokens() → invia ETH, riceve COMP moltiplicati
-    //   3. Calcola la differenza per mostrare quanti token sono stati mintati
+    //   2. Chiama increaseStake() → invia ETH, riceve COMP moltiplicati
+    //   3. Calcola la differenza per mostrare quanti token stake sono stati mintati
     for (const m of mints) {
         const balBefore = await token.balanceOf(m.signer.address);
-        await token.connect(m.signer).mintTokens({ value: ethers.parseEther(m.eth) });
+        await token.connect(m.signer).increaseStake({ value: ethers.parseEther(m.eth) });
         const balAfter = await token.balanceOf(m.signer.address);
         const minted = ethers.formatUnits(balAfter - balBefore, 18);
         console.log(`   💰 ${m.label}: ${m.eth} ETH → +${minted} COMP`);
@@ -63,7 +63,7 @@ async function main() {
     console.log(`\n   🏦 Saldo Treasury: ${ethers.formatEther(balance)} ETH`);
     console.log(`   📊 Supply totale:  ${ethers.formatUnits(supply, 18)} COMP`);
     console.log("\n══════════════════════════════════════════════════");
-    console.log("  ✅ Mint completato! Prossimo: 06_createProposals.ts");
+    console.log("  ✅ Stake aggiornato! Prossimo: 06_createProposals.ts");
     console.log("══════════════════════════════════════════════════");
 }
 

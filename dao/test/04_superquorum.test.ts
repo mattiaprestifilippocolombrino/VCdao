@@ -53,7 +53,7 @@ describe("SuperQuorum — Approvazione rapida", function () {
     async function createDummyProposal(desc: string) {
         const tokenAddr = await token.getAddress();
         const calldata = token.interface.encodeFunctionData("decimals");
-        const tx = await governor.propose([tokenAddr], [0n], [calldata], desc);
+        const tx = await governor.proposeWithTopic([tokenAddr], [0n], [calldata], desc, 0);
         const receipt = await tx.wait();
         return receipt!.logs
             .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })

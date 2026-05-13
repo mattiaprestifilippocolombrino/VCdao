@@ -120,19 +120,19 @@ sommarlo.
 Questo on-chain è quasi sempre una cattiva idea, perché il costo cresce linearmente con il numero dei membri. Quindi:
 
 
-ScoreTotale = pesoCompetenze × scoreCompetenze + pesoSoldi × scoreSoldi
+totalVotingPower = weightSkill × skillScore + weightStake × stakeScore
     dove:
-        scoreCompetenze ∈ {0, 25, 50, 75, 100}, in base alla competenza estratta dalla VC
-        scoreSoldi      = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100]
-        pesoCompetenze + pesoSoldi = 10.000
+        skillScore ∈ {0, 25, 50, 75, 100}, in base alla competenza estratta dalla VC
+        stakeScore      = min(stakeDeposited / CAP, 1) × 100  ∈ [0, 100]
+        weightSkill + weightStake = 10.000
 
 
 
 , io gestisco tutto il voting power all'interno del token.
- Al momento del mint via soldi, applico la formula della parte scoreSoldi, 
- ossia scoreSoldi = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100], e poi lo moltiplico per il pesoSoldi, 
- e ottengo i token mintati. Quando eseguo l'upgrade di competenza, prendo lo scoreCompetenze ∈ {0, 25, 50, 75, 100}
-  e lo moltiplico per pesoCompetenze, e lo aggiungo come token ai token che avevo in precedenza.
+ Al momento del mint via soldi, applico la formula della parte stakeScore, 
+ ossia stakeScore = min(stakeDeposited / CAP, 1) × 100  ∈ [0, 100], e poi lo moltiplico per il weightStake, 
+ e ottengo i token mintati. Quando eseguo l'upgrade di competenza, prendo lo skillScore ∈ {0, 25, 50, 75, 100}
+  e lo moltiplico per weightSkill, e lo aggiungo come token ai token che avevo in precedenza.
    La formula diventa la stessa. Non si ha overhead ne problemi con totalSupply, snapshot, 
    quorum e altro poichè usa in automatico i meccanismi di OpenZeppelin. 
 In piu, anche lato upgradeCompetenza, sono snapshotate col token a questo punto.        
@@ -144,4 +144,4 @@ Fai override di quorum() e superQuorum() per usare quel totale VPC.
 Ho un altro problema, tenendo le competenze in un mapping, vengono prese live e non snapshottate al blocco in cui viene fatta la proposta
 Che in fondo puo non essere un male, perchè la competenza è data tramite VC e non è il caso del cretino che acquista token a raffica
 
-Nuova idea: Ma se al posto  di fare così, io gestisco tutto il voting power all'interno del token. Al momento del mint, applico la formula della parte scoreSoldi, ossia scoreSoldi = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100], e poi lo moltiplico per il pesoSoldi, e ottengo i token mintati. Quando eseguo l'upgrade di competenza, prendo lo scoreCompetenze ∈ {0, 25, 50, 75, 100} e lo moltiplico per pesoCompetenze, e lo aggiungo come token
+Nuova idea: Ma se al posto  di fare così, io gestisco tutto il voting power all'interno del token. Al momento del mint, applico la formula della parte stakeScore, ossia stakeScore = min(stakeDeposited / CAP, 1) × 100  ∈ [0, 100], e poi lo moltiplico per il weightStake, e ottengo i token mintati. Quando eseguo l'upgrade di competenza, prendo lo skillScore ∈ {0, 25, 50, 75, 100} e lo moltiplico per weightSkill, e lo aggiungo come token

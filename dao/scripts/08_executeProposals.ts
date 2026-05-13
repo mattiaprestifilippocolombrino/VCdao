@@ -6,7 +6,7 @@ messe in coda nello script precedente e mostra un riepilogo finale: stato propos
 Viene avanzato il tempo di 1 ora per far passare il delay del Timelock.
 Trascorso il delay, chiunque può chiamare execute() per eseguire la proposta. 
 Viene ricostruito il calldata (deve essere identico a quello della proposta) e inviato al Timelock.
-L'execute() chiama la funzione della proposta, treasury.invest(startup, importo) che trasferisce ETH alla startup.
+L'execute() chiama la funzione della proposta, treasury.investStartup(startupId, importo) che trasferisce ETH alla startup registrata.
 
 
 //  RISULTATO ATTESO:
@@ -40,6 +40,7 @@ async function main() {
     const treasury = await ethers.getContractAt("Treasury", addresses.treasury);
     const mockStartup = await ethers.getContractAt("MockStartup", addresses.mockStartup);
     const pState = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8"));
+    const startupId = BigInt(addresses.mockStartupId ?? 0);
 
     // Saldo Treasury PRIMA dell'esecuzione (per calcolare quanto è stato investito)
     const balBefore = await treasury.getBalance();
@@ -63,8 +64,8 @@ async function main() {
         if (Number(await governor.state(p.id)) !== 5) continue;
 
         // Ricostruisci il calldata (deve essere identico a quello della proposta)
-        const calldata = treasury.interface.encodeFunctionData("invest", [
-            addresses.mockStartup, ethers.parseEther(p.amount),
+        const calldata = treasury.interface.encodeFunctionData("investStartup", [
+            startupId, ethers.parseEther(p.amount),
         ]);
 
         // Esegui la proposta: il Governor chiede al Timelock di eseguire invest()

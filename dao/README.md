@@ -5,21 +5,22 @@ Modulo on-chain del PoC di tesi: la DAO assegna peso di voto in base al grado di
 ## Obiettivo
 
 - Membership aperta: chiunque entra con `joinDAO()` depositando ETH.
-- Voting power basata su token ERC20Votes.
-- Upgrade competenza governato dalla DAO, con verifica EIP-712 della VC su smart contract.
+- Voting power composito: stake ERC20Votes + skill VP topic-specifico.
+- Upgrade skill tramite governance legacy o VC EIP-712 verificata on-chain.
 
-## Formula Token
+## Formula Voting Power
 
-- `baseTokens = ETH * 1000`
-- `totalTokens = baseTokens * competenceScore`
+- `stakeScore = min(stakeDeposited / MAX_DEPOSIT, 1) * 100`
+- `stakeVP = stakeScore * weightStake / 10_000`
+- `skillVP(topic) = skillScore(topic) * weightSkill / 10_000`
+- `totalVotingPower(topic) = stakeVP + skillVP(topic)`
 
 Gradi (`GovernanceToken.CompetenceGrade`):
 
-1. `Student` (default, coefficiente 1)
-2. `BachelorDegree` (2)
-3. `MasterDegree` (3)
-4. `PhD` (4)
-5. `Professor` (5)
+1. `Student`
+2. `BachelorCS | MasterCS | PhDCS | ProfessorCS`
+3. `BachelorCE | MasterCE | PhDCE | ProfessorCE`
+4. `BachelorEE | MasterEE | PhDEE | ProfessorEE`
 
 ## Contratti Principali
 
@@ -30,10 +31,10 @@ Gradi (`GovernanceToken.CompetenceGrade`):
 
 ### GovernanceToken
 
-- gestisce membership e mint
+- gestisce membership e stake
 - registra DID con binding 1:1 (`registerDID`)
-- applica upgrade legacy (`upgradeCompetence`)
-- applica upgrade VC-based (`upgradeCompetenceWithVP`)
+- applica upgrade legacy (`upgradeSkill`)
+- applica upgrade VC-based (`upgradeSkillWithVC`)
 
 ### VPVerifier
 
@@ -65,7 +66,7 @@ Top-level obbligatori:
 - `id` (DID holder)
 - `university`
 - `faculty`
-- `degreeTitle` (`BachelorDegree | MasterDegree | PhD | Professor`)
+- `degreeTitle` (`BachelorCS | MasterCE | PhDEE | ProfessorEE`, ecc.)
 - `grade`
 
 Non sono ammessi campi extra nella VC consumata dallo script DAO.
@@ -109,7 +110,7 @@ npx hardhat run scripts/03_delegateAll.ts --network localhost
 cd ../veramo
 DAO_ISSUER_PRIVATE_KEY=<issuer_private_key> DAO_HARDHAT_MNEMONIC='<hardhat_mnemonic>' npm run issue-credential
 
-# Upgrade competenze con verifica VC on-chain
+# Upgrade skill con verifica VC on-chain
 cd ../dao
 npx hardhat run scripts/04_upgradeCompetences.ts --network localhost
 

@@ -38,11 +38,11 @@ function getPastVotingPower(address account, uint256 timepoint)
 {
     uint256 tokens = getPastVotes(account, timepoint);
 
-    uint256 scoreSoldi = _computeMoneyScore(tokens);
-    uint256 scoreCompetenze = getScoreCompetenze(account); // live, per ora
+    uint256 stakeScore = _computeMoneyScore(tokens);
+    uint256 skillScore = getScoreCompetenze(account); // live, per ora
 
     uint256 scoreTotale =
-        (pesoCompetenze * scoreCompetenze + pesoSoldi * scoreSoldi) / 10000;
+        (weightSkill * skillScore + weightStake * stakeScore) / 10000;
 
     return scoreTotale * 1e18;
 }
@@ -60,14 +60,14 @@ function _computeMoneyScore(uint256 tokens)
 
 Questa implementa esattamente la formula che stavi usando prima:
 
-scoreSoldi = min(tokens, TOKEN_CAP) * 100 / TOKEN_CAP
+stakeScore = min(tokens, TOKEN_CAP) * 100 / TOKEN_CAP
 Esempio completo più realistico
 
 Se hai nel token qualcosa tipo:
 
 mapping(address => uint8) public memberGrade;
-uint256 public pesoCompetenze = 7000;
-uint256 public pesoSoldi = 3000;
+uint256 public weightSkill = 7000;
+uint256 public weightStake = 3000;
 
 allora puoi fare:
 
@@ -95,12 +95,12 @@ function getPastVotingPower(address account, uint256 timepoint)
     uint256 tokens = getPastVotes(account, timepoint);
 
     uint256 capped = tokens > TOKEN_CAP ? TOKEN_CAP : tokens;
-    uint256 scoreSoldi = (capped * 100) / TOKEN_CAP;
+    uint256 stakeScore = (capped * 100) / TOKEN_CAP;
 
-    uint256 scoreCompetenze = getScoreCompetenze(account); // live, temporaneo
+    uint256 skillScore = getScoreCompetenze(account); // live, temporaneo
 
     uint256 scoreTotale =
-        (pesoCompetenze * scoreCompetenze + pesoSoldi * scoreSoldi) / 10000;
+        (weightSkill * skillScore + weightStake * stakeScore) / 10000;
 
     return scoreTotale * 1e18;
 }
@@ -157,7 +157,7 @@ In pratica, passo per passo
 Nel token aggiungi getPastVotingPower(account, timepoint)
 Dentro quella funzione:
 prendi getPastVotes(account, timepoint)
-calcoli scoreSoldi
+calcoli stakeScore
 prendi getScoreCompetenze(account) live
 applichi la formula del VPC
 Nel Governor fai override di _getVotes(...)
@@ -176,12 +176,12 @@ dopo:  token snapshot -> _getVotes() restituisce già VPC -> _countVote() lo som
 
 
 Ma se al posto  di fare così, io gestisco tutto il voting power all'interno del
- token. Al momento del mint, applico la formula della parte scoreSoldi, 
- ossia scoreSoldi = min(ethDeposited / CAP, 1) × 100  ∈ [0, 100], 
- e poi lo moltiplico per il pesoSoldi, e ottengo i token mintati. 
+ token. Al momento del mint, applico la formula della parte stakeScore, 
+ ossia stakeScore = min(stakeDeposited / CAP, 1) × 100  ∈ [0, 100], 
+ e poi lo moltiplico per il weightStake, e ottengo i token mintati. 
  Quando eseguo l'upgrade di competenza, 
- prendo lo scoreCompetenze ∈ {0, 25, 50, 75, 100} e lo moltiplico 
- per pesoCompetenze, e lo aggiungo come token. I token devono essere non trasferibili, senno trasferisco la competenza.
+ prendo lo skillScore ∈ {0, 25, 50, 75, 100} e lo moltiplico 
+ per weightSkill, e lo aggiungo come token. I token devono essere non trasferibili, senno trasferisco la competenza.
 Sì: questa, tra le opzioni che stai valutando, è probabilmente la più pulita per quorum e superQuorum.
 
 Se il Voting Power viene incorporato direttamente nel token, allora OpenZeppelin torna a funzionare “naturale”:
@@ -195,7 +195,7 @@ In altre parole: se il token contiene già il VPC, non devi più customizzare qu
 La parte buona
 Questa soluzione risolve anche il problema dello snapshot della competenza, perché:
 
-quando fai upgradeCompetence, minti il delta dei token di governance
+quando fai upgradeSkill, minti il delta dei token di governance
 ERC20Votes checkpointa automaticamente
 quindi il grado storico resta incorporato nello storico dei voti
 Questo è molto meglio del leggere getScoreCompetenze(account) live.
@@ -226,8 +226,8 @@ Per ogni account definisci il target totale di voting tokens come:
 
 targetVP =
 (
-    pesoSoldi * scoreSoldi +
-    pesoCompetenze * scoreCompetenze
+    weightStake * stakeScore +
+    weightSkill * skillScore
 ) / 10000
 poi lo porti nella scala token, ad esempio:
 
@@ -235,8 +235,8 @@ targetVPScaled = targetVP * 1e18
 Ad ogni evento che cambia il VP:
 
 joinDAO
-mintTokens
-upgradeCompetence
+increaseStake
+upgradeSkill
 fai:
 
 delta = newTargetVPScaled - oldTargetVPScaled
@@ -247,17 +247,17 @@ se mai in futuro supporti downgrade o decay, allora burni -delta
 Per la parte soldi
 La tua formula va bene:
 
-scoreSoldi = min(ethDeposited / CAP, 1) * 100
+stakeScore = min(stakeDeposited / CAP, 1) * 100
 oppure, in interi Solidity:
 
-scoreSoldi = min(tokensOrDeposit, CAP) * 100 / CAP;
+stakeScore = min(tokensOrDeposit, CAP) * 100 / CAP;
 Per la parte competenze
 Anche qui va bene:
 
-scoreCompetenze ∈ {0, 25, 50, 75, 100}
+skillScore ∈ {0, 25, 50, 75, 100}
 e il contributo è:
 
-compPart = pesoCompetenze * scoreCompetenze / 10000
+compPart = weightSkill * skillScore / 10000
 Quindi sì o no?
 Sì, come architettura è migliore del calcolare il VPC nel Governor.
 

@@ -33,6 +33,7 @@ async function main() {
   const addresses = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8"));
   const treasury  = await ethers.getContractAt("Treasury",   addresses.treasury);
   const governor  = await ethers.getContractAt("MyGovernor", addresses.governor);
+  const startupId = BigInt(addresses.mockStartupId ?? 0);
 
   // Definizione delle proposte con topic associato.
   const proposals = [
@@ -45,9 +46,9 @@ async function main() {
   const proposalIds: string[] = [];
 
   for (const p of proposals) {
-    // Codifica la chiamata invest(startup, importo) come calldata.
-    const calldata = treasury.interface.encodeFunctionData("invest", [
-      addresses.mockStartup, ethers.parseEther(p.amount),
+    // Codifica la chiamata investStartup(startupId, importo) come calldata.
+    const calldata = treasury.interface.encodeFunctionData("investStartup", [
+      startupId, ethers.parseEther(p.amount),
     ]);
 
     // Usa proposeWithTopic() per associare il topic alla proposta.

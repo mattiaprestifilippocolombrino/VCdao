@@ -13,12 +13,15 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 library VPVerifier {
     /*
-Costruiamo il typeHash, ovver l'hash della struttura dei campi che compongono la VC. Hashiamo la struttura del 
-credentialSubject, con al suo interno i campi id, university, faculty, degreeTitle, grade. I nomi e 
-l'ordine dei campi DEVONO essere identici a quelli usati off-chain durante l'emissione della VC.
-*/
+    Costruiamo i typeHash, ovvero gli hash delle strutture EIP-712 che compongono la VC.
+    I nomi dei campi, l'ordine e l'annidamento DEVONO essere identici a quelli usati
+    off-chain durante l'emissione e la firma della credenziale.
+    Se anche un solo campo cambia ordine o nome, il digest ricostruito on-chain sarà diverso
+    e la firma non verrà recuperata correttamente.
+    */
     bytes32 internal constant ISSUER_TYPEHASH = keccak256("Issuer(string id)");
 
+    /// TypeHash della struct CredentialSubject, cioè il payload certificato sull'holder.
     bytes32 internal constant CREDENTIAL_SUBJECT_TYPEHASH =
         keccak256(
             "CredentialSubject("
@@ -30,9 +33,8 @@ l'ordine dei campi DEVONO essere identici a quelli usati off-chain durante l'emi
             ")"
         );
 
-    // Ricostruiamo il typeHash della struct principale VerifiableCredential,
-    // contenente issuer, issuanceDate e credentialSubject in modo annidato, come richiede EIP-712.
-
+    /// TypeHash della struct principale VerifiableCredential.
+    /// Include issuer, issuanceDate e credentialSubject in modo annidato, come richiede EIP-712.
     bytes32 internal constant VERIFIABLE_CREDENTIAL_TYPEHASH =
         keccak256(
             "VerifiableCredential("
@@ -52,36 +54,42 @@ l'ordine dei campi DEVONO essere identici a quelli usati off-chain durante l'emi
             ")"
         );
 
-    //Creazione struct per contenere i dati della VC.
-    // Identita dell'issuer (espresso come DID).
+    // Creazione struct per contenere i dati della VC.
+
+    /// Identità dell'issuer, espressa come DID.
     struct Issuer {
         string id;
     }
 
-    // Struct contenente i dati certificati relativi all'holder, CredentialSubject.
+    /// Struct contenente i dati certificati relativi all'holder.
     struct CredentialSubject {
         string id; // DID holder
         string university; // Università
         string faculty; // facolta / corso
-        string degreeTitle; // titolo: BachelorDegree | MasterDegree | PhD | Professor
+        string degreeTitle; // titolo topic-aware: BachelorCS | MasterCE | PhDEE | ProfessorEE | ...
         string grade; // voto finale
     }
 
-    // Struct contenente i dati della VC informativi, da certificare
+    /// Struct contenente la VC completa: issuer, data di emissione e credentialSubject.
     struct VerifiableCredential {
         Issuer issuer; // DID issuer
         string issuanceDate; // Data di emissione
         CredentialSubject credentialSubject; // payload dati utente
     }
 
-    //Funzioni di hashing EIP-712. Le stringhe vanno sempre pre-hashate con `keccak256(bytes(...))`.
-    // Hash EIP-712 della struct `Issuer`. Hasha il typeHash e l'id dell'issuer.
+    /*
+    Funzioni di hashing EIP-712.
+    Le stringhe non vengono inserite direttamente nell'abi.encode della struct:
+    vanno sempre pre-hashate con keccak256(bytes(...)), come previsto dallo standard.
+    */
+
+    /// Hash EIP-712 della struct Issuer. Hasha il typeHash e l'id dell'issuer.
     function hashIssuer(Issuer memory issuer) internal pure returns (bytes32) {
         return
             keccak256(abi.encode(ISSUER_TYPEHASH, keccak256(bytes(issuer.id))));
     }
 
-    // Hash EIP-712 della struct `CredentialSubject`. Viene hashato il typeHash e tutti i valori assunti dai campi.
+    /// Hash EIP-712 della struct CredentialSubject con tutti i campi certificati.
     function hashCredentialSubject(
         CredentialSubject memory cs
     ) internal pure returns (bytes32) {
@@ -98,8 +106,11 @@ l'ordine dei campi DEVONO essere identici a quelli usati off-chain durante l'emi
             );
     }
 
-    // Hash EIP-712 della credenziale completa. Per campi struct annidati
-    // usa i rispettivi hash (`hashIssuer`, `hashCredentialSubject`), chiamando la funzione completa.
+    /*
+    Hash EIP-712 della credenziale completa.
+    Per i campi struct annidati non si usa abi.encode diretto della struct,
+    ma i rispettivi hash già calcolati: hashIssuer e hashCredentialSubject.
+    */
     function hashVerifiableCredential(
         VerifiableCredential memory vc
     ) internal pure returns (bytes32) {

@@ -1,11 +1,11 @@
 /*
-04_upgradeCompetences.ts — Upgrade competenze con VC firmata EIP-712 (multi-topic)
+04_upgradeCompetences.ts — Upgrade skill con VC firmata EIP-712 (multi-topic)
 
 Flusso (Self-Sovereign, best practice SSI):
 1) Legge le VC JSON generate da veramo/scripts/issue-for-dao.ts
 2) Valida che ogni VC rispetti il formato minimale richiesto
 3) Registra i DID holder nel token (se non presenti)
-4) Ogni membro chiama upgradeCompetenceWithVP DIRETTAMENTE, presentando
+4) Ogni membro chiama upgradeSkillWithVC DIRETTAMENTE, presentando
    la propria VC firmata — nessuna votazione di governance necessaria,
    perché la validità è verificata crittograficamente (ecrecover on-chain)
 
@@ -128,7 +128,7 @@ async function main() {
   const signers = await ethers.getSigners();
 
   console.log("══════════════════════════════════════════════════");
-  console.log("  CompetenceDAO — Upgrade competenze multi-topic con VC");
+  console.log("  CompetenceDAO — Upgrade skill multi-topic con VC");
   console.log("══════════════════════════════════════════════════\n");
 
   const addresses = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8"));
@@ -230,7 +230,7 @@ async function main() {
   // Esegui gli upgrade diretti (Self-Sovereign SSI).
   console.log(`\n🔐 Upgrade self-sovereign (${toUpgrade.length} membri)...`);
   for (const u of toUpgrade) {
-    const tx = await token.connect(u.signer).upgradeCompetenceWithVP(u.vcDataObj, u.signature);
+    const tx = await token.connect(u.signer).upgradeSkillWithVC(u.vcDataObj, u.signature);
     await tx.wait();
     const gradeNum = Number(await token.getMemberGrade(u.signer.address));
     console.log(`   ✅ ${u.label} → ${GRADE_NAMES[gradeNum]} (verificato on-chain via EIP-712)`);

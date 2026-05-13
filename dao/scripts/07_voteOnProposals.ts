@@ -22,7 +22,7 @@ Distribuzione signer post-upgrade (signerIndex → grado → VP per topic):
   11: BachelorCS → CS:25%, CE:0%, EE:0%
   12: BachelorCS → idem
 
-Supply stimate (con pesoSoldi=pesoCompetenze=5000bp, 100ETH deposito):
+Supply stimate (con weightStake=weightSkill=5000bp, 100ETH deposito):
   Stake supply: 50 COMP × 13 = 650 COMP (per comodità esempio)
   Skill supply varia per topic.
 
@@ -57,6 +57,7 @@ async function main() {
   const treasury  = await ethers.getContractAt("Treasury",        addresses.treasury);
   const token     = await ethers.getContractAt("GovernanceToken", addresses.token);
   const pState    = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8"));
+  const startupId = BigInt(addresses.mockStartupId ?? 0);
   const [pA, pB, pC, pD] = pState.proposals;
 
   // Stampa supply e quorum stimati (su base stake only, per display).
@@ -145,8 +146,8 @@ async function main() {
     const p = pState.proposals[i];
     if (Number(await governor.state(p.id)) !== 4) continue;
 
-    const calldata = treasury.interface.encodeFunctionData("invest", [
-      addresses.mockStartup, ethers.parseEther(p.amount),
+    const calldata = treasury.interface.encodeFunctionData("investStartup", [
+      startupId, ethers.parseEther(p.amount),
     ]);
     await governor.queue([addresses.treasury], [0n], [calldata], ethers.id(p.desc));
     console.log(`   🔒 Proposta ${LABELS[i]} [${TOPIC_LABELS[p.topicId]}] in coda`);

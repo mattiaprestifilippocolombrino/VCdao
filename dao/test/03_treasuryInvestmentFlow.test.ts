@@ -3,9 +3,9 @@
 // ============================================================================
 
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers";
-import { GovernanceToken, MyGovernor, Treasury, MockStartup, TimelockController } from "../typechain-types";
+import { GovernanceToken, MyGovernor, Treasury, MockStartup, StartupRegistry, TimelockController } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("Treasury + Investment Flow", function () {
@@ -13,6 +13,7 @@ describe("Treasury + Investment Flow", function () {
     let timelock: TimelockController;
     let governor: MyGovernor;
     let treasury: Treasury;
+    let registry: StartupRegistry;
     let mockStartup: MockStartup;
     let deployer: HardhatEthersSigner;
     let alice: HardhatEthersSigner;
@@ -36,9 +37,14 @@ describe("Treasury + Investment Flow", function () {
         treasury = await Treasury_.deploy(await timelock.getAddress());
         await treasury.waitForDeployment();
 
+        const Registry = await ethers.getContractFactory("StartupRegistry");
+        registry = await Registry.deploy(await timelock.getAddress());
+        await registry.waitForDeployment();
+
+        await treasury.setStartupRegistry(await registry.getAddress());
         await token.setTreasury(await treasury.getAddress());
 
-        // Deployer entra con 100 ETH → 50 COMP (ETH vanno nel Treasury)
+        // Deployer entra con 100 ETH → 50 COMP stake (ETH vanno nel Treasury)
         await token.joinDAO({ value: ethers.parseEther("100") });
         await token.delegate(deployer.address);
 
@@ -52,6 +58,13 @@ describe("Treasury + Investment Flow", function () {
         const MS = await ethers.getContractFactory("MockStartup");
         mockStartup = await MS.deploy();
         await mockStartup.waitForDeployment();
+
+        const timelockAddr = await timelock.getAddress();
+        await network.provider.request({ method: "hardhat_impersonateAccount", params: [timelockAddr] });
+        await deployer.sendTransaction({ to: timelockAddr, value: ethers.parseEther("1") });
+        const timelockSigner = await ethers.getSigner(timelockAddr);
+        await registry.connect(timelockSigner).registerStartup("Mock Startup", await mockStartup.getAddress(), "Startup registrata per test");
+        await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [timelockAddr] });
 
         const governorAddr = await governor.getAddress();
         await timelock.grantRole(await timelock.PROPOSER_ROLE(), governorAddr);
@@ -69,7 +82,7 @@ describe("Treasury + Investment Flow", function () {
     it("invest() reverta se non dal Timelock", async function () {
         await treasury.deposit({ value: ethers.parseEther("1") });
         await expect(
-            treasury.invest(alice.address, ethers.parseEther("1"))
+            treasury.investStartup(0, ethers.parseEther("1"))
         ).to.be.revertedWithCustomError(treasury, "OnlyTimelock");
     });
 
@@ -77,16 +90,15 @@ describe("Treasury + Investment Flow", function () {
         await treasury.deposit({ value: ethers.parseEther("5") });
 
         const treasuryAddr = await treasury.getAddress();
-        const startupAddr = await mockStartup.getAddress();
-        const calldata = treasury.interface.encodeFunctionData("invest", [
-            startupAddr, ethers.parseEther("1"),
+        const calldata = treasury.interface.encodeFunctionData("investStartup", [
+            0, ethers.parseEther("1"),
         ]);
         const targets = [treasuryAddr];
         const values = [0n];
         const calldatas = [calldata];
         const description = "Investire 1 ETH nella startup";
 
-        const tx = await governor.propose(targets, values, calldatas, description);
+        const tx = await governor.proposeWithTopic(targets, values, calldatas, description, 1);
         const receipt = await tx.wait();
         const proposalId = receipt!.logs
             .map((log: any) => { try { return governor.interface.parseLog(log); } catch { return null; } })
