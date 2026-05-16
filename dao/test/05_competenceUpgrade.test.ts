@@ -162,7 +162,7 @@ describe("Competence Upgrade — via governance", function () {
         await doUpgrade(member, 3, "PhD in AI, Politecnico di Milano, 2024");
 
         const expected = ethers.parseEther("40"); // 2.5 (soldi) + 37.5 (comp)
-        expect(await token.balanceOf(member.address)).to.equal(expected);
+        expect(await token.getScoreTotale(member.address)).to.equal(expected);
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
         expect(await token.competenceProof(member.address)).to.equal("PhD in AI, Politecnico di Milano, 2024");
     });
@@ -173,7 +173,7 @@ describe("Competence Upgrade — via governance", function () {
         await doUpgrade(member, 4, "Professore Ordinario, UniMi");
 
         const expected = ethers.parseEther("52.5"); // 2.5 + 50
-        expect(await token.balanceOf(member.address)).to.equal(expected);
+        expect(await token.getScoreTotale(member.address)).to.equal(expected);
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 
@@ -256,7 +256,7 @@ describe("Competence Upgrade — via governance", function () {
         await doUpgradeWithVP(member, "PhD", holderDid, issuerDid);
 
         // joinDAO 5 ETH → 2.5 token + PhD upgrade(75) → 37.5 token = 40 token
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseEther("40"));
+        expect(await token.getScoreTotale(member.address)).to.equal(ethers.parseEther("40"));
         expect(await token.getMemberGrade(member.address)).to.equal(3); // PhD
         expect(await token.competenceProof(member.address)).to.contain("VP-EIP712:");
     });
@@ -269,7 +269,7 @@ describe("Competence Upgrade — via governance", function () {
         await doUpgradeWithVP(member, "MasterDegree", holderDid, issuerDid);
 
         // joinDAO 5 ETH → 2.5 token + Master upgrade(50) → 25 token = 27.5 token
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseEther("27.5"));
+        expect(await token.getScoreTotale(member.address)).to.equal(ethers.parseEther("27.5"));
         expect(await token.getMemberGrade(member.address)).to.equal(2);
     });
 
@@ -281,7 +281,7 @@ describe("Competence Upgrade — via governance", function () {
         await doUpgradeWithVP(member, "Professor", holderDid, issuerDid);
 
         // joinDAO 5 ETH → 2.5 token + Professor upgrade(100) → 50 token = 52.5 token
-        expect(await token.balanceOf(member.address)).to.equal(ethers.parseEther("52.5"));
+        expect(await token.getScoreTotale(member.address)).to.equal(ethers.parseEther("52.5"));
         expect(await token.getMemberGrade(member.address)).to.equal(4);
     });
 
