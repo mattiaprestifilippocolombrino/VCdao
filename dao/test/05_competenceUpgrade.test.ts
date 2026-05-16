@@ -53,11 +53,7 @@ describe("Competence Upgrade — via governance", function () {
             grade: string;
         };
     }): string {
-        return ethers.TypedDataEncoder.hashStruct(
-            "VerifiableCredential",
-            VC_TYPES,
-            vcData
-        );
+        return "VP-EIP712:" + vcData.issuer.id;
     }
 
     beforeEach(async function () {

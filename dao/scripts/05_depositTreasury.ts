@@ -1,70 +1,50 @@
 /*
-05_depositTreasury.ts — Aumento stake token (ETH → Treasury)
-Script in cui i membri della DAO aumentano lo stake inviando ETH tramite increaseStake().
-I token ricevuti rappresentano la componente stake del voting power.
-Gli ETH vengono automaticamente trasferiti al Treasury della DAO.
-Lo stake depositato viene aggiornato per i calcoli successivi.
-
+05_depositTreasury.ts — Simulazione depositi e finanziamenti nel Treasury
 ESECUZIONE: npx hardhat run scripts/05_depositTreasury.ts --network localhost
-// ============================================================================
+
+SCOPO:
+  Inoltrare fondi aggiuntivi nel Treasury, simulando grant esterni, entrate
+  dalla DAO o donazioni. Non tutti gli ETH nel Treasury provengono dal joinDAO.
+  La funzione deposit() del Treasury permette a chiunque di inviare ETH.
+  
+  Qui depositiamo 20 ETH da un account esterno, assicurandoci che il Treasury
+  abbia fondi sufficienti per finanziare le proposte dello script 06.
 */
 
 import { ethers } from "hardhat";
-import * as fs from "fs";
+import * as fs   from "fs";
 import * as path from "path";
 
 async function main() {
     const signers = await ethers.getSigners();
+    // Usiamo l'ultimo account disponibile (19) come "Sponsor esterno"
+    const sponsor = signers[19]; 
 
-    console.log("══════════════════════════════════════════════════");
-    console.log("  CompetenceDAO — Aumento stake token");
-    console.log("══════════════════════════════════════════════════\n");
+    console.log("══════════════════════════════════════════════════════════");
+    console.log("  CompetenceDAO — Deposito aggiuntivo nel Treasury");
+    console.log("══════════════════════════════════════════════════════════\n");
 
-    // Carica gli indirizzi dei contratti salvati dallo script 01
-    const addressesPath = path.join(__dirname, "..", "deployedAddresses.json");
-    const addresses = JSON.parse(fs.readFileSync(addressesPath, "utf8"));
-
-    // Riconnettiti ai contratti GovernanceToken e Treasury
-    const token = await ethers.getContractAt("GovernanceToken", addresses.token);
+    const addresses = JSON.parse(
+        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
+    );
     const treasury = await ethers.getContractAt("Treasury", addresses.treasury);
 
-    // Lista dei membri che aumentano lo stake.
-    // I Professors depositano quantitativi arbitrari di ETH per aumentare il loro stake VP.
-    // I token mintati (COMP) rappresentano ora SOLO la componente economica (stake).
-    // La componente skill viene tracciata separatamente via checkpoint manuali
-    // (aggiornati dallo script 04) e NON influisce sul numero di token mintati.
-    const mints = [
-        { signer: signers[0], eth: "50", label: "Professor CS 1" }, 
-        { signer: signers[1], eth: "40", label: "Professor CS 2" }, 
-        { signer: signers[2], eth: "45", label: "Professor CS 3" }, 
-        { signer: signers[3], eth: "35", label: "Professor CE 1" }, 
-        { signer: signers[4], eth: "30", label: "Professor EE 1" }, 
-        { signer: signers[5], eth: "10", label: "PhD CS 1" },       
-        { signer: signers[6], eth: "8",  label: "PhD CS 2" },       
-        { signer: signers[8], eth: "5",  label: "Master CS 1" },    
-        { signer: signers[10], eth: "2", label: "Master CE 1" },    
-    ];
+    const balBefore = await treasury.getBalance();
+    console.log(`🏦 Treasury Balance Iniziale:  ${ethers.formatEther(balBefore)} ETH`);
 
-    // Per ogni membro:
-    //   1. Salva il saldo token prima del mint
-    //   2. Chiama increaseStake() → invia ETH, riceve COMP moltiplicati
-    //   3. Calcola la differenza per mostrare quanti token stake sono stati mintati
-    for (const m of mints) {
-        const balBefore = await token.balanceOf(m.signer.address);
-        await token.connect(m.signer).increaseStake({ value: ethers.parseEther(m.eth) });
-        const balAfter = await token.balanceOf(m.signer.address);
-        const minted = ethers.formatUnits(balAfter - balBefore, 18);
-        console.log(`   💰 ${m.label}: ${m.eth} ETH → +${minted} COMP`);
-    }
+    // Deposito di 20 ETH
+    const depositAmount = ethers.parseEther("20");
+    console.log(`📥 Sponsor (${sponsor.address.slice(0,8)}...) invia 20 ETH via deposit()...`);
+    
+    const tx = await treasury.connect(sponsor).deposit({ value: depositAmount });
+    await tx.wait();
 
-    // Riepilogo: saldo Treasury e supply totale
-    const balance = await treasury.getBalance();
-    const supply = await token.totalSupply();
-    console.log(`\n   🏦 Saldo Treasury: ${ethers.formatEther(balance)} ETH`);
-    console.log(`   📊 Supply totale:  ${ethers.formatUnits(supply, 18)} COMP`);
-    console.log("\n══════════════════════════════════════════════════");
-    console.log("  ✅ Stake aggiornato! Prossimo: 06_createProposals.ts");
-    console.log("══════════════════════════════════════════════════");
+    const balAfter = await treasury.getBalance();
+    console.log(`🏦 Treasury Balance Finale:    ${ethers.formatEther(balAfter)} ETH`);
+    
+    console.log("\n══════════════════════════════════════════════════════════");
+    console.log("  ✅ Deposito completato! Prossimo: 06_createProposals.ts");
+    console.log("══════════════════════════════════════════════════════════");
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1; });

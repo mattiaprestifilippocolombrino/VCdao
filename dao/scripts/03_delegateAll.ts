@@ -1,73 +1,87 @@
 /*
-03_delegateAll.ts — Auto-delega dei voti per tutti i 15 membri
-
-In OpenZeppelin ERC20Votes, possedere token NON dà automaticamente
-diritto di voto. Bisogna "delegare" i propri voti a qualcuno.
-
-Se deleghi a TE STESSO, il tuo voting power è il tuo saldo token.
-Se deleghi a UN ALTRO, lui vota con il peso dei tuoi token.
- Senza delega, getVotes() restituisce 0 anche se hai milioni di token.
-
-COSA FA QUESTO SCRIPT:
-Ogni membro delega i voti a sé stesso → attiva il proprio voting power.
-Poi mina 1 blocco per consolidare i checkpoint on-chain.
-
+03_delegateAll.ts — Auto-delega del voting power per tutti i membri
 ESECUZIONE: npx hardhat run scripts/03_delegateAll.ts --network localhost
+
+PREREQUISITI: 02_joinMembers.ts già eseguito.
+
+PERCHÉ È NECESSARIA LA DELEGA:
+  In OpenZeppelin ERC20Votes, possedere i token non significa automaticamente
+  avere voting power. Il VP viene attivato solo quando si "delega":
+    - A sé stessi (self-delegation): il membro vota con i propri token.
+    - A un altro indirizzo: si delega il proprio VP a un rappresentante.
+
+  In linea con le best practices, la delega manuale e successiva all'ingresso
+  nella DAO obbliga gli utenti a compiere un'azione cosciente per attivare
+  il proprio peso votante. Questo script esegue la delega per tutti gli holder.
+
+  La delega è necessaria affinché getPastVotes() restituisca valori corretti
+  al blocco di snapshot delle proposte.
 */
 
 import { ethers } from "hardhat";
-import { mine } from "@nomicfoundation/hardhat-network-helpers";
-import * as fs from "fs";
+import * as fs   from "fs";
 import * as path from "path";
 
 async function main() {
-    // Ottieni tutti gli account Hardhat
     const signers = await ethers.getSigners();
 
-    console.log("══════════════════════════════════════════════════");
-    console.log("  CompetenceDAO — Auto-delega di tutti i membri");
-    console.log("══════════════════════════════════════════════════\n");
+    console.log("══════════════════════════════════════════════════════════");
+    console.log("  CompetenceDAO — Verifica e delega voting power");
+    console.log("══════════════════════════════════════════════════════════\n");
 
-    // Carica gli indirizzi dei contratti
-    const addressesPath = path.join(__dirname, "..", "deployedAddresses.json");
-    const addresses = JSON.parse(fs.readFileSync(addressesPath, "utf8"));
+    // Carica gli indirizzi dal deploy precedente.
+    const addresses = JSON.parse(
+        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
+    );
     const token = await ethers.getContractAt("GovernanceToken", addresses.token);
 
-    // Etichette per i 15 membri (fondatore + 14 nuovi)
-    const labels = [
-        "Professor 1 (Fondatore)", "Professor 2", "Professor 3", "Professor 4", "Professor 5",
-        "PhD 1", "PhD 2", "PhD 3", "Master 1", "Master 2",
-        "Bachelor 1", "Bachelor 2", "Bachelor 3", "Student 1", "Student 2",
-    ];
+    // Verifica e delega per i primi 15 signers (0..14): il fondatore + i 14 membri.
+    console.log("🗳️  Stato delega per ogni membro:");
+    console.log(`   ${"Signer".padEnd(5)}  ${"Indirizzo".padEnd(44)}  ${"Balance COMP".padStart(14)}  ${"Votes (VP)".padStart(14)}  Stato`);
+    console.log(`   ${"─".repeat(5)}  ${"─".repeat(44)}  ${"─".repeat(14)}  ${"─".repeat(14)}  ${"─".repeat(12)}`);
 
-    // ============================================================================
-    // APPLICAZIONE DELEGA (ATTIVAZIONE VOTING POWER)
-    // ============================================================================
-    // Per ogni membro che possiede token:
-    //   - delegate(self) → attiva il voting power pari al saldo
-    //   - Es: un membro con 10.000 COMP ora ha 10.000 voti
+    let delegated = 0;
+    let alreadyOk = 0;
+
     for (let i = 0; i < 15; i++) {
-        // Legge il saldo del token del membro corrente nell'array
-        const bal = await token.balanceOf(signers[i].address);
-        
-        // Salta chi non ha token (es. account non utilizzati da hardhat)
-        if (bal === 0n) continue; 
-        
-        // Connette il firmatario corrente e chiama `delegate` passando il proprio stesso indirizzo
-        await token.connect(signers[i]).delegate(signers[i].address);
-        
-        // Conferma in log l'avvenuta attivazione per quel membro
-        console.log(`   ✅ ${labels[i]}: ${ethers.formatUnits(bal, 18)} voti`);
+        const member  = signers[i];
+        // balanceOf: token posseduti in assoluto (stake)
+        const balance = await token.balanceOf(member.address);
+        // getVotes:  VP attivo corrente (> 0 solo se delegato)
+        const votes   = await token.getVotes(member.address);
+
+        let stato = "—";
+
+        // Se ha token ma nessun VP attivo, delega a sé stesso.
+        if (balance > 0n && votes === 0n) {
+            await token.connect(member).delegate(member.address);
+            const votesAfter = await token.getVotes(member.address);
+            stato = `✅ delegato (${ethers.formatEther(votesAfter)} VP)`;
+            delegated++;
+        } else if (balance > 0n) {
+            // VP già attivo (delega già effettuata)
+            stato = `✔  già attivo`;
+            alreadyOk++;
+        } else {
+            // Signer non membro (nessun deposito)
+            stato = `⚠️  non membro`;
+        }
+
+        console.log(
+            `   ${String(i).padEnd(5)}  ${member.address}  ` +
+            `${ethers.formatEther(balance).padStart(14)}  ` +
+            `${ethers.formatEther(votes).padStart(14)}  ${stato}`
+        );
     }
 
-    // Mina 1 blocco per consolidare i checkpoint dei voti.
-    // ERC20Votes usa checkpoint per blocco: il voting power al blocco X
-    // è usato per le votazioni di proposte create a quel blocco.
-    await mine(1);
+    // Riepilogo
+    console.log(`\n   Nuove deleghe eseguite:      ${delegated}`);
+    console.log(`   Deleghe già attive:           ${alreadyOk}`);
+    console.log(`   Supply totale token:          ${ethers.formatEther(await token.totalSupply())} COMP`);
 
-    console.log("\n══════════════════════════════════════════════════");
-    console.log("  ✅ Tutti delegati! Prossimo: 04_upgradeCompetences.ts");
-    console.log("══════════════════════════════════════════════════");
+    console.log("\n══════════════════════════════════════════════════════════");
+    console.log("  ✅ Delega completata! Prossimo: 04_upgradeCompetences.ts");
+    console.log("══════════════════════════════════════════════════════════");
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1; });

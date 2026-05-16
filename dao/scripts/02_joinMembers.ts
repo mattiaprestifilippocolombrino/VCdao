@@ -1,82 +1,111 @@
 /*
-02_joinMembers.ts — 14 nuovi membri entrano nella DAO
+02_joinMembers.ts — 14 nuovi membri entrano nella DAO via joinDAO()
 ESECUZIONE: npx hardhat run scripts/02_joinMembers.ts --network localhost
 
-Ogni membro chiama joinDAO() inviando ETH al contratto GovernanceToken e ricevendo token in proporzione.
-Dopo il mint ogni membro parte come Student (coefficiente 1). Gli ETH vengono trasferiti automaticamente nel Treasury.
-Il fondatore (signers[0]) è già entrato nel deploy con 100 ETH. Qui entrano i restanti 14 membri (signers[1..14]).
+PREREQUISITI: 01_deploy.ts già eseguito (deployedAddresses.json presente).
 
-DEPOSITI PER RUOLO:
-- 4 Professors:  60-90 ETH   → 60.000-90.000 COMP
-- 3 PhDs:        20-30 ETH   → 20.000-30.000 COMP
-- 2 Masters:     10-15 ETH   → 10.000-15.000 COMP
-- 3 Bachelors:   5-8 ETH     → 5.000-8.000 COMP
-- 2 Students:    1-2 ETH     → 1.000-2.000 COMP
+Ogni membro chiama joinDAO() inviando ETH al GovernanceToken.
+La funzione applica la formula VP stake:
+  tokens = effectiveDiff × 100 × weightStake × 10^18 / (MAX_DEPOSIT × BASIS_POINTS)
+dove effectiveDiff è la differenza di deposito effettivo capped a 100 ETH.
 
-ESECUZIONE: npx hardhat run scripts/02_joinMembers.ts --network localhost
+Gli ETH vengono inoltrati automaticamente al Treasury.
+Ogni membro riceve lo stato Student (grade = 0).
+La delega (eseguita nel prossimo script) è necessaria per attivare il VP.
+
+DISTRIBUZIONE RUOLI (corrispondenti allo script 04 di upgrade):
+  signers[1]  → 80 ETH  (ProfessorCS)
+  signers[2]  → 90 ETH  (ProfessorCS)
+  signers[3]  → 70 ETH  (ProfessorCE)
+  signers[4]  → 60 ETH  (ProfessorEE)
+  signers[5]  → 30 ETH  (PhDCS)
+  signers[6]  → 25 ETH  (PhDCS)
+  signers[7]  → 20 ETH  (PhDCE)
+  signers[8]  → 15 ETH  (MasterCS)
+  signers[9]  → 10 ETH  (MasterCS)
+  signers[10] →  8 ETH  (MasterCE)
+  signers[11] →  5 ETH  (BachelorCS)
+  signers[12] →  6 ETH  (BachelorCS)
+  signers[13] →  2 ETH  (Student)
+  signers[14] →  1 ETH  (Student)
 */
 
 import { ethers } from "hardhat";
-import * as fs from "fs";
+import * as fs   from "fs";
 import * as path from "path";
 
 async function main() {
-    // Ottieni tutti gli account Hardhat (20 account di default)
     const signers = await ethers.getSigners();
 
-    console.log("══════════════════════════════════════════════════");
-    console.log("  CompetenceDAO — 14 membri entrano nella DAO");
-    console.log("══════════════════════════════════════════════════\n");
+    console.log("══════════════════════════════════════════════════════════");
+    console.log("  CompetenceDAO — 14 nuovi membri entrano nella DAO");
+    console.log("══════════════════════════════════════════════════════════\n");
 
-    // Carica gli indirizzi dei contratti salvati dallo script 01
-    const addressesPath = path.join(__dirname, "..", "deployedAddresses.json");
-    const addresses = JSON.parse(fs.readFileSync(addressesPath, "utf8"));
+    // Carica gli indirizzi salvati dallo script 01_deploy.ts.
+    // Questo evita di dover rideploy i contratti a ogni script.
+    const addresses = JSON.parse(
+        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
+    );
 
-    // Riconnettiti al contratto GovernanceToken già deployato
+    // Riconnessione al GovernanceToken già deployato tramite il suo ABI e indirizzo.
     const token = await ethers.getContractAt("GovernanceToken", addresses.token);
 
-    // Lista dei 14 nuovi membri con ETH da depositare.
-    // signers[0] è il fondatore (già entrato nel deploy), quindi partiamo da signers[1].
-    // Ogni membro chiama joinDAO() → riceve COMP, gli ETH vanno nel Treasury.
+    // Definizione dei 14 nuovi membri.
+    // signers[0] è il fondatore (già entrato nel deploy), si parte da signers[1].
+    // L'etichetta (label) indica il grado che verrà assegnato nel passo 04.
+    // Il deposito in ETH determina il VP stake di ogni membro.
     const members = [
-        { signer: signers[1], eth: "80", label: "Professor CS 2" },
-        { signer: signers[2], eth: "90", label: "Professor CS 3" },
-        { signer: signers[3], eth: "70", label: "Professor CE 1" },
-        { signer: signers[4], eth: "60", label: "Professor EE 1" },
-        { signer: signers[5], eth: "30", label: "PhD CS 1" },
-        { signer: signers[6], eth: "25", label: "PhD CS 2" },
-        { signer: signers[7], eth: "20", label: "PhD CE 1" },
-        { signer: signers[8], eth: "15", label: "Master CS 1" },
-        { signer: signers[9], eth: "10", label: "Master CS 2" },
-        { signer: signers[10], eth: "8", label: "Master CE 1" },
-        { signer: signers[11], eth: "5", label: "Bachelor CS 1" },
-        { signer: signers[12], eth: "6", label: "Bachelor CS 2" },
-        { signer: signers[13], eth: "2", label: "Student 1" },
-        { signer: signers[14], eth: "1", label: "Student 2" },
+        { signer: signers[1],  eth: "80", label: "ProfessorCS (futuro)" },
+        { signer: signers[2],  eth: "90", label: "ProfessorCS (futuro)" },
+        { signer: signers[3],  eth: "70", label: "ProfessorCE (futuro)" },
+        { signer: signers[4],  eth: "60", label: "ProfessorEE (futuro)" },
+        { signer: signers[5],  eth: "30", label: "PhDCS (futuro)"       },
+        { signer: signers[6],  eth: "25", label: "PhDCS (futuro)"       },
+        { signer: signers[7],  eth: "20", label: "PhDCE (futuro)"       },
+        { signer: signers[8],  eth: "15", label: "MasterCS (futuro)"    },
+        { signer: signers[9],  eth: "10", label: "MasterCS (futuro)"    },
+        { signer: signers[10], eth: "8",  label: "MasterCE (futuro)"    },
+        { signer: signers[11], eth: "5",  label: "BachelorCS (futuro)"  },
+        { signer: signers[12], eth: "6",  label: "BachelorCS (futuro)"  },
+        { signer: signers[13], eth: "2",  label: "Student"              },
+        { signer: signers[14], eth: "1",  label: "Student"              },
     ];
 
-    // ============================================================================
-    // ESECUZIONE DEL JOIN PER OGNI MEMBRO
-    // ============================================================================
-    // Per ogni membro: chiama joinDAO() inviando ETH e controlla il balance di token ottenuti.
+    console.log("📥 Ingresso membri nella DAO:");
+    console.log(`   ${"Indirizzo".padEnd(44)} ${"ETH dep.".padStart(10)}  ${"COMP mint.".padStart(14)}  Label`);
+    console.log(`   ${"─".repeat(44)} ${"─".repeat(10)}  ${"─".repeat(14)}  ${"─".repeat(20)}`);
+
+    let totalMinted = 0n;
+
     for (const m of members) {
-        // Connette l'account associato (signer) al contratto e chiama la funzione joinDAO().
-        // Il parametro `value` invia fisicamente gli importi in ETH dichiarati nel dizionario sopra.
+        // joinDAO() verifica che il membro non esista, invia gli ETH al Treasury,
+        // minta i token COMP e applica l'auto-delega per attivare il VP.
         await token.connect(m.signer).joinDAO({ value: ethers.parseEther(m.eth) });
-        
-        // Verifica quanti token (COMP) ha ora in bilancio l'indirizzo appena entrato.
+
+        // Legge il balance COMP dell'account appena entrato.
         const bal = await token.balanceOf(m.signer.address);
-        
-        // Stampa a schermo formattando i BigInt (che hanno 18 zeri di default) in formato leggibile.
-        console.log(`   💰 ${m.label}: ${m.eth} ETH → ${ethers.formatUnits(bal, 18)} COMP`);
+        totalMinted += bal;
+
+        console.log(
+            `   ${m.signer.address}  ${m.eth.padStart(10)} ETH  ${ethers.formatEther(bal).padStart(14)} COMP  ${m.label}`
+        );
     }
 
-    // Stampa la supply totale dopo tutti i join
-    const supply = await token.totalSupply();
-    console.log(`\n   📊 Supply totale: ${ethers.formatUnits(supply, 18)} COMP`);
-    console.log("\n══════════════════════════════════════════════════");
+    // Riepilogo complessivo dopo tutti i join.
+    const totalSupply  = await token.totalSupply();
+    const treasuryBal  = (await ethers.getContractAt("Treasury", addresses.treasury)).getBalance
+        ? await (await ethers.getContractAt("Treasury", addresses.treasury)).getBalance()
+        : 0n;
+
+    console.log("\n📊 Riepilogo post-join:");
+    console.log(`   Supply totale:       ${ethers.formatEther(totalSupply)} COMP`);
+    console.log(`   Treasury balance:    ${ethers.formatEther(
+        await (await ethers.getContractAt("Treasury", addresses.treasury)).getBalance()
+    )} ETH`);
+
+    console.log("\n══════════════════════════════════════════════════════════");
     console.log("  ✅ 14 membri aggiunti! Prossimo: 03_delegateAll.ts");
-    console.log("══════════════════════════════════════════════════");
+    console.log("══════════════════════════════════════════════════════════");
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1; });

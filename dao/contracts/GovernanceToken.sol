@@ -318,7 +318,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     //  Funzioni di Stake
     // =========================================================================
 
-    //Funzione di utility che calcola scoreStake = min(deposited / MAX_DEPOSIT, 1) × 100 ∈ [0, 100]
+    //Funzione legacy di utility che calcola scoreStake = min(deposited / MAX_DEPOSIT, 1) × 100 ∈ [0, 100]
     function getStakeScoreForDeposit(
         uint256 deposited
     ) public pure returns (uint256) {
@@ -341,12 +341,19 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         uint256 depositAmount,
         uint256 previousDeposit
     ) internal view returns (uint256) {
-        uint256 oldScore = getStakeScoreForDeposit(previousDeposit);
-        uint256 newScore = getStakeScoreForDeposit(
-            previousDeposit + depositAmount
-        );
-        uint256 scoreDiff = newScore - oldScore; // ΔscoreSoldi ∈ [0, 100]
-        return (scoreDiff * weightStake * 1e18) / BASIS_POINTS;
+        uint256 oldEffective = previousDeposit > MAX_DEPOSIT
+            ? MAX_DEPOSIT
+            : previousDeposit; //Se previousDeposit è maggiore del deposito massimo, viene considerato come deposito massimo, altrimenti si prende previousDeposit
+        uint256 newTotal = previousDeposit + depositAmount;
+        uint256 newEffective = newTotal > MAX_DEPOSIT ? MAX_DEPOSIT : newTotal; //Se newTotal è maggiore del deposito massimo, viene considerato come deposito massimo, altrimenti si prende newTotal
+
+        uint256 effectiveDiff = newEffective - oldEffective;
+
+        // Calcolo ottimizzato per non perdere i decimali di precisione.
+        // Equivale alla logica originale (scoreDiff * weightStake * 1e18) / BASIS_POINTS
+        return
+            (effectiveDiff * 100 * weightStake * 1e18) /
+            (MAX_DEPOSIT * BASIS_POINTS);
     }
 
     /* Funzione usata dagli utenti per entrare nella DAO, chiamabile da chiunque, senza passare da una proposal.

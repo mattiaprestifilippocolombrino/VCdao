@@ -2,23 +2,27 @@
   "proposals": [
     {
       "amount": "10",
-      "desc": "Proposta A: Investire 10 ETH in Laboratorio AI",
-      "id": "35872635947901559569913075928930624396006351208564195820518612090497500125837"
+      "topicId": 0,
+      "desc": "Proposta A: Investire 10 ETH in Laboratorio AI (Computer Science)",
+      "id": "24872441489467605260330823381925549847499062485533269195359236677756038673191"
     },
     {
-      "amount": "3",
-      "desc": "Proposta B: Investire 3 ETH in Ricerca Congiunta",
-      "id": "30555178830102482681895331828612543697913328951855753864420360198184566477099"
+      "amount": "5",
+      "topicId": 1,
+      "desc": "Proposta B: Investire 5 ETH in Progetto Robotica (Computer Engineering)",
+      "id": "16893237343089636277185313084115325570493239883515189382601506358688800586677"
     },
     {
-      "amount": "8",
-      "desc": "Proposta C: Investire 8 ETH in Espansione Campus",
-      "id": "99737548760967852525590539823977679156189892028430245444878841952516660715677"
+      "amount": "7",
+      "topicId": 2,
+      "desc": "Proposta C: Investire 7 ETH in Sensori EE (Electronic Engineering)",
+      "id": "61492170468992994455790337136115028905323170254331689058338968957417920797369"
     },
     {
       "amount": "1",
-      "desc": "Proposta D: Investire 1 ETH in Fondo Sperimentale",
-      "id": "40063108747342664031240995972522874611216659873456556251353274011582767335025"
+      "topicId": 0,
+      "desc": "Proposta D: Investire 1 ETH in Fondo Generale (Computer Science)",
+      "id": "64643183046596809374805929846567257175738068210525553593582762929018087483052"
     }
   ]
 }
