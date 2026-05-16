@@ -73,6 +73,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
 
     let currentGasPrice: bigint;
     const gasReport: Record<string, bigint> = {};
+    let totalGas: bigint = 0n;
 
     before(async function () {
         const feeData = await ethers.provider.getFeeData();
@@ -255,6 +256,9 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         
         for (const [action, gas] of Object.entries(gasReport)) {
             const isHighlight = action.startsWith("[");
+            if (!isHighlight) {
+                totalGas += gas;
+            }
             const prefix = isHighlight ? "   --> " : "   - ";
             console.log(`${prefix}${action.padEnd(35)} | Gas: ${String(gas).padStart(8)} | USD: ${fmtUsd(gasCostInUsd(gas)).padStart(8)}`);
             
@@ -266,6 +270,9 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
                 console.log(`   --------------------------------------------------------------------------------------------------`);
             }
         }
+        
+        console.log(`   🔥 COSTO TOTALE CICLO DAO (VC)      | Gas: ${String(totalGas).padStart(8)} | USD: ${fmtUsd(gasCostInUsd(totalGas)).padStart(8)}`);
+        console.log(`   ==================================================================================================\n`);
         
         console.log(`\n   📌 FOCUS ACCADEMICO & BEST PRACTICES PER LA TESI:`);
         console.log(`   --------------------------------------------------------------------------------------------------`);

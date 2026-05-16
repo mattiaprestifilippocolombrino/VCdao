@@ -1,0 +1,4 @@
+{
+    "js/ts.implicitProjectConfig.strict": true,
+    "js/ts.implicitProjectConfig.strictFunctionTypes": true
+}

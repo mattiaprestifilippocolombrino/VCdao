@@ -1,0 +1,27 @@
+{
+  "@context": [
+    "https://www.w3.org/2018/credentials/v1"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "UniversityDegreeCredential"
+  ],
+  "issuer": {
+    "id": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  },
+  "issuanceDate": "2026-05-13T15:36:43Z",
+  "credentialSubject": {
+    "id": "did:ethr:sepolia:0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+    "university": "University of Pisa",
+    "faculty": "Electronic Engineering",
+    "degreeTitle": "ProfessorEE",
+    "grade": "N/A"
+  },
+  "proof": {
+    "type": "EthereumEip712Signature2021",
+    "created": "2026-05-13T15:36:43Z",
+    "proofPurpose": "assertionMethod",
+    "verificationMethod": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC#controller",
+    "proofValue": "0xf2d6797bed1fe8c4b9a2382509342c13d962abae4323eb5125140bfd53c37c03482076dda79f64cb325cd9cc797ddd0bd96e60098f0e159f9995da2eafa83c601c"
+  }
+}

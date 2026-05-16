@@ -1,0 +1,27 @@
+{
+  "@context": [
+    "https://www.w3.org/2018/credentials/v1"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "UniversityDegreeCredential"
+  ],
+  "issuer": {
+    "id": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  },
+  "issuanceDate": "2026-05-13T15:36:43Z",
+  "credentialSubject": {
+    "id": "did:ethr:sepolia:0x976EA74026E726554dB657fA54763abd0C3a0aa9",
+    "university": "University of Pisa",
+    "faculty": "Computer Science",
+    "degreeTitle": "PhDCS",
+    "grade": "N/A"
+  },
+  "proof": {
+    "type": "EthereumEip712Signature2021",
+    "created": "2026-05-13T15:36:43Z",
+    "proofPurpose": "assertionMethod",
+    "verificationMethod": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC#controller",
+    "proofValue": "0x3bafe332d5aa8c4e65bc18332ff4054c06761d6593b472278c0394c196186ceb0a45d6cbf0e89a672b6c291d7fd0684d43966447863881047d13ba67123fad541c"
+  }
+}
