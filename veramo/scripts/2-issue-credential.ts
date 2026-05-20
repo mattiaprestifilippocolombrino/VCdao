@@ -4,7 +4,7 @@ Script 2 — Emissione VC (modello unico)
 Questo script è l'entry-point didattico consigliato:
 - emette VC dal modulo Veramo
 - salva in `veramo/credentials`
-- copia le stesse VC in `dao/scripts/shared-credentials`
+- copia le stesse VC in `shared-credentials`
 così il modulo DAO può consumarle direttamente.
 */
 

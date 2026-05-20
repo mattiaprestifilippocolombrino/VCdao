@@ -15,7 +15,7 @@ pragma solidity ^0.8.28;
     GovernorTimelockControl: Gestisce il timelock, che fornisce un delay di sicurezza prima dell'esecuzione.
 
     Novità della versione multi-topic:
-    ogni proposta è associata a un topicId (0=CS, 1=CE, 2=EE) tramite proposeWithTopic().
+    ogni proposta è associata a un topicId tramite proposeWithTopic().
     Il voting power usato per votare una proposta non è solo il balance ERC20Votes, ma:
         VP = stakeVP(account, snapshot) + skillVP(account, topicId, snapshot)
     Anche quorum e superquorum vengono calcolati sulla supply totale del topic specifico:
@@ -60,8 +60,9 @@ contract MyGovernor is
     /// Riferimento tipizzato al token per accedere ai metodi skill custom.
     GovernanceToken public immutable governanceToken;
 
+
     /*
-    Mapping che associa ogni proposalId al suo topicId (0=CS, 1=CE, 2=EE). 
+    Mapping che associa ogni proposalId al suo topicId.
     Viene impostato quando una proposta viene creata con proposeWithTopic().
     Viene usato quando si vuole recuperare il topicId di una proposta, in modo da
     recuperare la supply del voting power legato alle skill di un topic. 
@@ -132,7 +133,7 @@ contract MyGovernor is
     durante il voto.
     La funzione verifica che il topicId sia valido, chiama super.propose() per creare la proposta
     e poi salva il topicId in proposalTopic[proposalId].
-    @param topicId  0 = Computer Science, 1 = Computer Engineering, 2 = Electronic Engineering
+    @param topicId  Topic riconosciuto dal GovernanceToken/SkillCalculator
     */
     function proposeWithTopic(
         address[] memory targets,
@@ -178,7 +179,7 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
             super._castVote(proposalId, account, support, reason, topicParams);
     }
 
-    /*
+     /*
     Funzione di lettura del voting power di un membro, usata dal Governor durante il voto.
     VP_totale(account, timepoint, topic) = token.getPastVotes(account, timepoint)                        [stake]
                  + governanceToken.getPastSkillVotes(account, topic, timepoint)
@@ -214,7 +215,7 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
 
     /*
     Precedentemente il quorum era calcolato solo come percentuale della supply totale del token. 
-    Ora, invece, una proposta CS/CE/EE deve usare la supply votabile del proprio topic:
+    Ora, invece, ogni proposta usa la supply votabile del proprio topic:
     supplyTopic = supplyStake + supplySkill(topicId).
     Problema: La funzione quorum(timepoint) non riceve il proposalId, quindi non conosce
     il topic. Soluzione: _quorumReached e state() hanno accesso al proposalId
@@ -287,7 +288,8 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
             );
     }
 
-    /*
+
+   /*
     Calcola il superquorum assoluto del topic al timepoint.
     Il superquorum permette a una proposta molto supportata di risultare riuscita
     prima della fine naturale del votingPeriod, ma sempre rispettando il topic.
@@ -326,18 +328,18 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
 
     /// Controlla che il topic esista nel GovernanceToken.
     function _validateTopicId(uint256 topicId) internal view {
-        if (topicId >= governanceToken.NUM_TOPICS())
+        if (!governanceToken.isValidTopic(topicId))
             revert InvalidTopicId(topicId);
     }
 
-    /*
+
+   /*
     Override della funzione _quorumReached, che decide se una proposta ha superato il quorum.
     Sostituisce GovernorCountingSimple._quorumReached che chiamerebbe quorum(timepoint).
     Recupera il timepoint di snapshot della proposta e il topicId dal relativo mapping.
     Calcola il quorum relativo al topic della proposta usando la funzione ad hoc precedente.
     Recupera il numero di voti che hanno votato FOR e Abstain per la proposta. Confronta questo numero
     con il quorum sulla total supply di voting power. Se supera q, la proposta è valida.
-    CHIEDERE alla prof se lasciare l'architettura di openzeppelin che considera solo for+abstain, o includere anche i voti against.
     */
     function _quorumReached(
         uint256 proposalId
@@ -476,23 +478,15 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
     // ----- Stato della proposta (SuperQuorumFraction <-> TimelockControl) -----
 
     /*
-    Stato corrente di una proposta.
-    Unisce DUE logiche della vecchia versione:
-    1. Superquorum: può far passare la proposta PRIMA della scadenza.
-    2. Timelock: gestisce stati Queued -> Executed / Canceled.
-
-
-    */
-    /*
-Funzione che decide lo stato attuale di una proposta.
-Può restituire stati come: Pending, Active, Succeeded, Defeated, Queued, Executed, Canceled.
-Adattamento:durante lo stato Active, il numero di voti attuali viene confrontato con il superquorum
-calcolato sulla supply del topic della proposta.
-Lo stato attuale della proposta viene recuperato da .state() di Governor.
-Se lo stato è Active, si verifica se il superquorum è raggiunto usando la formula custom.
-Se i voti FOR sono maggiori del superquorum della totalsupply, e se sono maggiori dei voti against,
-la proposta passa allo stato Succeeded, usando .state() di GovernorSuperQuorumFraction. 
-Altrimenti resta in Active.
+    Funzione che decide lo stato attuale di una proposta.
+    Può restituire stati come: Pending, Active, Succeeded, Defeated, Queued, Executed, Canceled.
+    Adattamento:durante lo stato Active, il numero di voti attuali viene confrontato con il superquorum
+    calcolato sulla supply del topic della proposta.
+    Lo stato attuale della proposta viene recuperato da .state() di Governor.
+    Se lo stato è Active, si verifica se il superquorum è raggiunto usando la formula custom.
+    Se i voti FOR sono maggiori del superquorum della totalsupply, e se sono maggiori dei voti against,
+    la proposta passa allo stato Succeeded, usando .state() di GovernorSuperQuorumFraction. 
+    Altrimenti resta in Active.
 
    */
     function state(

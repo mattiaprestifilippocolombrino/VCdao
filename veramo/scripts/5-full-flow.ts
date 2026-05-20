@@ -75,14 +75,16 @@ async function main() {
   // 3. VERIFICA OFF-CHAIN E SELECTIVE DISCLOSURE
   // ============================================================================
   console.log("\n--- Step 3: Verify + selective processing ---")
-  // Carica i dati del token per ricreare a mano lo stesso dominio EIP-712 usato dall'Issuer.
+  // Carica l'issuer trusted e ricrea il dominio EIP-712 portabile usato dall'Issuer.
   const deployedPath = path.join(__dirname, "../../dao/deployedAddresses.json")
   const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf-8"))
   const domain = {
     name: "Universal VC Protocol",
     version: "1",
   }
-  const trustedIssuer = ethers.getAddress(deployed.issuer)
+  const trustedIssuers = new Set(
+    (deployed.trustedIssuers ?? [deployed.issuer]).map((issuer: string) => ethers.getAddress(issuer))
+  )
 
   let ok = 0
   let failed = 0
@@ -121,14 +123,15 @@ async function main() {
       )
       const recoveredAddress = ethers.getAddress(recovered)
       const issuerFromDid = parseIssuerAddressFromDid(String(vc.issuer?.id ?? ""))
-      if (recoveredAddress !== trustedIssuer || issuerFromDid !== trustedIssuer) {
+      if (!trustedIssuers.has(recoveredAddress) || !trustedIssuers.has(issuerFromDid)) {
         throw new Error("issuer non trusted")
       }
 
       const disclosed = vc.credentialSubject?.[DISCLOSED_FIELD]
       if (disclosed === undefined) throw new Error(`claim ${DISCLOSED_FIELD} mancante`)
 
-      console.log(`✅ ${holder.displayName} -> ${DISCLOSED_FIELD}: ${String(disclosed)}`)
+      const value = Array.isArray(disclosed) ? disclosed.join(", ") : String(disclosed)
+      console.log(`✅ ${holder.displayName} -> ${DISCLOSED_FIELD}: ${value}`)
       ok++
     } catch (error: any) {
       failed++
@@ -141,7 +144,7 @@ async function main() {
   console.log(`VC fallite: ${failed}`)
   console.log("Cartelle output:")
   console.log("- veramo/credentials")
-  console.log("- dao/scripts/shared-credentials")
+  console.log("- shared-credentials")
 
   if (failed > 0) process.exit(1)
 }

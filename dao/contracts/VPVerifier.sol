@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";      // Utility OpenZeppelin per recuperare l'address firmatario partendo dalla firma e dal digest, via ECDSA.
+
 /*
 Libreria Solidity utile a verificare on-chain una VC firmata off-chain con EIP-712.
 Prende i dati della credenziale, ricostruisce esattamente lo stesso hash digest che era stato firmato off-chain,
 e poi usa la firma per recuperare la chiave pubblica di chi lo ha firmato.
 Il contratto chiamante confronta poi questo address con il trusted issuer. Se coincidono, la VC è valida.
 */
-
-// Utility OpenZeppelin per recuperare l'address firmatario partendo dalla firma e dal digest, via ECDSA.
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 library VPVerifier {
     /*
@@ -21,6 +20,7 @@ library VPVerifier {
     */
     bytes32 internal constant ISSUER_TYPEHASH = keccak256("Issuer(string id)");
 
+    // Aggiornato: ora usiamo skills come array di stringhe, rimossi grade e title
     /// TypeHash della struct CredentialSubject, cioè il payload certificato sull'holder.
     bytes32 internal constant CREDENTIAL_SUBJECT_TYPEHASH =
         keccak256(
@@ -28,8 +28,7 @@ library VPVerifier {
             "string id,"
             "string university,"
             "string faculty,"
-            "string degreeTitle,"
-            "string grade"
+            "string[] skills"
             ")"
         );
 
@@ -46,8 +45,7 @@ library VPVerifier {
             "string id,"
             "string university,"
             "string faculty,"
-            "string degreeTitle,"
-            "string grade"
+            "string[] skills"
             ")"
             "Issuer("
             "string id"
@@ -63,18 +61,17 @@ library VPVerifier {
 
     /// Struct contenente i dati certificati relativi all'holder.
     struct CredentialSubject {
-        string id; // DID holder
-        string university; // Università
-        string faculty; // facolta / corso
-        string degreeTitle; // titolo topic-aware: BachelorCS | MasterCE | PhDEE | ProfessorEE | ...
-        string grade; // voto finale
+        string id;
+        string university;
+        string faculty;
+        string[] skills; // Array dinamico di skill
     }
 
     /// Struct contenente la VC completa: issuer, data di emissione e credentialSubject.
     struct VerifiableCredential {
-        Issuer issuer; // DID issuer
-        string issuanceDate; // Data di emissione
-        CredentialSubject credentialSubject; // payload dati utente
+        Issuer issuer;
+        string issuanceDate;
+        CredentialSubject credentialSubject;
     }
 
     /*
@@ -83,27 +80,31 @@ library VPVerifier {
     vanno sempre pre-hashate con keccak256(bytes(...)), come previsto dallo standard.
     */
 
-    /// Hash EIP-712 della struct Issuer. Hasha il typeHash e l'id dell'issuer.
+   /// Hash EIP-712 della struct Issuer. Hasha il typeHash e l'id dell'issuer.
     function hashIssuer(Issuer memory issuer) internal pure returns (bytes32) {
-        return
-            keccak256(abi.encode(ISSUER_TYPEHASH, keccak256(bytes(issuer.id))));
+        return keccak256(abi.encode(ISSUER_TYPEHASH, keccak256(bytes(issuer.id))));
+    }
+
+    // Funzione per hashare l'harray di skills
+    function hashSkills(string[] memory skills) internal pure returns (bytes32) {
+        bytes32[] memory skillHashes = new bytes32[](skills.length);
+        for (uint256 i = 0; i < skills.length; i++) {
+            skillHashes[i] = keccak256(bytes(skills[i]));
+        }
+        return keccak256(abi.encodePacked(skillHashes));
     }
 
     /// Hash EIP-712 della struct CredentialSubject con tutti i campi certificati.
-    function hashCredentialSubject(
-        CredentialSubject memory cs
-    ) internal pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    CREDENTIAL_SUBJECT_TYPEHASH,
-                    keccak256(bytes(cs.id)),
-                    keccak256(bytes(cs.university)),
-                    keccak256(bytes(cs.faculty)),
-                    keccak256(bytes(cs.degreeTitle)),
-                    keccak256(bytes(cs.grade))
-                )
-            );
+    function hashCredentialSubject(CredentialSubject memory cs) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                CREDENTIAL_SUBJECT_TYPEHASH,
+                keccak256(bytes(cs.id)),
+                keccak256(bytes(cs.university)),
+                keccak256(bytes(cs.faculty)),
+                hashSkills(cs.skills)
+            )
+        );
     }
 
     /*
@@ -111,18 +112,15 @@ library VPVerifier {
     Per i campi struct annidati non si usa abi.encode diretto della struct,
     ma i rispettivi hash già calcolati: hashIssuer e hashCredentialSubject.
     */
-    function hashVerifiableCredential(
-        VerifiableCredential memory vc
-    ) internal pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    VERIFIABLE_CREDENTIAL_TYPEHASH,
-                    hashIssuer(vc.issuer),
-                    keccak256(bytes(vc.issuanceDate)),
-                    hashCredentialSubject(vc.credentialSubject)
-                )
-            );
+    function hashVerifiableCredential(VerifiableCredential memory vc) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                VERIFIABLE_CREDENTIAL_TYPEHASH,
+                hashIssuer(vc.issuer),
+                keccak256(bytes(vc.issuanceDate)),
+                hashCredentialSubject(vc.credentialSubject)
+            )
+        );
     }
 
     /*
@@ -138,10 +136,7 @@ library VPVerifier {
         bytes32 domainSeparator
     ) internal pure returns (address signer) {
         bytes32 structHash = hashVerifiableCredential(vc);
-        bytes32 digest = keccak256(
-            abi.encodePacked("\x19\x01", domainSeparator, structHash)
-        );
-
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
         signer = ECDSA.recover(digest, signature);
     }
 }

@@ -69,11 +69,12 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
     console.warn("Le credenziali verranno generate, ma potrebbero non essere valide on-chain.\n");
   } else {
     const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf-8"));
-    const deployedIssuer = deployed.issuer ? ethers.getAddress(deployed.issuer) : null;
+    const deployedIssuers = (deployed.trustedIssuers ?? (deployed.issuer ? [deployed.issuer] : []))
+      .map((issuer: string) => ethers.getAddress(issuer));
     
-    if (deployedIssuer && deployedIssuer !== issuerWallet.address) {
+    if (deployedIssuers.length > 0 && !deployedIssuers.includes(issuerWallet.address)) {
       console.error("❌ ERRORE CRITICO DI COERENZA (MISTMATCH ISSUER) ❌");
-      console.error(`   Il contratto GovernanceToken è stato deployato fidandosi di: ${deployedIssuer}`);
+      console.error(`   Il contratto GovernanceToken si fida di: ${deployedIssuers.join(", ")}`);
       console.error(`   Ma questo script sta firmando le VC con il wallet:           ${issuerWallet.address}`);
       console.error("");
       console.error("💡 SOLUZIONE OBBLIGATORIA:");
@@ -120,8 +121,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
         id: holderDid,
         university: UNIVERSITY_INFO.name,
         faculty: holder.faculty,
-        degreeTitle: holder.degreeTitle,
-        grade: holder.grade,
+        skills: holder.skills,
       },
     };
 
@@ -150,7 +150,10 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
     fs.writeFileSync(localPath, JSON.stringify(credentialJson, null, 2), "utf-8");
     fs.writeFileSync(sharedPath, JSON.stringify(credentialJson, null, 2), "utf-8");
 
-    console.log(`   [${String(i + 1).padStart(2, "0")}/${HOLDERS.length}] ✔️  ${holder.degreeTitle.padEnd(12)} per ${holderDid}`);
+    console.log(
+      `   [${String(i + 1).padStart(2, "0")}/${HOLDERS.length}] ` +
+      `✔️  ${holder.skills.join(", ")} per ${holderDid}`
+    );
   }
 
   console.log("\n==========================================================");

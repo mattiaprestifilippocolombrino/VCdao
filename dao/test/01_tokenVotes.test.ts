@@ -50,7 +50,9 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     it("joinDAO() registra il membro come Student", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         expect(await token.isMember(alice.address)).to.be.true;
-        expect(await token.getMemberGrade(alice.address)).to.equal(0);
+        // Nessuna skill all'ingresso: array vuoto
+        const skills = await token.getMemberSkills(alice.address);
+        expect(skills.length).to.equal(0);
     });
 
     it("joinDAO() traccia correttamente stakeDeposited", async function () {
@@ -119,7 +121,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     it("upgradeSkill reverta se non dal Timelock", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         await expect(
-            token.upgradeSkill(alice.address, 4, hashLegacyProof("Professore"))
+            token.upgradeSkill(alice.address, [ethers.id("smart-contracts"), ethers.id("tokenomics")], "Proof test")
         ).to.be.revertedWithCustomError(token, "OnlyTimelock");
     });
 

@@ -91,6 +91,12 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
         await token.setTreasury(await treasury.getAddress());
         await treasury.setStartupRegistry(await registry.getAddress());
 
+        // 5b. SkillCalculator: necessario per validare topicId nelle proposte
+        const SC = await ethers.getContractFactory("SkillCalculator");
+        const calculator = await SC.deploy();
+        await calculator.waitForDeployment();
+        await token.setSkillCalculator(await calculator.getAddress());
+
         // 6. Governor
         const GV = await ethers.getContractFactory("MyGovernor");
         governor = await GV.deploy(

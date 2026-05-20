@@ -15,28 +15,10 @@ LOGICA DI VOTO MULTI-TOPIC:
   il chiamante usa castVote() normalmente; il Governor legge proposalTopic[proposalId]
   e lo passa a _getVotes() come parametro.
 
-DISTRIBUZIONE VP PER TOPIC (pesi 50/50, post-upgrade):
-  Signer  Grado        deposit  VP_stake   CS score  CE score  EE score
-  ──────────────────────────────────────────────────────────────────────
-  0       ProfessorCS  100 ETH  50 COMP    100       75        75
-  1       ProfessorCS  80 ETH   40 COMP    100       75        75
-  2       ProfessorCS  90 ETH   45 COMP    100       75        75
-  3       ProfessorCE  70 ETH   35 COMP    75        100       75
-  4       ProfessorEE  60 ETH   30 COMP    75        75        100
-  5       PhDCS        30 ETH   15 COMP    75        50        50
-  6       PhDCS        25 ETH   12.5 COMP  75        50        50
-  7       PhDCE        20 ETH   10 COMP    50        75        50
-  8       MasterCS     15 ETH   7.5 COMP   50        25        25
-  9       MasterCS     10 ETH   5 COMP     50        25        25
-  10      MasterCE     8 ETH    4 COMP     25        50        25
-  11      BachelorCS   5 ETH    2.5 COMP   25        0         0
-  12      BachelorCS   6 ETH    3 COMP     25        0         0
-
-RISULTATO ATTESO:
-  A (CS):  SUPERQUORUM → Succeeded early   (ProfessorCS dominano: 100% su CS)
-  B (CE):  Succeeded a fine periodo         (FOR > AGAINST, quorum raggiunto)
-  C (EE):  Defeated                         (AGAINST > FOR, nonostante quorum)
-  D (CS):  Defeated                         (sotto quorum, solo Bachelor votano)
+I topic e gli score sono definiti in SkillCalculator:
+  0 Web3 Infrastructure, 1 AI Products, 2 Digital Health, 3 Enterprise Software.
+Le VC assegnano skill realistiche come smart-contracts, tokenomics,
+machine-learning, digital-health, data-analysis e backend-java.
 */
 
 import { ethers } from "hardhat";
@@ -54,7 +36,12 @@ const STATES: Record<number, string> = {
     6: "Expired",  7: "Executed",
 };
 
-const TOPIC_LABELS: Record<number, string> = { 0: "CS", 1: "CE", 2: "EE" };
+const TOPIC_LABELS: Record<number, string> = {
+    0: "Web3",
+    1: "AI",
+    2: "Health",
+    3: "Enterprise",
+};
 
 async function main() {
     const signers = await ethers.getSigners();
@@ -81,7 +68,7 @@ async function main() {
     // vengono calcolati quorum e superquorum.
     const stakeSupply = await token.totalSupply();
     console.log(`📊 Supply totale stake: ${ethers.formatEther(stakeSupply)} COMP`);
-    for (let t = 0; t < 3; t++) {
+    for (let t = 0; t < 4; t++) {
         const skillSup = await token.getTotalSkillSupply(t);
         console.log(`   Supply skill ${TOPIC_LABELS[t]}: ${ethers.formatEther(skillSup)} VP`);
     }
@@ -107,54 +94,47 @@ async function main() {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA A — topic CS — SUPERQUORUM
-    //  I tre ProfessorCS (signers 0,1,2) e ProfessorCE (signer 3, 75% su CS)
-    //  cumulano abbastanza VP_CS da superare immediatamente il superquorum (70%).
-    //  Resultado atteso: Succeeded PRIMA della fine del voting period.
+    //  PROPOSTA A — topic Web3
+    //  Votano i membri con skill forti su smart contracts e tokenomics.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("🅰️  PROPOSTA A — topic CS — SUPERQUORUM:");
-    await governor.connect(signers[0]).castVote(pA.id, FOR);  // ProfessorCS 1 (100% su CS)
-    await governor.connect(signers[1]).castVote(pA.id, FOR);  // ProfessorCS 2 (100% su CS)
-    await governor.connect(signers[2]).castVote(pA.id, FOR);  // ProfessorCS 3 (100% su CS)
-    await governor.connect(signers[3]).castVote(pA.id, FOR);  // ProfessorCE   (75% su CS)
+    console.log("🅰️  PROPOSTA A — topic Web3:");
+    await governor.connect(signers[0]).castVote(pA.id, FOR);  // web3 lead
+    await governor.connect(signers[1]).castVote(pA.id, FOR);  // web3 lead
+    await governor.connect(signers[2]).castVote(pA.id, FOR);  // protocol analyst
+    await governor.connect(signers[10]).castVote(pA.id, FOR); // tokenomics analyst
     await printProposalStatus("Proposta A", pA);
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA B — topic CE — Quorum + maggioranza FOR
-    //  ProfessorCE (signer 3, 100% su CE), PhDCE (signer 7, 75%) e MasterCE
-    //  (signer 10, 50%) votano FOR. ProfessorCS (signer 0, 75% su CE) vota AGAINST.
+    //  PROPOSTA B — topic AI
+    //  Votano i membri con machine-learning e data-analysis.
     //  Risultato atteso: Succeeded a fine periodo.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("\n🅱️  PROPOSTA B — topic CE — Quorum + maggioranza FOR:");
-    await governor.connect(signers[3]).castVote(pB.id, FOR);     // ProfessorCE  (100% su CE)
-    await governor.connect(signers[7]).castVote(pB.id, FOR);     // PhDCE        (75% su CE)
-    await governor.connect(signers[10]).castVote(pB.id, FOR);    // MasterCE     (50% su CE)
-    await governor.connect(signers[0]).castVote(pB.id, AGAINST); // ProfessorCS  (75% su CE)
+    console.log("\n🅱️  PROPOSTA B — topic AI:");
+    await governor.connect(signers[3]).castVote(pB.id, FOR);     // ai product lead
+    await governor.connect(signers[6]).castVote(pB.id, FOR);     // ml engineer
+    await governor.connect(signers[8]).castVote(pB.id, FOR);     // data analyst
+    await governor.connect(signers[0]).castVote(pB.id, AGAINST); // web3 lead
     await printProposalStatus("Proposta B", pB);
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA C — topic EE — Quorum raggiunto, ma AGAINST vince
-    //  ProfessorEE (signer 4, 100% su EE) e PhDCS (signer 5, 50% su EE) → FOR.
-    //  I tre ProfessorCS (signers 0,1,2, ciascuno 75% su EE) → AGAINST.
-    //  Risultato atteso: Defeated (quorum raggiunto, ma FOR < AGAINST).
+    //  PROPOSTA C — topic Digital Health
+    //  I membri health votano FOR, altri gruppi votano AGAINST.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("\n🅲  PROPOSTA C — topic EE — Quorum raggiunto, AGAINST vince:");
-    await governor.connect(signers[4]).castVote(pC.id, FOR);     // ProfessorEE  (100% su EE)
-    await governor.connect(signers[5]).castVote(pC.id, FOR);     // PhDCS        (50% su EE)
-    await governor.connect(signers[0]).castVote(pC.id, AGAINST); // ProfessorCS  (75% su EE)
-    await governor.connect(signers[1]).castVote(pC.id, AGAINST); // ProfessorCS  (75% su EE)
-    await governor.connect(signers[2]).castVote(pC.id, AGAINST); // ProfessorCS  (75% su EE)
+    console.log("\n🅲  PROPOSTA C — topic Digital Health:");
+    await governor.connect(signers[4]).castVote(pC.id, FOR);     // health tech lead
+    await governor.connect(signers[7]).castVote(pC.id, FOR);     // health analyst
+    await governor.connect(signers[0]).castVote(pC.id, AGAINST); // web3 lead
+    await governor.connect(signers[1]).castVote(pC.id, AGAINST); // web3 lead
+    await governor.connect(signers[2]).castVote(pC.id, AGAINST); // protocol analyst
     await printProposalStatus("Proposta C", pC);
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA D — topic CS — Sotto quorum
-    //  Solo BachelorCS (signers 11,12) votano FOR. Il loro VP è troppo basso
-    //  per raggiungere il quorum (20% della supply topic CS).
-    //  Risultato atteso: Defeated (sotto quorum).
+    //  PROPOSTA D — topic Enterprise
+    //  Votano solo membri con VP limitato sul topic.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("\n🅳  PROPOSTA D — topic CS — Sotto quorum:");
-    await governor.connect(signers[11]).castVote(pD.id, FOR); // BachelorCS (25% su CS)
-    await governor.connect(signers[12]).castVote(pD.id, FOR); // BachelorCS (25% su CS)
+    console.log("\n🅳  PROPOSTA D — topic Enterprise:");
+    await governor.connect(signers[9]).castVote(pD.id, FOR);  // backend engineer
+    await governor.connect(signers[12]).castVote(pD.id, FOR); // junior data analyst
     await printProposalStatus("Proposta D", pD);
 
     // ── Fine voting period ────────────────────────────────────────────────────

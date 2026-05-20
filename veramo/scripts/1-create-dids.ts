@@ -6,11 +6,11 @@ CONTESTO DIDATTICO (SSI):
 Nel paradigma Self-Sovereign Identity, l'identità non è fornita da un ente centrale
 (come Google o lo Stato). Ogni attore genera la propria identità, detta DID (Decentralized
 Identifier), ancorandola crittograficamente (in questo caso su rete Ethereum - ethr DID).
-Questo script genera i DID per l'Università, per gli Studenti e per il Verificatore.
+Questo script genera i DID per l'Università, per i membri e per il Verificatore.
 ================================================================================
 */
 import { agent } from '../agent/setup'
-import { ACTORS, UNIVERSITY_INFO, HOLDERS, CREDENTIAL_LABELS } from '../types/credentials'
+import { ACTORS, UNIVERSITY_INFO, HOLDERS } from '../types/credentials'
 
 /**
 Funzione che crea un DID se non esiste, altrimenti lo recupera dal database.
@@ -40,14 +40,13 @@ async function main() {
   console.log(`   ${issuer.isNew ? 'Creato' : 'Esistente'}: ${issuer.did}`)
 
   // ============================================================================
-  // 2. SETUP HOLDERS (Studenti e Professori)
+  // 2. SETUP HOLDERS (membri che riceveranno skill certificate)
   // ============================================================================
   // Gli holder sono coloro che riceveranno le credenziali (il loro indirizzo).
   console.log(`\n🎓 Holder (${HOLDERS.length} totali):`)
   for (const holder of HOLDERS) {
     const result = await getOrCreateDID(holder.alias)
-    const label = CREDENTIAL_LABELS[holder.degreeTitle]
-    console.log(`   - ${holder.displayName} [${label}]`)
+    console.log(`   - ${holder.displayName} [${holder.skills.join(', ')}]`)
     console.log(`     DID: ${result.did}`)
   }
 

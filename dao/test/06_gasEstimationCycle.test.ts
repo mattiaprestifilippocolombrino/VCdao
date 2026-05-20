@@ -26,21 +26,24 @@ const ETH_PRICE_USD = 2100; // Valore aggiornato per la tesi
 const VC_TYPES = {
     Issuer: [{ name: "id", type: "string" }],
     CredentialSubject: [
-        { name: "id", type: "string" },
-        { name: "university", type: "string" },
-        { name: "faculty", type: "string" },
-        { name: "degreeTitle", type: "string" },
-        { name: "grade", type: "string" },
+        { name: "id",         type: "string"   },
+        { name: "university", type: "string"   },
+        { name: "faculty",    type: "string"   },
+        { name: "skills",     type: "string[]" },
     ],
     VerifiableCredential: [
-        { name: "issuer", type: "Issuer" },
-        { name: "issuanceDate", type: "string" },
+        { name: "issuer",            type: "Issuer"            },
+        { name: "issuanceDate",      type: "string"            },
         { name: "credentialSubject", type: "CredentialSubject" },
     ],
 };
 
 function hashLegacyProof(proof: string): string {
     return ethers.keccak256(ethers.toUtf8Bytes(proof));
+}
+
+function skillIds(names: string[]): string[] {
+    return names.map((name) => ethers.id(name));
 }
 
 function fmtUsd(usd: number): string {
@@ -112,6 +115,15 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
 
         await token.setTrustedIssuer(issuer.address);
         await token.setTreasury(await treasury.getAddress());
+
+        // Deploy SkillCalculator
+        const Calculator = await ethers.getContractFactory("SkillCalculator");
+        const txCalc = await Calculator.getDeployTransaction();
+        const receiptCalc = await (await deployer.sendTransaction(txCalc)).wait();
+        gasReport["Deploy SkillCalculator"] = receiptCalc!.gasUsed;
+        const calculator = Calculator.attach(receiptCalc!.contractAddress!) as any;
+        await token.setSkillCalculator(await calculator.getAddress());
+
         const govAddr = await governor.getAddress();
         await timelock.grantRole(await timelock.PROPOSER_ROLE(), govAddr);
         await timelock.grantRole(await timelock.EXECUTOR_ROLE(), ethers.ZeroAddress);
@@ -158,7 +170,8 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
             issuer: { id: issuerDid },
             issuanceDate: "2026-01-15T10:00:00Z",
             credentialSubject: {
-                id: holderDid, university: "Pisa", faculty: "CS", degreeTitle: "PhDCS", grade: "110"
+                id: holderDid, university: "Pisa", faculty: "Protocol Security",
+                skills: ["smart-contracts", "tokenomics"],
             },
         };
         const signature = await issuer.signTypedData({ name: "Universal VC Protocol", version: "1" }, VC_TYPES, vcData);
@@ -177,7 +190,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         await deployer.sendTransaction({ to: tlAddr, value: ethers.parseEther("1") });
         const signerTL = await ethers.getSigner(tlAddr);
         
-        const txLeg = await token.connect(signerTL).upgradeSkill(member2.address, 3, hashLegacyProof("PhDCS"));
+        const txLeg = await token.connect(signerTL).upgradeSkill(member2.address, skillIds(["smart-contracts"]), hashLegacyProof("legacy skill"));
         const receiptLeg = await txLeg.wait();
         await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [tlAddr] });
         
@@ -193,7 +206,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
 
     it("6. Proposta e Vote Lifecycle", async function () {
         // Creazione Proposta
-        const calldata = token.interface.encodeFunctionData("upgradeSkill", [member1.address, 4, ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
+        const calldata = token.interface.encodeFunctionData("upgradeSkill", [member1.address, skillIds(["backend-java", "data-analysis"]), ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
         const desc = "Promuovi Member1";
         const txProp = await governor.connect(member1).proposeWithTopic([await token.getAddress()], [0n], [calldata], desc, 0);
         const receiptProp = await txProp.wait();
@@ -232,7 +245,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const pid = (this as any).proposalId;
         await network.provider.send("hardhat_mine", ["0x35"]); // Salta Voting Period
         
-        const calldata = token.interface.encodeFunctionData("upgradeSkill", [member1.address, 4, ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
+        const calldata = token.interface.encodeFunctionData("upgradeSkill", [member1.address, skillIds(["backend-java", "data-analysis"]), ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
         const descHash = ethers.id("Promuovi Member1");
         
         const txQueue = await governor.queue([await token.getAddress()], [0n], [calldata], descHash);

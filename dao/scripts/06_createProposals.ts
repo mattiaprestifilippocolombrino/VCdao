@@ -8,14 +8,14 @@ FLUSSO DI UNA PROPOSTA:
   proposeWithTopic() → (votingDelay) → Active → castVote() →
   (votingPeriod) → Succeeded/Defeated → queue() → (timelockDelay) → execute()
 
-Le proposte sono associate a un topicId (0=CS, 1=CE, 2=EE) tramite proposeWithTopic().
+Le proposte sono associate a un topicId tramite proposeWithTopic().
 Il topicId influenza il VP skill usato nel voto e il calcolo del quorum.
 
 PROPOSTE CREATE:
-  A — "Lab AI"      (10 ETH, topic CS) → vince con SUPERQUORUM (ProfessorCS dominanti)
-  B — "Robotica"    (5 ETH,  topic CE) → vince a fine periodo (maggioranza FOR)
-  C — "Sensori EE"  (7 ETH,  topic EE) → quorum raggiunto, ma AGAINST > FOR → Defeated
-  D — "Fondo Gen."  (1 ETH,  topic CS) → sotto quorum (solo BachelorCS votano) → Defeated
+  A — Audit protocollo DeFi       (10 ETH, topic Web3)
+  B — Piattaforma AI decisionale  (5 ETH,  topic AI)
+  C — Interoperabilità sanitaria  (7 ETH,  topic Digital Health)
+  D — Migrazione gestionale Java  (1 ETH,  topic Enterprise)
 
 Gli ID e i parametri delle proposte vengono salvati in proposalState.json
 per essere letti dagli script 07 e 08.
@@ -25,11 +25,17 @@ import { ethers } from "hardhat";
 import * as fs   from "fs";
 import * as path from "path";
 
-// Costanti topic — devono corrispondere alle costanti di GovernanceToken.sol
-const TOPIC_CS = 0;
-const TOPIC_CE = 1;
-const TOPIC_EE = 2;
-const TOPIC_LABELS: Record<number, string> = { 0: "CS", 1: "CE", 2: "EE" };
+// Costanti topic — devono corrispondere a SkillCalculator.sol
+const TOPIC_WEB3 = 0;
+const TOPIC_AI = 1;
+const TOPIC_HEALTH = 2;
+const TOPIC_ENTERPRISE = 3;
+const TOPIC_LABELS: Record<number, string> = {
+    0: "Web3",
+    1: "AI",
+    2: "Health",
+    3: "Enterprise",
+};
 
 async function main() {
     console.log("══════════════════════════════════════════════════════════");
@@ -50,27 +56,27 @@ async function main() {
     const proposals = [
         {
             amount:  "10",
-            topicId: TOPIC_CS,
-            desc:    "Proposta A: Investire 10 ETH in Laboratorio AI (Computer Science)",
+            topicId: TOPIC_WEB3,
+            desc:    "Proposta A: Investire 10 ETH in audit di protocollo DeFi",
             // Risultato atteso: SUPERQUORUM → Succeeded early
         },
         {
             amount:  "5",
-            topicId: TOPIC_CE,
-            desc:    "Proposta B: Investire 5 ETH in Progetto Robotica (Computer Engineering)",
+            topicId: TOPIC_AI,
+            desc:    "Proposta B: Investire 5 ETH in piattaforma AI decisionale",
             // Risultato atteso: Succeeded a fine periodo (quorum raggiunto, FOR > AGAINST)
         },
         {
             amount:  "7",
-            topicId: TOPIC_EE,
-            desc:    "Proposta C: Investire 7 ETH in Sensori EE (Electronic Engineering)",
+            topicId: TOPIC_HEALTH,
+            desc:    "Proposta C: Investire 7 ETH in interoperabilita sanitaria digitale",
             // Risultato atteso: Defeated (quorum raggiunto, ma AGAINST > FOR)
         },
         {
             amount:  "1",
-            topicId: TOPIC_CS,
-            desc:    "Proposta D: Investire 1 ETH in Fondo Generale (Computer Science)",
-            // Risultato atteso: Defeated (sotto quorum — solo Bachelor votano)
+            topicId: TOPIC_ENTERPRISE,
+            desc:    "Proposta D: Investire 1 ETH in migrazione gestionale Java",
+            // Risultato atteso: Defeated (sotto quorum — pochi membri votano)
         },
     ];
 

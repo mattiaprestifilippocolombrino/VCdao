@@ -5,7 +5,7 @@ SCRIPT 4: Verifica crittografica VC (modello unico Veramo/DAO)
 CONTESTO DIDATTICO:
 Dimostra come la validazione avvenga in modo matematico. Chi riceve la Credenziale
 prende i dati in chiaro (payload), li ri-hasha usando il protocollo descritto dal
-"domain" EIP-712 (Nome, Versione, ChainId, Contract Address), e, tramite la firma e 
+"domain" EIP-712 condiviso (Nome e Versione), e, tramite la firma e 
 l'hashing, recupera matematicamente l'indirizzo pubblico di chi aveva firmato (l'Università).
 Se l'indirizzo coincide, la competenza è considerata valida e inalterata.
 ================================================================================
@@ -20,7 +20,6 @@ import {
   CREDENTIALS_DIR,
   VC_TYPES,
   HOLDERS,
-  CREDENTIAL_LABELS,
 } from "../types/credentials"
 
 function parseIssuerAddressFromDid(issuerDid: string): string {
@@ -49,8 +48,8 @@ async function main() {
   // ============================================================================
   // 1. CARICAMENTO PARAMETRI DAO E DOMINIO
   // ============================================================================
-  // Poiché usiamo le firme EIP-712, il dominio (che include il chainId e l'indirizzo del contratto)
-  // è essenziale per la rigenerazione esatta dell'Hash (digest).
+  // Poiché usiamo firme EIP-712 portabili, il dominio condiviso contiene solo
+  // name/version: deve combaciare con UNIVERSAL_DOMAIN_SEPARATOR nel contratto.
   const deployedPath = path.join(__dirname, "../../dao/deployedAddresses.json")
   if (!fs.existsSync(deployedPath)) {
     throw new Error(`File ${deployedPath} non trovato. Esegui prima dao/scripts/01_deploy.ts`)
@@ -59,7 +58,7 @@ async function main() {
   if (!deployed?.token || !ethers.isAddress(deployed.token)) {
     throw new Error("deployedAddresses.json non contiene un token valido")
   }
-  if (!deployed?.issuer || !ethers.isAddress(deployed.issuer)) {
+  if (!deployed?.issuer && (!Array.isArray(deployed?.trustedIssuers) || deployed.trustedIssuers.length === 0)) {
     throw new Error("deployedAddresses.json non contiene un issuer valido")
   }
 
@@ -67,14 +66,16 @@ async function main() {
     name: "Universal VC Protocol",
     version: "1",
   }
-  const trustedIssuer = ethers.getAddress(deployed.issuer)
+  const trustedIssuers = new Set(
+    (deployed.trustedIssuers ?? [deployed.issuer]).map((issuer: string) => ethers.getAddress(issuer))
+  )
 
   let verifiedCount = 0
   let failedCount = 0
 
   for (const holder of HOLDERS) {
     const filePath = path.join(__dirname, "..", CREDENTIALS_DIR, `${holder.alias}.json`)
-    const label = CREDENTIAL_LABELS[holder.degreeTitle]
+    const label = holder.skills.join(", ")
 
     if (!fs.existsSync(filePath)) {
       console.log(`⚠️  ${holder.displayName} [${label}] — file non trovato: ${filePath}`)
@@ -125,16 +126,16 @@ async function main() {
       const recoveredAddress = ethers.getAddress(recovered)
       const issuerFromDid = parseIssuerAddressFromDid(String(vc.issuer?.id ?? ""))
 
-      if (recoveredAddress !== trustedIssuer) {
+      if (!trustedIssuers.has(recoveredAddress)) {
         throw new Error(
-          `firma non trusted: recovered=${recoveredAddress}, trusted=${trustedIssuer}`
+          `firma non trusted: recovered=${recoveredAddress}, trusted=${[...trustedIssuers].join(", ")}`
         )
       }
-      if (issuerFromDid !== trustedIssuer) {
-        throw new Error(`issuer DID non trusted: did=${issuerFromDid}, trusted=${trustedIssuer}`)
+      if (!trustedIssuers.has(issuerFromDid)) {
+        throw new Error(`issuer DID non trusted: did=${issuerFromDid}, trusted=${[...trustedIssuers].join(", ")}`)
       }
 
-      console.log(`✅ ${holder.displayName} — ${label} (issuer: ${recoveredAddress})`)
+      console.log(`✅ ${holder.displayName} — skills: ${label} (issuer: ${recoveredAddress})`)
       verifiedCount++
     } catch (error: any) {
       console.log(`❌ ${holder.displayName} — VERIFICA FALLITA`)

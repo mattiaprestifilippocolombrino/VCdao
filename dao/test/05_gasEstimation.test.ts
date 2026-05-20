@@ -18,15 +18,14 @@ const ETH_PRICE_USD = 2500; // Valore di riferimento ETH in USD per la tesi
 const VC_TYPES = {
     Issuer: [{ name: "id", type: "string" }],
     CredentialSubject: [
-        { name: "id", type: "string" },
-        { name: "university", type: "string" },
-        { name: "faculty", type: "string" },
-        { name: "degreeTitle", type: "string" },
-        { name: "grade", type: "string" },
+        { name: "id",         type: "string"   },
+        { name: "university", type: "string"   },
+        { name: "faculty",    type: "string"   },
+        { name: "skills",     type: "string[]" },
     ],
     VerifiableCredential: [
-        { name: "issuer", type: "Issuer" },
-        { name: "issuanceDate", type: "string" },
+        { name: "issuer",            type: "Issuer"            },
+        { name: "issuanceDate",      type: "string"            },
         { name: "credentialSubject", type: "CredentialSubject" },
     ],
 };
@@ -34,6 +33,10 @@ const VC_TYPES = {
 // Funzione helper per simulare una prova "legacy" senza EIP-712
 function hashLegacyProof(proof: string): string {
     return ethers.keccak256(ethers.toUtf8Bytes(proof));
+}
+
+function skillIds(names: string[]): string[] {
+    return names.map((name) => ethers.id(name));
 }
 
 // Formatta un valore USD in formato testuale leggibile
@@ -80,6 +83,12 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         await treasury.waitForDeployment();
         await token.setTreasury(await treasury.getAddress());
         
+        // 2.b Deploy SkillCalculator
+        const Calculator = await ethers.getContractFactory("SkillCalculator");
+        const calculator = await Calculator.deploy();
+        await calculator.waitForDeployment();
+        await token.setSkillCalculator(await calculator.getAddress());
+
         // I membri entrano nella DAO (necessario per fare l'upgrade)
         await token.connect(member1).joinDAO({ value: ethers.parseEther("5") });
         await token.connect(member1).delegate(member1.address);
@@ -88,13 +97,13 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
     });
 
     // Simula la firma EIP-712 off-chain da parte dell'Università (Issuer)
-    async function signVC(holderDid: string, issuerDid: string, degreeTitle: string) {
+    async function signVC(holderDid: string, issuerDid: string, skills: string[]) {
         const vcData = {
             issuer: { id: issuerDid },
             issuanceDate: "2026-01-15T10:00:00Z",
             credentialSubject: {
                 id: holderDid, university: "University of Pisa",
-                faculty: "Computer Science", degreeTitle, grade: "110/110",
+                faculty: "Computer Science", skills,
             },
         };
         const signature = await issuer.signTypedData(
@@ -122,7 +131,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         await token.connect(member1).registerDID(holderDid);
         
         // Generazione VC off-chain
-        const { vcData, signature } = await signVC(holderDid, issuerDid, "PhDCS");
+        const { vcData, signature } = await signVC(holderDid, issuerDid, ["smart-contracts", "tokenomics"]);
 
         // Transazione 1: Upgrade con VC EIP-712 (Self-Sovereign)
         // L'utente chiama direttamente passando la prova crittografica.
@@ -133,7 +142,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         // Transazione 2: Upgrade legacy (Centralizzato)
         // Simulato chiamandolo dal Timelock, non effettua nessuna decodifica EIP-712.
         const txLeg = await callAsTimelock(s =>
-            token.connect(s).upgradeSkill(member2.address, 3, hashLegacyProof("PhDCS"))
+            token.connect(s).upgradeSkill(member2.address, skillIds(["smart-contracts"]), hashLegacyProof("legacy skill"))
         );
         const receiptLeg = await (txLeg as any).wait();
         const gasLegacy: bigint = receiptLeg!.gasUsed;
@@ -159,7 +168,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
 
         // Verifiche di coerenza di base
         expect(gasTotal).to.be.greaterThan(50000n);
-        expect(gasTotal).to.be.lessThan(600000n);
+        expect(gasTotal).to.be.lessThan(700000n);
         expect(overhead).to.be.greaterThan(0n);
     });
 });

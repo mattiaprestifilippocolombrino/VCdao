@@ -10,24 +10,24 @@ La funzione applica la formula VP stake:
 dove effectiveDiff è la differenza di deposito effettivo capped a 100 ETH.
 
 Gli ETH vengono inoltrati automaticamente al Treasury.
-Ogni membro riceve lo stato Student (grade = 0).
+Le skill arriveranno dopo tramite VC: qui si gestisce solo lo stake.
 La delega (eseguita nel prossimo script) è necessaria per attivare il VP.
 
-DISTRIBUZIONE RUOLI (corrispondenti allo script 04 di upgrade):
-  signers[1]  → 80 ETH  (ProfessorCS)
-  signers[2]  → 90 ETH  (ProfessorCS)
-  signers[3]  → 70 ETH  (ProfessorCE)
-  signers[4]  → 60 ETH  (ProfessorEE)
-  signers[5]  → 30 ETH  (PhDCS)
-  signers[6]  → 25 ETH  (PhDCS)
-  signers[7]  → 20 ETH  (PhDCE)
-  signers[8]  → 15 ETH  (MasterCS)
-  signers[9]  → 10 ETH  (MasterCS)
-  signers[10] →  8 ETH  (MasterCE)
-  signers[11] →  5 ETH  (BachelorCS)
-  signers[12] →  6 ETH  (BachelorCS)
-  signers[13] →  2 ETH  (Student)
-  signers[14] →  1 ETH  (Student)
+DISTRIBUZIONE DIDATTICA (le label anticipano le VC dello script 04):
+  signers[1]  → 80 ETH  (Web3 lead)
+  signers[2]  → 90 ETH  (Protocol analyst)
+  signers[3]  → 70 ETH  (AI product lead)
+  signers[4]  → 60 ETH  (Health tech lead)
+  signers[5]  → 30 ETH  (Enterprise architect)
+  signers[6]  → 25 ETH  (Machine learning engineer)
+  signers[7]  → 20 ETH  (Health analyst)
+  signers[8]  → 15 ETH  (Data analyst)
+  signers[9]  → 10 ETH  (Backend engineer)
+  signers[10] →  8 ETH  (Tokenomics analyst)
+  signers[11] →  5 ETH  (Smart contract auditor)
+  signers[12] →  6 ETH  (Junior data analyst)
+  signers[13] →  2 ETH  (Observer)
+  signers[14] →  1 ETH  (Observer)
 */
 
 import { ethers } from "hardhat";
@@ -52,23 +52,23 @@ async function main() {
 
     // Definizione dei 14 nuovi membri.
     // signers[0] è il fondatore (già entrato nel deploy), si parte da signers[1].
-    // L'etichetta (label) indica il grado che verrà assegnato nel passo 04.
+    // L'etichetta (label) indica le skill che arriveranno nel passo 04.
     // Il deposito in ETH determina il VP stake di ogni membro.
     const members = [
-        { signer: signers[1],  eth: "80", label: "ProfessorCS (futuro)" },
-        { signer: signers[2],  eth: "90", label: "ProfessorCS (futuro)" },
-        { signer: signers[3],  eth: "70", label: "ProfessorCE (futuro)" },
-        { signer: signers[4],  eth: "60", label: "ProfessorEE (futuro)" },
-        { signer: signers[5],  eth: "30", label: "PhDCS (futuro)"       },
-        { signer: signers[6],  eth: "25", label: "PhDCS (futuro)"       },
-        { signer: signers[7],  eth: "20", label: "PhDCE (futuro)"       },
-        { signer: signers[8],  eth: "15", label: "MasterCS (futuro)"    },
-        { signer: signers[9],  eth: "10", label: "MasterCS (futuro)"    },
-        { signer: signers[10], eth: "8",  label: "MasterCE (futuro)"    },
-        { signer: signers[11], eth: "5",  label: "BachelorCS (futuro)"  },
-        { signer: signers[12], eth: "6",  label: "BachelorCS (futuro)"  },
-        { signer: signers[13], eth: "2",  label: "Student"              },
-        { signer: signers[14], eth: "1",  label: "Student"              },
+        { signer: signers[1],  eth: "80", label: "Web3 lead (futuro)"              },
+        { signer: signers[2],  eth: "90", label: "Protocol analyst (futuro)"       },
+        { signer: signers[3],  eth: "70", label: "AI product lead (futuro)"        },
+        { signer: signers[4],  eth: "60", label: "Health tech lead (futuro)"       },
+        { signer: signers[5],  eth: "30", label: "Enterprise architect (futuro)"   },
+        { signer: signers[6],  eth: "25", label: "Machine learning engineer"       },
+        { signer: signers[7],  eth: "20", label: "Health analyst (futuro)"         },
+        { signer: signers[8],  eth: "15", label: "Data analyst (futuro)"           },
+        { signer: signers[9],  eth: "10", label: "Backend engineer (futuro)"       },
+        { signer: signers[10], eth: "8",  label: "Tokenomics analyst (futuro)"     },
+        { signer: signers[11], eth: "5",  label: "Smart contract auditor (futuro)" },
+        { signer: signers[12], eth: "6",  label: "Junior data analyst (futuro)"    },
+        { signer: signers[13], eth: "2",  label: "Observer"                        },
+        { signer: signers[14], eth: "1",  label: "Observer"                        },
     ];
 
     console.log("📥 Ingresso membri nella DAO:");
@@ -93,14 +93,13 @@ async function main() {
 
     // Riepilogo complessivo dopo tutti i join.
     const totalSupply  = await token.totalSupply();
-    const treasuryBal  = (await ethers.getContractAt("Treasury", addresses.treasury)).getBalance
-        ? await (await ethers.getContractAt("Treasury", addresses.treasury)).getBalance()
-        : 0n;
+    const treasuryContract = await ethers.getContractAt("Treasury", addresses.treasury);
+    const treasuryBal = await treasuryContract.getBalance();
 
     console.log("\n📊 Riepilogo post-join:");
     console.log(`   Supply totale:       ${ethers.formatEther(totalSupply)} COMP`);
     console.log(`   Treasury balance:    ${ethers.formatEther(
-        await (await ethers.getContractAt("Treasury", addresses.treasury)).getBalance()
+        treasuryBal
     )} ETH`);
 
     console.log("\n══════════════════════════════════════════════════════════");

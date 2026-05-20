@@ -25,7 +25,7 @@ CONFIGURAZIONE POST-DEPLOY:
 FORMULA VP (con pesi 50/50):
   VP_totale(account, topic) = VP_stake(account) + VP_skill(account, topic)
   VP_stake  = min(stakeDeposited / 100 ETH, 1) × weightStake  × 10^18 / BASIS_POINTS
-  VP_skill  = skillScore(grado, topic)          × weightSkill × 10^18 / BASIS_POINTS
+  VP_skill  = skillScore(skills[], topic)       × weightSkill × 10^18 / BASIS_POINTS
 */
 
 import { ethers } from "hardhat";
@@ -77,8 +77,8 @@ async function main() {
 
     // ── 2. GovernanceToken ───────────────────────────────────────────────────
     // Implementa ERC20 + ERC20Votes per i token stake, e aggiunge checkpoint
-    // per il VP skill (multi-topic: CS=0, CE=1, EE=2).
-    // Il costruttore richiede: indirizzo Timelock, weightSkill, weightStake.
+    // per il VP skill multi-topic.
+    // I pesi weightSkill/weightStake sono ora modificabili via governance.
     const Token = await ethers.getContractFactory("GovernanceToken");
     const token = await Token.deploy(
         await timelock.getAddress(),
@@ -87,11 +87,25 @@ async function main() {
     );
     await token.waitForDeployment();
     console.log(`2️⃣  GovernanceToken:    ${await token.getAddress()}`);
-    console.log(`   └─ skillScore: Student=0 | Bachelor=25 | Master=50 | PhD=75 | Professor=100`);
+
+    // ── 2b. SkillCalculator ────────────────────────────────────────────────────
+    // Contratto esterno immutabile (0 SLOAD) che calcola il VP da skill.
+    // Ogni topic assegna uno score diverso per ogni skill riconosciuta:
+    //   smart-contracts, machine-learning, tokenomics,
+    //   digital-health, data-analysis, backend-java.
+    // Applica anche boost combinazionali definiti nel calcolatore.
+    // La governance può sostituirlo in futuro chiamando setSkillCalculator().
+    const Calculator = await ethers.getContractFactory("SkillCalculator");
+    const calculator = await Calculator.deploy();
+    await calculator.waitForDeployment();
+    console.log(`2b SkillCalculator:    ${await calculator.getAddress()}`);
+    console.log(`   └─ Skill: smart-contracts | machine-learning | tokenomics | digital-health | data-analysis | backend-java`);
+    console.log(`   └─ Topic: Web3 Infrastructure | AI Products | Digital Health | Enterprise Software`);
+    console.log(`   └─ Boost: web3(smart-contracts+tokenomics) | ai(machine-learning+data-analysis) | health(digital-health+data-analysis) | enterprise(backend-java+data-analysis)`);
 
     // ── 3. MyGovernor ────────────────────────────────────────────────────────
     // Motore di governance multi-topic.
-    // Ogni proposta è associata a un topicId (CS/CE/EE) via proposeWithTopic().
+    // Ogni proposta è associata a un topicId via proposeWithTopic().
     // Il voting power usato è VP_stake + VP_skill(topic).
     // Il quorum e il superquorum vengono calcolati sulla supply totale del topic.
     //
@@ -130,12 +144,14 @@ async function main() {
     // ETH direttamente al Treasury. setTreasury() è one-shot: solo il deployer
     // può chiamarla e solo una volta.
     await token.setTreasury(await treasury.getAddress());
+    await token.setSkillCalculator(await calculator.getAddress());
     console.log(`   🔗 GovernanceToken → Treasury collegato`);
+    console.log(`   🔗 GovernanceToken → SkillCalculator collegato`);
 
     // ── Issuer fidato ────────────────────────────────────────────────────────
     // L'issuer è l'entità (es. università) che firma le Verifiable Credential
-    // con EIP-712. Il contratto verificherà che ogni VC sia firmata da questo
-    // address prima di accettare un upgrade di competenza.
+    // con EIP-712. Il contratto supporta un insieme di issuer fidati; qui
+    // configuriamo il primo issuer durante il bootstrap.
     // Obbligatorio come variabile d'ambiente per sicurezza (nessun fallback implicito).
     const issuerFromEnv = process.env.DAO_TRUSTED_ISSUER;
     if (!issuerFromEnv || !ethers.isAddress(issuerFromEnv))
@@ -145,7 +161,7 @@ async function main() {
         );
     const issuerAddress = ethers.getAddress(issuerFromEnv);
     await token.setTrustedIssuer(issuerAddress);
-    console.log(`   🏛️  Issuer fidato: ${issuerAddress}`);
+    console.log(`   🏛️  Primo issuer fidato: ${issuerAddress}`);
 
     // ── Fondatore entra nella DAO ─────────────────────────────────────────────
     // Il deployer (signers[0]) entra come primo membro con il deposito massimo.
@@ -227,14 +243,16 @@ async function main() {
     // ai contratti già deployati senza rideploy.
     const addresses = {
         token:        await token.getAddress(),
+        calculator:   await calculator.getAddress(),
         timelock:     await timelock.getAddress(),
         governor:     governorAddr,
         treasury:     await treasury.getAddress(),
         registry:     await registry.getAddress(),
         mockStartup:  await mockStartup.getAddress(),
-        mockStartupId: 0,                            // ID della MockStartup nel registry
+        mockStartupId: 0,
         deployer:     deployer.address,
         issuer:       issuerAddress,
+        trustedIssuers: [issuerAddress],
         weightSkill:  WEIGHT_SKILL,
         weightStake:  WEIGHT_STAKE,
     };

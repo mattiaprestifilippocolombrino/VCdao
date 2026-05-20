@@ -1,46 +1,49 @@
 /**
  * Single source of truth per il modello VC usato da tutto il progetto:
- * - modulo Veramo (issue/verify/disclosure)
- * - modulo DAO (upgradeSkillWithVC on-chain)
- *
- * I degreeTitle ora includono il suffisso topic: CS / CE / EE.
- * Esempio: "ProfessorCS", "PhDCE", "MasterEE".
+ * - Veramo emette credenziali EIP-712 con `skills: string[]`
+ * - GovernanceToken verifica la VC e salva solo hash di skill
+ * - SkillCalculator assegna punteggi e boost per topic
  */
 
-// Topic IDs — devono corrispondere alle costanti del contratto GovernanceToken.
-export const TOPIC_CS = 0;
-export const TOPIC_CE = 1;
-export const TOPIC_EE = 2;
-export const NUM_TOPICS = 3;
+export const TOPIC_WEB3 = 0;
+export const TOPIC_AI = 1;
+export const TOPIC_HEALTH = 2;
+export const TOPIC_ENTERPRISE = 3;
+export const NUM_TOPICS = 4;
 
-export type TopicSuffix = "CS" | "CE" | "EE";
-export type DegreeLevel = "Bachelor" | "Master" | "PhD" | "Professor";
-export type DegreeTitle =
-  | "BachelorCS" | "MasterCS" | "PhDCS" | "ProfessorCS"
-  | "BachelorCE" | "MasterCE" | "PhDCE" | "ProfessorCE"
-  | "BachelorEE" | "MasterEE" | "PhDEE" | "ProfessorEE";
+export const TOPIC_LABELS: Record<number, string> = {
+  [TOPIC_WEB3]: "Web3 Infrastructure",
+  [TOPIC_AI]: "AI Products",
+  [TOPIC_HEALTH]: "Digital Health",
+  [TOPIC_ENTERPRISE]: "Enterprise Software",
+};
 
-export const DEGREE_TITLES: DegreeTitle[] = [
-  "BachelorCS", "MasterCS", "PhDCS", "ProfessorCS",
-  "BachelorCE", "MasterCE", "PhDCE", "ProfessorCE",
-  "BachelorEE", "MasterEE", "PhDEE", "ProfessorEE",
+export type SkillName =
+  | "smart-contracts"
+  | "machine-learning"
+  | "tokenomics"
+  | "digital-health"
+  | "data-analysis"
+  | "backend-java";
+
+export const RECOGNIZED_SKILLS: SkillName[] = [
+  "smart-contracts",
+  "machine-learning",
+  "tokenomics",
+  "digital-health",
+  "data-analysis",
+  "backend-java",
 ];
 
-// Topic di appartenenza di ogni degreeTitle.
-export const DEGREE_TITLE_TOPIC: Record<DegreeTitle, number> = {
-  BachelorCS: TOPIC_CS, MasterCS: TOPIC_CS, PhDCS: TOPIC_CS, ProfessorCS: TOPIC_CS,
-  BachelorCE: TOPIC_CE, MasterCE: TOPIC_CE, PhDCE: TOPIC_CE, ProfessorCE: TOPIC_CE,
-  BachelorEE: TOPIC_EE, MasterEE: TOPIC_EE, PhDEE: TOPIC_EE, ProfessorEE: TOPIC_EE,
+export const SKILL_LABELS: Record<SkillName, string> = {
+  "smart-contracts": "Smart contracts",
+  "machine-learning": "Machine learning",
+  tokenomics: "Tokenomics",
+  "digital-health": "Digital health",
+  "data-analysis": "Data analysis",
+  "backend-java": "Backend Java",
 };
 
-// Label human-readable per i gradi.
-export const CREDENTIAL_LABELS: Record<DegreeTitle, string> = {
-  BachelorCS: "Bachelor (CS)", MasterCS: "Master (CS)", PhDCS: "PhD (CS)", ProfessorCS: "Professor (CS)",
-  BachelorCE: "Bachelor (CE)", MasterCE: "Master (CE)", PhDCE: "PhD (CE)", ProfessorCE: "Professor (CE)",
-  BachelorEE: "Bachelor (EE)", MasterEE: "Master (EE)", PhDEE: "PhD (EE)", ProfessorEE: "Professor (EE)",
-};
-
-// Informazioni sull'università emittente.
 export const UNIVERSITY_INFO = {
   name: "University of Pisa",
   alias: "university-of-pisa",
@@ -51,39 +54,106 @@ export interface HolderPlan {
   alias: string;
   displayName: string;
   signerIndex: number;
-  degreeTitle: DegreeTitle;
   faculty: string;
-  grade: string;
+  skills: SkillName[];
 }
 
 /*
- * Distribuzione dei 13 holder (signers 0–12) con gradi e topic misti.
- * Questo array guida sia l'emissione delle VC (veramo) sia l'upgrade (04_upgradeCompetences.ts).
- *
- * Distribuzione:
- *   signers 0–2  → ProfessorCS (topic CS, score 100/75/75)
- *   signer  3    → ProfessorCE (topic CE, score 100/75/75)
- *   signer  4    → ProfessorEE (topic EE, score 100/75/75)
- *   signers 5–6  → PhDCS  (topic CS, score 75/50/50)
- *   signer  7    → PhDCE  (topic CE, score 75/50/50)
- *   signers 8–9  → MasterCS (topic CS, score 50/25/25)
- *   signers 10   → MasterCE (topic CE, score 50/25/25)
- *   signers 11–12→ BachelorCS (topic CS, score 25/0/0)
+ * Distribuzione didattica dei 13 holder usati dagli script locali.
+ * Ogni holder riceve una VC con skill realistiche, non un grado accademico.
  */
 export const HOLDERS: HolderPlan[] = [
-  { alias: "professor-cs-1", displayName: "Professor CS 1", signerIndex: 0,  degreeTitle: "ProfessorCS", faculty: "Computer Science",        grade: "N/A" },
-  { alias: "professor-cs-2", displayName: "Professor CS 2", signerIndex: 1,  degreeTitle: "ProfessorCS", faculty: "Computer Science",        grade: "N/A" },
-  { alias: "professor-cs-3", displayName: "Professor CS 3", signerIndex: 2,  degreeTitle: "ProfessorCS", faculty: "Computer Science",        grade: "N/A" },
-  { alias: "professor-ce-1", displayName: "Professor CE 1", signerIndex: 3,  degreeTitle: "ProfessorCE", faculty: "Computer Engineering",    grade: "N/A" },
-  { alias: "professor-ee-1", displayName: "Professor EE 1", signerIndex: 4,  degreeTitle: "ProfessorEE", faculty: "Electronic Engineering",  grade: "N/A" },
-  { alias: "phd-cs-1",       displayName: "PhD CS 1",       signerIndex: 5,  degreeTitle: "PhDCS",       faculty: "Computer Science",        grade: "N/A" },
-  { alias: "phd-cs-2",       displayName: "PhD CS 2",       signerIndex: 6,  degreeTitle: "PhDCS",       faculty: "Computer Science",        grade: "N/A" },
-  { alias: "phd-ce-1",       displayName: "PhD CE 1",       signerIndex: 7,  degreeTitle: "PhDCE",       faculty: "Computer Engineering",    grade: "N/A" },
-  { alias: "master-cs-1",    displayName: "Master CS 1",    signerIndex: 8,  degreeTitle: "MasterCS",    faculty: "Computer Science",        grade: "110/110" },
-  { alias: "master-cs-2",    displayName: "Master CS 2",    signerIndex: 9,  degreeTitle: "MasterCS",    faculty: "Computer Science",        grade: "108/110" },
-  { alias: "master-ce-1",    displayName: "Master CE 1",    signerIndex: 10, degreeTitle: "MasterCE",    faculty: "Computer Engineering",    grade: "105/110" },
-  { alias: "bachelor-cs-1",  displayName: "Bachelor CS 1",  signerIndex: 11, degreeTitle: "BachelorCS",  faculty: "Computer Science",        grade: "104/110" },
-  { alias: "bachelor-cs-2",  displayName: "Bachelor CS 2",  signerIndex: 12, degreeTitle: "BachelorCS",  faculty: "Computer Science",        grade: "103/110" },
+  {
+    alias: "web3-lead-1",
+    displayName: "Web3 Lead 1",
+    signerIndex: 0,
+    faculty: "Blockchain Engineering",
+    skills: ["smart-contracts", "tokenomics"],
+  },
+  {
+    alias: "web3-lead-2",
+    displayName: "Web3 Lead 2",
+    signerIndex: 1,
+    faculty: "Blockchain Engineering",
+    skills: ["smart-contracts", "tokenomics", "data-analysis"],
+  },
+  {
+    alias: "protocol-analyst",
+    displayName: "Protocol Analyst",
+    signerIndex: 2,
+    faculty: "Digital Economy",
+    skills: ["tokenomics", "smart-contracts"],
+  },
+  {
+    alias: "ai-product-lead",
+    displayName: "AI Product Lead",
+    signerIndex: 3,
+    faculty: "Artificial Intelligence",
+    skills: ["machine-learning", "data-analysis"],
+  },
+  {
+    alias: "health-tech-lead",
+    displayName: "Health Tech Lead",
+    signerIndex: 4,
+    faculty: "Digital Health",
+    skills: ["digital-health", "data-analysis"],
+  },
+  {
+    alias: "enterprise-architect",
+    displayName: "Enterprise Architect",
+    signerIndex: 5,
+    faculty: "Software Engineering",
+    skills: ["backend-java", "data-analysis"],
+  },
+  {
+    alias: "ml-engineer",
+    displayName: "Machine Learning Engineer",
+    signerIndex: 6,
+    faculty: "Artificial Intelligence",
+    skills: ["machine-learning"],
+  },
+  {
+    alias: "health-analyst",
+    displayName: "Health Analyst",
+    signerIndex: 7,
+    faculty: "Digital Health",
+    skills: ["digital-health"],
+  },
+  {
+    alias: "data-analyst",
+    displayName: "Data Analyst",
+    signerIndex: 8,
+    faculty: "Data Science",
+    skills: ["data-analysis"],
+  },
+  {
+    alias: "backend-engineer",
+    displayName: "Backend Engineer",
+    signerIndex: 9,
+    faculty: "Software Engineering",
+    skills: ["backend-java"],
+  },
+  {
+    alias: "tokenomics-analyst",
+    displayName: "Tokenomics Analyst",
+    signerIndex: 10,
+    faculty: "Digital Economy",
+    skills: ["tokenomics"],
+  },
+  {
+    alias: "smart-contract-auditor",
+    displayName: "Smart Contract Auditor",
+    signerIndex: 11,
+    faculty: "Cybersecurity",
+    skills: ["smart-contracts"],
+  },
+  {
+    alias: "junior-data-analyst",
+    displayName: "Junior Data Analyst",
+    signerIndex: 12,
+    faculty: "Data Science",
+    skills: ["data-analysis"],
+  },
 ];
 
 export const ACTORS = {
@@ -92,22 +162,20 @@ export const ACTORS = {
 } as const;
 
 export const CREDENTIAL_CONTEXT = ["https://www.w3.org/2018/credentials/v1"] as const;
-export const CREDENTIAL_TYPE     = ["VerifiableCredential", "UniversityDegreeCredential"] as const;
+export const CREDENTIAL_TYPE = ["VerifiableCredential", "SkillCredential"] as const;
 
-// Struttura EIP-712 per la firma della VC (invariata rispetto alla versione precedente).
 export const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
   Issuer: [{ name: "id", type: "string" }],
   CredentialSubject: [
-    { name: "id",          type: "string" },
-    { name: "university",  type: "string" },
-    { name: "faculty",     type: "string" },
-    { name: "degreeTitle", type: "string" },
-    { name: "grade",       type: "string" },
+    { name: "id", type: "string" },
+    { name: "university", type: "string" },
+    { name: "faculty", type: "string" },
+    { name: "skills", type: "string[]" },
   ],
   VerifiableCredential: [
-    { name: "issuer",             type: "Issuer" },
-    { name: "issuanceDate",       type: "string" },
-    { name: "credentialSubject",  type: "CredentialSubject" },
+    { name: "issuer", type: "Issuer" },
+    { name: "issuanceDate", type: "string" },
+    { name: "credentialSubject", type: "CredentialSubject" },
   ],
 };
 
@@ -115,13 +183,12 @@ export interface CredentialSubject {
   id: string;
   university: string;
   faculty: string;
-  degreeTitle: DegreeTitle;
-  grade: string;
+  skills: SkillName[];
 }
 
 export interface DaoCompatibleVc {
   "@context": readonly ["https://www.w3.org/2018/credentials/v1"];
-  type: readonly ["VerifiableCredential", "UniversityDegreeCredential"];
+  type: readonly ["VerifiableCredential", "SkillCredential"];
   issuer: { id: string };
   issuanceDate: string;
   credentialSubject: CredentialSubject;
@@ -134,9 +201,9 @@ export interface DaoCompatibleVc {
   };
 }
 
-export const DISCLOSED_FIELD       = "degreeTitle" as const;
-export const ALL_CREDENTIAL_FIELDS = ["degreeTitle", "university", "faculty", "grade"] as const;
-export const CREDENTIALS_DIR           = "./credentials";
+export const DISCLOSED_FIELD = "skills" as const;
+export const ALL_CREDENTIAL_FIELDS = ["skills", "university", "faculty"] as const;
+export const CREDENTIALS_DIR = "./credentials";
 export const DAO_SHARED_CREDENTIALS_DIR = "shared-credentials";
 
 export function getCredentialPath(holderAlias: string, baseDir: string = CREDENTIALS_DIR): string {

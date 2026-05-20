@@ -20,7 +20,7 @@ FLUSSO DI ESECUZIONE:
 RISULTATO ATTESO:
   - Proposta A: ESEGUITA — 10 ETH investiti nella MockStartup
   - Proposta B: ESEGUITA —  5 ETH investiti nella MockStartup
-  - Proposta C: DEFEATED  — quorum raggiunto, but AGAINST > FOR
+  - Proposta C: DEFEATED  — quorum raggiunto, ma AGAINST > FOR
   - Proposta D: DEFEATED  — sotto quorum
 */
 
@@ -36,7 +36,12 @@ const STATES: Record<number, string> = {
     6: "Expired",  7: "Executed",
 };
 
-const TOPIC_LABELS: Record<number, string> = { 0: "CS", 1: "CE", 2: "EE" };
+const TOPIC_LABELS: Record<number, string> = {
+    0: "Web3",
+    1: "AI",
+    2: "Health",
+    3: "Enterprise",
+};
 
 async function main() {
     console.log("══════════════════════════════════════════════════════════");

@@ -4,8 +4,8 @@ SCRIPT 3: Selective Disclosure (Policy-driven)
 
 CONTESTO DIDATTICO (SSI):
 La Selective Disclosure è un principio chiave della Privacy by Design.
-Invece di rivelare all'azienda/DAO tutta la tua identità (Nome, Cognome, Voti), 
-riveli SOLO il claim richiesto (es. il titolo di studio). In questo PoC,
+Invece di rivelare all'azienda/DAO tutta la tua identità, 
+riveli SOLO il claim richiesto (in questo caso l'array delle skill). In questo PoC,
 simuliamo un Verifier che off-chain decide programmaticamente di scartare i dati
 personali mostrando a schermo solo la "Competence", mantenendo la validità crittografica.
 ================================================================================
@@ -48,6 +48,7 @@ async function main() {
   // 1. CARICAMENTO INDIRIZZI E CHIAVI DAO
   // ============================================================================
   // Serve per ricreare il dominio EIP-712 identico a quello con cui l'Issuer ha firmato.
+  // In questo PoC il dominio è portabile e contiene solo name/version.
   const deployedPath = path.join(__dirname, "../../dao/deployedAddresses.json")
   if (!fs.existsSync(deployedPath)) {
     throw new Error(`File ${deployedPath} non trovato. Esegui prima dao/scripts/01_deploy.ts`)
@@ -56,7 +57,7 @@ async function main() {
   if (!deployed?.token || !ethers.isAddress(deployed.token)) {
     throw new Error("deployedAddresses.json non contiene un token valido")
   }
-  if (!deployed?.issuer || !ethers.isAddress(deployed.issuer)) {
+  if (!deployed?.issuer && (!Array.isArray(deployed?.trustedIssuers) || deployed.trustedIssuers.length === 0)) {
     throw new Error("deployedAddresses.json non contiene un issuer valido")
   }
 
@@ -64,7 +65,9 @@ async function main() {
     name: "Universal VC Protocol",
     version: "1",
   }
-  const trustedIssuer = ethers.getAddress(deployed.issuer)
+  const trustedIssuers = new Set(
+    (deployed.trustedIssuers ?? [deployed.issuer]).map((issuer: string) => ethers.getAddress(issuer))
+  )
 
   for (const holder of HOLDERS) {
     const filePath = path.join(__dirname, "..", CREDENTIALS_DIR, `${holder.alias}.json`)
@@ -105,15 +108,15 @@ async function main() {
       const recoveredAddress = ethers.getAddress(recovered)
       const issuerFromDid = parseIssuerAddressFromDid(String(vc.issuer?.id ?? ""))
 
-      if (recoveredAddress !== trustedIssuer || issuerFromDid !== trustedIssuer) {
+      if (!trustedIssuers.has(recoveredAddress) || !trustedIssuers.has(issuerFromDid)) {
         throw new Error("issuer non trusted")
       }
 
       // ============================================================================
       // 3. SELECTIVE DISCLOSURE (Filtraggio Dati off-chain)
       // ============================================================================
-      // Qui scartiamo i dati privati (es. nome e voti) ed estraiamo programmaticamente
-      // solo il "DISCLOSED_FIELD" (es. il degreeTitle) per mostrarlo in UI.
+      // Qui scartiamo i dati non richiesti ed estraiamo programmaticamente
+      // solo il "DISCLOSED_FIELD" configurato per mostrarlo in UI.
       const disclosedValue = vc.credentialSubject?.[DISCLOSED_FIELD]
       if (disclosedValue === undefined) {
         throw new Error(`claim "${DISCLOSED_FIELD}" non trovato`)
@@ -122,7 +125,8 @@ async function main() {
       console.log(`✅ ${holder.displayName}`)
       for (const field of ALL_CREDENTIAL_FIELDS) {
         if (field === DISCLOSED_FIELD) {
-          console.log(`   🔸 ${field}: ${String(disclosedValue)}`)
+          const value = Array.isArray(disclosedValue) ? disclosedValue.join(", ") : String(disclosedValue)
+          console.log(`   🔸 ${field}: ${value}`)
         } else {
           console.log(`   🔹 ${field}: [Hidden by verifier policy]`)
         }
