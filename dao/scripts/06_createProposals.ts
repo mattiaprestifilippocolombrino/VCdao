@@ -25,7 +25,7 @@ import { ethers } from "hardhat";
 import * as fs   from "fs";
 import * as path from "path";
 
-// Costanti topic — devono corrispondere a SkillCalculator.sol
+// Costanti topic — devono corrispondere ai topic supportati da GovernanceSkill.
 const TOPIC_WEB3 = 0;
 const TOPIC_AI = 1;
 const TOPIC_HEALTH = 2;

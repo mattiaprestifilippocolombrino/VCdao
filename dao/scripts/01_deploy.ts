@@ -9,11 +9,12 @@ PREREQUISITI:
 
 ORDINE DI DEPLOY:
   1. TimelockController — Ritarda l'esecuzione delle proposte approvate (1 ora di delay).
-  2. GovernanceToken    — Token ERC20Votes con sistema di membership e VP multi-topic.
-  3. MyGovernor        — Motore di governance: gestisce proposte, voti e quorum.
-  4. Treasury          — Custodisce gli ETH della DAO; solo il Timelock può investirli.
-  5. StartupRegistry   — Registro on-chain delle startup verso cui la DAO può investire.
-  6. MockStartup       — Startup fittizia per i test locali del flusso di investimento.
+  2. GovernanceToken    — Token ERC20Votes con sistema di membership e VP da stake.
+  3. GovernanceSkill    — Modulo DID, VC e VP skill multi-topic.
+  4. MyGovernor         — Motore di governance: gestisce proposte, voti e quorum.
+  5. Treasury           — Custodisce gli ETH della DAO; solo il Timelock può investirli.
+  6. StartupRegistry    — Registro on-chain delle startup verso cui la DAO può investire.
+  7. MockStartup        — Startup fittizia per i test locali del flusso di investimento.
 
 CONFIGURAZIONE POST-DEPLOY:
   - Il fondatore (deployer, signers[0]) entra nella DAO con 100 ETH via joinDAO().
@@ -76,9 +77,8 @@ async function main() {
     console.log(`1️⃣  TimelockController: ${await timelock.getAddress()}`);
 
     // ── 2. GovernanceToken ───────────────────────────────────────────────────
-    // Implementa ERC20 + ERC20Votes per i token stake, e aggiunge checkpoint
-    // per il VP skill multi-topic.
-    // I pesi weightSkill/weightStake sono ora modificabili via governance.
+    // Implementa ERC20 + ERC20Votes per il VP da stake.
+    // I pesi weightStake/weightSkill sono modificabili via governance.
     const Token = await ethers.getContractFactory("GovernanceToken");
     const token = await Token.deploy(
         await timelock.getAddress(),
@@ -94,7 +94,7 @@ async function main() {
     //   smart-contracts, machine-learning, tokenomics,
     //   digital-health, data-analysis, backend-java.
     // Applica anche boost combinazionali definiti nel calcolatore.
-    // La governance può sostituirlo in futuro chiamando setSkillCalculator().
+    // La governance può sostituirlo in futuro dal modulo GovernanceSkill.
     const Calculator = await ethers.getContractFactory("SkillCalculator");
     const calculator = await Calculator.deploy();
     await calculator.waitForDeployment();
@@ -103,6 +103,18 @@ async function main() {
     console.log(`   └─ Topic: Web3 Infrastructure | AI Products | Digital Health | Enterprise Software`);
     console.log(`   └─ Boost: web3(smart-contracts+tokenomics) | ai(machine-learning+data-analysis) | health(digital-health+data-analysis) | enterprise(backend-java+data-analysis)`);
 
+    // ── 2c. GovernanceSkill ──────────────────────────────────────────────────
+    // Tiene DID, trusted issuer, skill dei membri e checkpoint del VP skill.
+    // Il token rimane focalizzato sullo stake; il governor somma stake + skill.
+    const Skill = await ethers.getContractFactory("GovernanceSkill");
+    const skillModule = await Skill.deploy(
+        await token.getAddress(),
+        await timelock.getAddress(),
+        WEIGHT_SKILL
+    );
+    await skillModule.waitForDeployment();
+    console.log(`2c GovernanceSkill:    ${await skillModule.getAddress()}`);
+
     // ── 3. MyGovernor ────────────────────────────────────────────────────────
     // Motore di governance multi-topic.
     // Ogni proposta è associata a un topicId via proposeWithTopic().
@@ -110,7 +122,8 @@ async function main() {
     // Il quorum e il superquorum vengono calcolati sulla supply totale del topic.
     //
     // Parametri del costruttore:
-    //   token_               → GovernanceToken (IVotes)
+    //   token_               → GovernanceToken (stake votes)
+    //   skill_               → GovernanceSkill (topic skill votes)
     //   timelock_            → TimelockController
     //   votingDelay_         → blocchi prima che inizi il voto (1 blocco ≈ 12s)
     //   votingPeriod_        → blocchi di durata del voto (50 blocchi ≈ 10 min)
@@ -120,6 +133,7 @@ async function main() {
     const Governor = await ethers.getContractFactory("MyGovernor");
     const governor = await Governor.deploy(
         await token.getAddress(),
+        await skillModule.getAddress(),
         await timelock.getAddress(),
         1,   // votingDelay: 1 blocco
         50,  // votingPeriod: 50 blocchi
@@ -144,9 +158,9 @@ async function main() {
     // ETH direttamente al Treasury. setTreasury() è one-shot: solo il deployer
     // può chiamarla e solo una volta.
     await token.setTreasury(await treasury.getAddress());
-    await token.setSkillCalculator(await calculator.getAddress());
+    await skillModule.setSkillCalculator(await calculator.getAddress());
     console.log(`   🔗 GovernanceToken → Treasury collegato`);
-    console.log(`   🔗 GovernanceToken → SkillCalculator collegato`);
+    console.log(`   🔗 GovernanceSkill → SkillCalculator collegato`);
 
     // ── Issuer fidato ────────────────────────────────────────────────────────
     // L'issuer è l'entità (es. università) che firma le Verifiable Credential
@@ -160,7 +174,7 @@ async function main() {
             "Esempio: DAO_TRUSTED_ISSUER=0xAbc... npx hardhat run scripts/01_deploy.ts --network localhost"
         );
     const issuerAddress = ethers.getAddress(issuerFromEnv);
-    await token.setTrustedIssuer(issuerAddress);
+    await skillModule.setTrustedIssuer(issuerAddress);
     console.log(`   🏛️  Primo issuer fidato: ${issuerAddress}`);
 
     // ── Fondatore entra nella DAO ─────────────────────────────────────────────
@@ -243,6 +257,7 @@ async function main() {
     // ai contratti già deployati senza rideploy.
     const addresses = {
         token:        await token.getAddress(),
+        skillModule:  await skillModule.getAddress(),
         calculator:   await calculator.getAddress(),
         timelock:     await timelock.getAddress(),
         governor:     governorAddr,

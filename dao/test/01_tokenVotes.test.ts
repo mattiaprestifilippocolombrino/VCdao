@@ -5,11 +5,13 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { mine } from "@nomicfoundation/hardhat-network-helpers";
-import { GovernanceToken, Treasury, TimelockController } from "../typechain-types";
+import { GovernanceSkill, GovernanceToken, SkillCalculator, Treasury, TimelockController } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     let token: GovernanceToken;
+    let skillModule: GovernanceSkill;
+    let calculator: SkillCalculator;
     let treasury: Treasury;
     let timelock: TimelockController;
     let deployer: HardhatEthersSigner;
@@ -33,6 +35,19 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         treasury = await Treasury_.deploy(await timelock.getAddress());
         await treasury.waitForDeployment();
 
+        const Skill = await ethers.getContractFactory("GovernanceSkill");
+        skillModule = await Skill.deploy(
+            await token.getAddress(),
+            await timelock.getAddress(),
+            5000n
+        );
+        await skillModule.waitForDeployment();
+
+        const Calculator = await ethers.getContractFactory("SkillCalculator");
+        calculator = await Calculator.deploy();
+        await calculator.waitForDeployment();
+        await skillModule.setSkillCalculator(await calculator.getAddress());
+
         await token.setTreasury(await treasury.getAddress());
     });
 
@@ -51,7 +66,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         expect(await token.isMember(alice.address)).to.be.true;
         // Nessuna skill all'ingresso: array vuoto
-        const skills = await token.getMemberSkills(alice.address);
+        const skills = await skillModule.getMemberSkills(alice.address);
         expect(skills.length).to.equal(0);
     });
 
@@ -121,8 +136,8 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     it("upgradeSkill reverta se non dal Timelock", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         await expect(
-            token.upgradeSkill(alice.address, [ethers.id("smart-contracts"), ethers.id("tokenomics")], "Proof test")
-        ).to.be.revertedWithCustomError(token, "OnlyTimelock");
+            skillModule.upgradeSkill(alice.address, ["smart-contracts", "tokenomics"], ethers.id("Proof test"))
+        ).to.be.revertedWithCustomError(skillModule, "OnlyTimelock");
     });
 
     // ── increaseStake() ──
@@ -154,7 +169,3 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(balAfter - balBefore).to.equal(ethers.parseEther("2"));
     });
 });
-
-function hashLegacyProof(proof: string): string {
-    return ethers.keccak256(ethers.toUtf8Bytes(proof));
-}

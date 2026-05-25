@@ -8,6 +8,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers";
 import {
+    GovernanceSkill,
     GovernanceToken,
     MyGovernor,
     Treasury,
@@ -18,6 +19,7 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("Competence Upgrade — skill array + SkillCalculator", function () {
     let token: GovernanceToken;
+    let skillModule: GovernanceSkill;
     let treasury: Treasury;
     let timelock: TimelockController;
     let governor: MyGovernor;
@@ -52,6 +54,11 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     const skill = (name: string) => ethers.id(name);
     const skillIds = (names: string[]) => names.map(skill);
 
+    async function scoreForTopic(topicId: number, skills: string[]) {
+        const scores = await calculator.calculateAllVP(skillIds(skills));
+        return scores[topicId];
+    }
+
     // =========================================================================
     //  beforeEach: deploy completo con SkillCalculator
     // =========================================================================
@@ -78,19 +85,28 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         calculator = await Calculator.deploy();
         await calculator.waitForDeployment();
 
-        // 5. Setup token
-        await token.setTreasury(await treasury.getAddress());
-        await token.setTrustedIssuer(issuer.address);
-        await token.setSkillCalculator(await calculator.getAddress());
+        // 5. GovernanceSkill
+        const Skill = await ethers.getContractFactory("GovernanceSkill");
+        skillModule = await Skill.deploy(
+            await token.getAddress(),
+            await timelock.getAddress(),
+            5000n
+        );
+        await skillModule.waitForDeployment();
 
-        // 6. Fondatore (deployer) entra e delega
+        // 6. Setup moduli
+        await token.setTreasury(await treasury.getAddress());
+        await skillModule.setTrustedIssuer(issuer.address);
+        await skillModule.setSkillCalculator(await calculator.getAddress());
+
+        // 7. Fondatore (deployer) entra e delega
         await token.joinDAO({ value: ethers.parseEther("100") });
         await token.delegate(deployer.address);
 
-        // 7. Governor
+        // 8. Governor
         const Governor = await ethers.getContractFactory("MyGovernor");
         governor = await Governor.deploy(
-            await token.getAddress(), await timelock.getAddress(),
+            await token.getAddress(), await skillModule.getAddress(), await timelock.getAddress(),
             VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
         );
         await governor.waitForDeployment();
@@ -100,7 +116,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         await timelock.grantRole(await timelock.EXECUTOR_ROLE(),  ethers.ZeroAddress);
         await timelock.revokeRole(await timelock.DEFAULT_ADMIN_ROLE(), deployer.address);
 
-        // 8. Il membro entra con 5 ETH e delega
+        // 9. Il membro entra con 5 ETH e delega
         await token.connect(member).joinDAO({ value: ethers.parseEther("5") });
         await token.connect(member).delegate(member.address);
         await mine(1);
@@ -127,7 +143,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
             },
         };
         const signature = await signer.signTypedData(EIP712_DOMAIN, VC_TYPES, vcData);
-        await token.connect(target).upgradeSkillWithVC(vcData, signature);
+        await skillModule.connect(target).upgradeSkillWithVC(vcData, signature);
         return vcData;
     }
 
@@ -140,12 +156,12 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         proof: string,
         topicId: number
     ) {
-        const tokenAddr = await token.getAddress();
-        const calldata = token.interface.encodeFunctionData("upgradeSkill", [
-            target.address, skillIds(skills), proof,
+        const skillAddr = await skillModule.getAddress();
+        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [
+            target.address, skills, ethers.keccak256(ethers.toUtf8Bytes(proof)),
         ]);
         const description = `Upgrade ${target.address.slice(0, 8)} skills:${skills.join(",")}`;
-        const tx = await governor.proposeWithTopic([tokenAddr], [0n], [calldata], description, topicId);
+        const tx = await governor.proposeWithTopic([skillAddr], [0n], [calldata], description, topicId);
         const receipt = await tx.wait();
         const proposalId = receipt!.logs
             .map((l: any) => { try { return governor.interface.parseLog(l); } catch { return null; } })
@@ -156,9 +172,9 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         await mine(VOTING_PERIOD + 1);
 
         const descHash = ethers.id(description);
-        await governor.queue([tokenAddr], [0n], [calldata], descHash);
+        await governor.queue([skillAddr], [0n], [calldata], descHash);
         await time.increase(TIMELOCK_DELAY + 1);
-        await governor.execute([tokenAddr], [0n], [calldata], descHash);
+        await governor.execute([skillAddr], [0n], [calldata], descHash);
     }
 
     async function addTrustedIssuerThroughTimelock(newIssuer: string) {
@@ -167,7 +183,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         await ethers.provider.send("hardhat_impersonateAccount", [timelockAddr]);
         try {
             const timelockSigner = await ethers.getSigner(timelockAddr);
-            await token.connect(timelockSigner).setTrustedIssuer(newIssuer);
+            await skillModule.connect(timelockSigner).setTrustedIssuer(newIssuer);
         } finally {
             await ethers.provider.send("hardhat_stopImpersonatingAccount", [timelockAddr]);
         }
@@ -179,7 +195,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         await ethers.provider.send("hardhat_impersonateAccount", [timelockAddr]);
         try {
             const timelockSigner = await ethers.getSigner(timelockAddr);
-            return await token.connect(timelockSigner).removeTrustedIssuer(oldIssuer);
+            return await skillModule.connect(timelockSigner).removeTrustedIssuer(oldIssuer);
         } finally {
             await ethers.provider.send("hardhat_stopImpersonatingAccount", [timelockAddr]);
         }
@@ -188,81 +204,81 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     // =========================================================================
     //  Test: configurazione contratto
     // =========================================================================
-    it("SkillCalculator è correttamente linkato al GovernanceToken", async function () {
-        expect(await token.skillCalculator()).to.equal(await calculator.getAddress());
+    it("SkillCalculator è correttamente linkato a GovernanceSkill", async function () {
+        expect(await skillModule.skillCalculator()).to.equal(await calculator.getAddress());
     });
 
     it("isValidTopic() riflette i topic del SkillCalculator (0,1,2,3 validi; 4 no)", async function () {
-        expect(await token.isValidTopic(0)).to.be.true;
-        expect(await token.isValidTopic(1)).to.be.true;
-        expect(await token.isValidTopic(2)).to.be.true;
-        expect(await token.isValidTopic(3)).to.be.true;
-        expect(await token.isValidTopic(4)).to.be.false;
+        expect(await skillModule.isValidTopic(0)).to.be.true;
+        expect(await skillModule.isValidTopic(1)).to.be.true;
+        expect(await skillModule.isValidTopic(2)).to.be.true;
+        expect(await skillModule.isValidTopic(3)).to.be.true;
+        expect(await skillModule.isValidTopic(4)).to.be.false;
     });
 
     it("setSkillCalculator() richiede il Timelock dopo la prima configurazione", async function () {
         await expect(
-            token.connect(member).setSkillCalculator(await calculator.getAddress())
-        ).to.be.revertedWithCustomError(token, "OnlyTimelock");
+            skillModule.connect(member).setSkillCalculator(await calculator.getAddress())
+        ).to.be.revertedWithCustomError(skillModule, "OnlyTimelock");
     });
 
     it("supporta un insieme di trusted issuer", async function () {
         await addTrustedIssuerThroughTimelock(secondIssuer.address);
 
-        expect(await token.trustedIssuers(issuer.address)).to.equal(true);
-        expect(await token.trustedIssuers(secondIssuer.address)).to.equal(true);
-        expect(await token.trustedIssuerCount()).to.equal(2n);
+        expect(await skillModule.trustedIssuers(issuer.address)).to.equal(true);
+        expect(await skillModule.trustedIssuers(secondIssuer.address)).to.equal(true);
+        expect(await skillModule.trustedIssuerCount()).to.equal(2n);
     });
 
     it("rimuove un trusted issuer senza usare una lista on-chain", async function () {
         await addTrustedIssuerThroughTimelock(secondIssuer.address);
         await removeTrustedIssuerThroughTimelock(secondIssuer.address);
 
-        expect(await token.trustedIssuers(secondIssuer.address)).to.equal(false);
-        expect(await token.trustedIssuerCount()).to.equal(1n);
+        expect(await skillModule.trustedIssuers(secondIssuer.address)).to.equal(false);
+        expect(await skillModule.trustedIssuerCount()).to.equal(1n);
     });
 
     it("non permette di rimuovere l'ultimo trusted issuer", async function () {
         await expect(
             removeTrustedIssuerThroughTimelock(issuer.address)
-        ).to.be.revertedWithCustomError(token, "CannotRemoveLastTrustedIssuer");
+        ).to.be.revertedWithCustomError(skillModule, "CannotRemoveLastTrustedIssuer");
     });
 
     // =========================================================================
     //  Test: SkillCalculator puro (logica di scoring)
     // =========================================================================
     it("SkillCalculator calcola score corretto per skill singola 'smart-contracts' su Web3", async function () {
-        const score = await calculator.calculateVP(0, skillIds(["smart-contracts"]));
+        const score = await scoreForTopic(0, ["smart-contracts"]);
         expect(score).to.equal(40n);
     });
 
     it("SkillCalculator calcola score corretto per skill singola 'digital-health' su Digital Health", async function () {
-        const score = await calculator.calculateVP(2, skillIds(["digital-health"]));
+        const score = await scoreForTopic(2, ["digital-health"]);
         expect(score).to.equal(45n);
     });
 
     it("SkillCalculator applica boost machine-learning+data-analysis su AI Products", async function () {
-        const scoreCombo = await calculator.calculateVP(1, skillIds(["machine-learning", "data-analysis"]));
+        const scoreCombo = await scoreForTopic(1, ["machine-learning", "data-analysis"]);
         expect(scoreCombo).to.equal(90n);
     });
 
     it("SkillCalculator applica boost smart-contracts+tokenomics su Web3", async function () {
-        const scoreCombo = await calculator.calculateVP(0, skillIds(["smart-contracts", "tokenomics"]));
+        const scoreCombo = await scoreForTopic(0, ["smart-contracts", "tokenomics"]);
         expect(scoreCombo).to.equal(95n);
     });
 
     it("SkillCalculator applica boost digital-health+data-analysis su Digital Health", async function () {
-        const scoreCombo = await calculator.calculateVP(2, skillIds(["digital-health", "data-analysis"]));
+        const scoreCombo = await scoreForTopic(2, ["digital-health", "data-analysis"]);
         expect(scoreCombo).to.equal(85n);
     });
 
     it("SkillCalculator cappa il punteggio a 100", async function () {
-        const score = await calculator.calculateVP(0, skillIds(["smart-contracts", "tokenomics", "machine-learning"]));
+        const score = await scoreForTopic(0, ["smart-contracts", "tokenomics", "machine-learning"]);
         expect(score).to.equal(100n);
     });
 
     it("SkillCalculator ignora skill duplicate nello stesso array", async function () {
-        const score = await calculator.calculateVP(0, skillIds(["smart-contracts", "smart-contracts"]));
+        const score = await scoreForTopic(0, ["smart-contracts", "smart-contracts"]);
         expect(score).to.equal(40n);
     });
 
@@ -271,24 +287,25 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     // =========================================================================
     it("un membro può registrare il proprio DID", async function () {
         const did = "did:ethr:sepolia:0x" + member.address.slice(2);
-        await token.connect(member).registerDID(did);
-        expect(await token.memberDID(member.address)).to.equal(did);
-        expect(await token.didToAddress(ethers.keccak256(ethers.toUtf8Bytes(did)))).to.equal(member.address);
+        const didHash = ethers.keccak256(ethers.toUtf8Bytes(did));
+        await skillModule.connect(member).registerDID(did);
+        expect(await skillModule.memberDID(member.address)).to.equal(didHash);
+        expect(await skillModule.didToAddress(didHash)).to.equal(member.address);
     });
 
     it("un non-membro non può registrare un DID", async function () {
         const [, , , nonMember] = await ethers.getSigners();
         await expect(
-            token.connect(nonMember).registerDID("did:ethr:test:0xABC")
-        ).to.be.revertedWithCustomError(token, "NotMember");
+            skillModule.connect(nonMember).registerDID("did:ethr:test:0xABC")
+        ).to.be.revertedWithCustomError(skillModule, "NotMember");
     });
 
     it("due membri non possono registrare lo stesso DID", async function () {
         const did = "did:ethr:sepolia:shared";
-        await token.connect(member).registerDID(did);
+        await skillModule.connect(member).registerDID(did);
         await expect(
-            token.connect(deployer).registerDID(did)
-        ).to.be.revertedWithCustomError(token, "DIDAlreadyBound");
+            skillModule.connect(deployer).registerDID(did)
+        ).to.be.revertedWithCustomError(skillModule, "DIDAlreadyBound");
     });
 
     // =========================================================================
@@ -297,11 +314,11 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("upgrade con VC: salva le skill nel membro e aggiorna i checkpoint", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
 
-        const skills = await token.getMemberSkills(member.address);
+        const skills = await skillModule.getMemberSkills(member.address);
         expect(skills).to.include(skill("smart-contracts"));
         expect(skills).to.include(skill("machine-learning"));
     });
@@ -309,30 +326,30 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("upgrade con VC: aggiorna correttamente il checkpoint Web3", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        expect(await token.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
     });
 
     it("upgrade con VC: score Digital Health per digital-health = 45 → 22.5 VP skill", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["digital-health"], holderDid, issuerDid);
-        expect(await token.getSkillVotes(member.address, 2)).to.equal(ethers.parseEther("22.5"));
+        expect(await skillModule.getSkillVotes(member.address, 2)).to.equal(ethers.parseEther("22.5"));
     });
 
     it("secondo upgrade con nuove skill: accumula le skill senza duplicati", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
         await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
 
-        const skills = await token.getMemberSkills(member.address);
+        const skills = await skillModule.getMemberSkills(member.address);
         expect(skills.filter((s: string) => s === skill("smart-contracts")).length).to.equal(1);
         expect(skills).to.include(skill("machine-learning"));
     });
@@ -340,13 +357,13 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("secondo upgrade con nuove skill: aumenta il checkpoint (delta cumulativo)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        const vpAfterFirst = await token.getSkillVotes(member.address, 0);
+        const vpAfterFirst = await skillModule.getSkillVotes(member.address, 0);
 
         await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
-        const vpAfterSecond = await token.getSkillVotes(member.address, 0);
+        const vpAfterSecond = await skillModule.getSkillVotes(member.address, 0);
 
         expect(vpAfterSecond).to.be.greaterThan(vpAfterFirst);
     });
@@ -354,20 +371,20 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("boost combinazionale si riflette nel checkpoint: smart-contracts+tokenomics su Web3", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts", "tokenomics"], holderDid, issuerDid);
-        expect(await token.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("47.5"));
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("47.5"));
     });
 
     it("rifiuta VC con issuer non fidato", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const [, , , fakeIssuer] = await ethers.getSigners();
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await expect(
             doUpgradeWithVC(member, ["smart-contracts"], holderDid, "did:ethr:fake", fakeIssuer)
-        ).to.be.revertedWithCustomError(token, "UntrustedIssuer");
+        ).to.be.revertedWithCustomError(skillModule, "UntrustedIssuer");
     });
 
     it("accetta VC firmate da un secondo trusted issuer", async function () {
@@ -375,10 +392,10 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
 
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + secondIssuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["backend-java"], holderDid, issuerDid, secondIssuer);
-        expect(await token.getSkillVotes(member.address, 3)).to.equal(ethers.parseEther("20"));
+        expect(await skillModule.getSkillVotes(member.address, 3)).to.equal(ethers.parseEther("20"));
     });
 
     it("rifiuta VC con DID non registrato", async function () {
@@ -387,17 +404,17 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         // NON registriamo il DID
         await expect(
             doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid)
-        ).to.be.revertedWithCustomError(token, "NoDIDRegistered");
+        ).to.be.revertedWithCustomError(skillModule, "NoDIDRegistered");
     });
 
     it("rifiuta VC con DID mismatch", async function () {
         const wrongDid = "did:ethr:sepolia:0xWRONG";
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID("did:ethr:sepolia:0xREAL");
+        await skillModule.connect(member).registerDID("did:ethr:sepolia:0xREAL");
 
         await expect(
             doUpgradeWithVC(member, ["smart-contracts"], wrongDid, issuerDid)
-        ).to.be.revertedWithCustomError(token, "DIDMismatch");
+        ).to.be.revertedWithCustomError(skillModule, "DIDMismatch");
     });
 
     it("rifiuta VC se SkillCalculator non è impostato", async function () {
@@ -413,12 +430,16 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         const treasury2 = await Treasury2_.deploy(await tl2.getAddress());
         await treasury2.waitForDeployment();
         await token2.setTreasury(await treasury2.getAddress());
-        await token2.setTrustedIssuer(issuer.address);
+
+        const Skill2 = await ethers.getContractFactory("GovernanceSkill");
+        const skill2 = await Skill2.deploy(await token2.getAddress(), await tl2.getAddress(), 5000n);
+        await skill2.waitForDeployment();
+        await skill2.setTrustedIssuer(issuer.address);
         // Nessun setSkillCalculator
 
         await token2.connect(member).joinDAO({ value: ethers.parseEther("1") });
         const did = "did:ethr:test:member";
-        await token2.connect(member).registerDID(did);
+        await skill2.connect(member).registerDID(did);
 
         const vcData = {
             issuer: { id: "did:ethr:issuer" },
@@ -427,8 +448,8 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         };
         const signature = await issuer.signTypedData(EIP712_DOMAIN, VC_TYPES, vcData);
         await expect(
-            token2.connect(member).upgradeSkillWithVC(vcData, signature)
-        ).to.be.revertedWithCustomError(token2, "CalculatorNotSet");
+            skill2.connect(member).upgradeSkillWithVC(vcData, signature)
+        ).to.be.revertedWithCustomError(skill2, "CalculatorNotSet");
     });
 
     // =========================================================================
@@ -437,10 +458,10 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("upgradeSkill via governance: aggiunge skill e aggiorna checkpoint", async function () {
         await doUpgradeViaGovernance(member, ["backend-java", "tokenomics"], "Approvato da governance", 0);
 
-        const skills = await token.getMemberSkills(member.address);
+        const skills = await skillModule.getMemberSkills(member.address);
         expect(skills).to.include(skill("backend-java"));
         expect(skills).to.include(skill("tokenomics"));
-        expect(await token.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
     });
 
     // =========================================================================
@@ -449,13 +470,13 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("stake VP e skill VP restano separati nei moduli corretti", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         // Stake: 5 ETH → 2.5 COMP
         const stakeVP = await token.balanceOf(member.address);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        const totalVP = stakeVP + await token.getSkillVotes(member.address, 0);
+        const totalVP = stakeVP + await skillModule.getSkillVotes(member.address, 0);
         expect(totalVP).to.equal(stakeVP + ethers.parseEther("20"));
     });
 
@@ -465,7 +486,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("getPastSkillVotes: upgrade successivo non altera snapshot precedente", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
         const snapshot = await ethers.provider.getBlockNumber();
@@ -475,7 +496,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
 
         // Il VP allo snapshot deve riflettere solo il primo upgrade
-        const pastVP = await token.getPastSkillVotes(member.address, 0, snapshot);
+        const pastVP = await skillModule.getPastSkillVotes(member.address, 0, snapshot);
         expect(pastVP).to.equal(ethers.parseEther("20"));
     });
 });

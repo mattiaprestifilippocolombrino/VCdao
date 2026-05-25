@@ -18,6 +18,7 @@ import { ethers, network } from "hardhat";
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers";
 import {
     GovernanceToken,
+    GovernanceSkill,
     MyGovernor,
     Treasury,
     TimelockController,
@@ -57,6 +58,7 @@ async function getProposalId(
 // ────────────────────────────────────────────────────────────────────────────
 describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum", function () {
     let token:    GovernanceToken;
+    let skillModule: GovernanceSkill;
     let governor: MyGovernor;
     let treasury: Treasury;
     let timelock: TimelockController;
@@ -71,8 +73,6 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
     // quorum 20%, superquorum 70%
     const QUORUM_NUM   = 20;
     const SQ_NUM       = 70;
-    const skillIds = (names: string[]) => names.map((name) => ethers.id(name));
-
     beforeEach(async function () {
         [deployer, alice, bob] = await ethers.getSigners();
 
@@ -96,12 +96,21 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
         const SC = await ethers.getContractFactory("SkillCalculator");
         const calculator: SkillCalculator = await SC.deploy();
         await calculator.waitForDeployment();
-        await token.setSkillCalculator(await calculator.getAddress());
+
+        const SK = await ethers.getContractFactory("GovernanceSkill");
+        skillModule = await SK.deploy(
+            await token.getAddress(),
+            await timelock.getAddress(),
+            5000n
+        );
+        await skillModule.waitForDeployment();
+        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // 4. Governor
         const GV = await ethers.getContractFactory("MyGovernor");
         governor = await GV.deploy(
             await token.getAddress(),
+            await skillModule.getAddress(),
             await timelock.getAddress(),
             VOTING_DELAY, VOTING_PERIOD, 0,
             QUORUM_NUM, SQ_NUM
@@ -166,6 +175,18 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
                 governor.propose([ethers.ZeroAddress], [0n], ["0x"], "Standard")
             ).to.be.revertedWithCustomError(governor, "UseProposeWithTopic");
         });
+
+        it("proposeWeightUpdate crea una proposta atomica per i pesi stake/skill", async function () {
+            const tx = await governor.proposeWeightUpdate(6000n, 4000n, "Aggiorna pesi VP", 0);
+            const pid = await getProposalId(governor, tx);
+            expect(await governor.proposalTopic(pid)).to.equal(0n);
+        });
+
+        it("proposeWeightUpdate reverta se i pesi non sommano 100%", async function () {
+            await expect(
+                governor.proposeWeightUpdate(6000n, 3000n, "Pesi invalidi", 0)
+            ).to.be.revertedWithCustomError(governor, "InvalidWeights");
+        });
     });
 
     // ========================================================================
@@ -180,12 +201,12 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await mine(1);
 
             // Proposta: upgrade alice a PhDCS (grado 3) sul topic CS (0)
-            const calldata = token.interface.encodeFunctionData("upgradeSkill", [
-                alice.address, skillIds(["smart-contracts", "machine-learning"]), ethers.keccak256(ethers.toUtf8Bytes("skills proof"))
+            const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [
+                alice.address, ["smart-contracts", "machine-learning"], ethers.keccak256(ethers.toUtf8Bytes("skills proof"))
             ]);
             const desc = "Upgrade alice skill CS";
             const tx   = await governor.proposeWithTopic(
-                [await token.getAddress()], [0n], [calldata], desc, 0
+                [await skillModule.getAddress()], [0n], [calldata], desc, 0
             );
             const pid  = await getProposalId(governor, tx);
 
@@ -200,21 +221,21 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
 
             // Queue nel timelock
             await governor.queue(
-                [await token.getAddress()], [0n], [calldata], ethers.id(desc)
+                [await skillModule.getAddress()], [0n], [calldata], ethers.id(desc)
             );
             expect(await governor.state(pid)).to.equal(5); // Queued
 
             // Aspetta il delay del timelock ed esegue
             await time.increase(TIMELOCK_DELAY + 1);
             await governor.execute(
-                [await token.getAddress()], [0n], [calldata], ethers.id(desc)
+                [await skillModule.getAddress()], [0n], [calldata], ethers.id(desc)
             );
             expect(await governor.state(pid)).to.equal(7); // Executed
 
             // Alice deve ora avere le skill aggiornate e VP skill su CS > 0
-            const skills = await token.getMemberSkills(alice.address);
+            const skills = await skillModule.getMemberSkills(alice.address);
             expect(skills.length).to.be.gt(0);
-            expect(await token.getSkillVotes(alice.address, 0)).to.be.gt(0n);
+            expect(await skillModule.getSkillVotes(alice.address, 0)).to.be.gt(0n);
         });
 
         it("proposta Defeated se la maggioranza vota Against", async function () {
@@ -249,6 +270,33 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await mine(VOTING_PERIOD + 1);
             expect(await governor.state(pid)).to.equal(3); // Defeated
         });
+
+        it("proposeWeightUpdate aggiorna weightStake e weightSkill nella stessa esecuzione", async function () {
+            const desc = "Aggiorna pesi VP atomici";
+            const newSkillWeight = 6000n;
+            const newStakeWeight = 4000n;
+
+            const tx = await governor.proposeWeightUpdate(newSkillWeight, newStakeWeight, desc, 0);
+            const pid = await getProposalId(governor, tx);
+
+            await mine(VOTING_DELAY + 1);
+            await governor.castVote(pid, 1);
+            await mine(VOTING_PERIOD + 1);
+
+            const targets = [await token.getAddress(), await skillModule.getAddress()];
+            const values = [0n, 0n];
+            const calldatas = [
+                token.interface.encodeFunctionData("setWeights", [newSkillWeight, newStakeWeight]),
+                skillModule.interface.encodeFunctionData("setSkillWeight", [newSkillWeight]),
+            ];
+
+            await governor.queue(targets, values, calldatas, ethers.id(desc));
+            await time.increase(TIMELOCK_DELAY + 1);
+            await governor.execute(targets, values, calldatas, ethers.id(desc));
+
+            expect(await token.weightStake()).to.equal(newStakeWeight);
+            expect(await skillModule.weightSkill()).to.equal(newSkillWeight);
+        });
     });
 
     // ========================================================================
@@ -262,7 +310,7 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
             await token.connect(alice).delegate(alice.address);
             await asTimelock(timelock, deployer,
-                s => token.connect(s).upgradeSkill(alice.address, skillIds(["smart-contracts", "tokenomics", "data-analysis"]), "0x"));
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["smart-contracts", "tokenomics", "data-analysis"], ethers.ZeroHash));
             await mine(1);
 
             // Proposta su topic CS
@@ -286,7 +334,7 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
             await token.connect(alice).delegate(alice.address);
             await asTimelock(timelock, deployer,
-                s => token.connect(s).upgradeSkill(alice.address, skillIds(["data-analysis"]), "0x"));
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["data-analysis"], ethers.ZeroHash));
             await mine(1);
 
             // Proposta su topic CE (1)
@@ -329,7 +377,7 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
             await token.connect(alice).delegate(alice.address);
             await asTimelock(timelock, deployer,
-                s => token.connect(s).upgradeSkill(alice.address, skillIds(["smart-contracts"]), "0x"));
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["smart-contracts"], ethers.ZeroHash));
             await mine(1);
 
             const tx  = await governor.proposeWithTopic(
@@ -421,6 +469,11 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
 
         it("quorumDenominator = 100 (percentuali intere)", async function () {
             expect(await governor.quorumDenominator()).to.equal(100n);
+        });
+
+        it("GovernanceSkill espone lo stesso clock e CLOCK_MODE del GovernanceToken", async function () {
+            expect(await skillModule.clock()).to.equal(await token.clock());
+            expect(await skillModule.CLOCK_MODE()).to.equal(await token.CLOCK_MODE());
         });
     });
 });

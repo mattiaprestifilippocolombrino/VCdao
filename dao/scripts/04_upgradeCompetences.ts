@@ -9,12 +9,12 @@ PREREQUISITI:
 FLUSSO:
   1. Legge le VC JSON generate da Veramo.
   2. Valida il formato (credentialSubject.skills deve essere un array).
-  3. Registra i DID dei membri nel contratto GovernanceToken.
+  3. Registra i DID dei membri nel contratto GovernanceSkill.
   4. Ogni membro chiama upgradeSkillWithVC() presentando la propria VC.
   5. Il contratto verifica la firma EIP-712 (ecrecover), unisce le skill all'array
      del membro e aggiorna i checkpoint VP per ogni topic via SkillCalculator.
 
-SKILL RICONOSCIUTE (immutabili in SkillCalculator):
+SKILL RICONOSCIUTE (fonte di verità in GovernanceSkill):
   smart-contracts | machine-learning | tokenomics
   digital-health | data-analysis | backend-java
 
@@ -85,7 +85,10 @@ async function main() {
     const addresses = JSON.parse(
         fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
     );
-    const token = await ethers.getContractAt("GovernanceToken", addresses.token);
+    if (!addresses.skillModule) {
+        throw new Error("deployedAddresses.json non contiene skillModule. Riesegui 01_deploy.ts dopo l'upgrade architetturale.");
+    }
+    const skillModule = await ethers.getContractAt("GovernanceSkill", addresses.skillModule);
     const trustedIssuerAddresses = (addresses.trustedIssuers ?? [addresses.issuer]).map((issuer: string) =>
         ethers.getAddress(issuer)
     );
@@ -140,20 +143,21 @@ async function main() {
 
     for (const u of toUpgrade) {
         // Registra DID se non ancora fatto
-        const currentDid = await token.memberDID(u.signer.address);
-        if (currentDid === "") {
-            await token.connect(u.signer).registerDID(u.holderDid);
+        const currentDid = await skillModule.memberDID(u.signer.address);
+        const holderDidHash = ethers.keccak256(ethers.toUtf8Bytes(u.holderDid));
+        if (currentDid === ethers.ZeroHash) {
+            await skillModule.connect(u.signer).registerDID(u.holderDid);
             console.log(`   🔑 Registrato DID per signer[${u.signerIdx}]: ${u.holderDid}`);
-        } else if (currentDid !== u.holderDid) {
+        } else if (currentDid !== holderDidHash) {
             console.log(`   ⚠️  DID mismatch per signer[${u.signerIdx}]. Salto.`);
             continue;
         }
 
         // Upgrade skill via VC EIP-712
-        const tx = await token.connect(u.signer).upgradeSkillWithVC(u.vcDataObj, u.signature);
+        const tx = await skillModule.connect(u.signer).upgradeSkillWithVC(u.vcDataObj, u.signature);
         await tx.wait();
 
-        const skills = await token.getMemberSkills(u.signer.address);
+        const skills = await skillModule.getMemberSkills(u.signer.address);
         console.log(
             `   ✅ Signer[${u.signerIdx}] (${u.signer.address.slice(0, 8)}...) ` +
             `→ Skill: [${skills.join(", ")}]`
@@ -164,9 +168,9 @@ async function main() {
     console.log("\n📊 Stato VP post-upgrade per i membri:");
     for (let i = 0; i < Math.min(toUpgrade.length, signers.length); i++) {
         const m = signers[i];
-        const skills = await token.getMemberSkills(m.address);
+        const skills = await skillModule.getMemberSkills(m.address);
         const topicVotes = await Promise.all(
-            TOPIC_LABELS.map((_, topicId) => token.getSkillVotes(m.address, topicId))
+            TOPIC_LABELS.map((_, topicId) => skillModule.getSkillVotes(m.address, topicId))
         );
 
         console.log(

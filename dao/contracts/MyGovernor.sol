@@ -41,8 +41,8 @@ import "@openzeppelin/contracts/governance/extensions/GovernorVotesSuperQuorumFr
 import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/governance/TimelockController.sol";
-import "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import "./GovernanceToken.sol";
+import "./IGovernanceToken.sol";
+import "./IGovernanceSkill.sol";
 
 contract MyGovernor is
     Governor,
@@ -57,8 +57,9 @@ contract MyGovernor is
     //  Stato
     // =========================================================================
 
-    /// Riferimento tipizzato al token per accedere ai metodi skill custom.
-    GovernanceToken public immutable governanceToken;
+    /// Riferimenti tipizzati ai moduli di stake e skill usati dal Governor.
+    IGovernanceToken public immutable governanceToken;
+    IGovernanceSkill public immutable governanceSkill;
 
 
     /*
@@ -76,6 +77,7 @@ contract MyGovernor is
     error InvalidTopicId(uint256 topicId);
     error UseProposeWithTopic();
     error InvalidVoteParams();
+    error InvalidWeights();
 
     /// Emesso quando una proposta viene creata con il topic su cui verrà calcolato il VP skill.
     event ProposalTopicSet(uint256 indexed proposalId, uint256 indexed topicId);
@@ -103,7 +105,8 @@ contract MyGovernor is
         @param superQuorumNumerator_ Superquorum in % (es. 20 = 20%, deve essere >= quorum)
     */
     constructor(
-        IVotes token_,
+        IGovernanceToken token_,
+        IGovernanceSkill skill_,
         TimelockController timelock_,
         uint48 votingDelay_,
         uint32 votingPeriod_,
@@ -118,7 +121,8 @@ contract MyGovernor is
         GovernorVotesSuperQuorumFraction(superQuorumNumerator_)
         GovernorTimelockControl(timelock_)
     {
-        governanceToken = GovernanceToken(address(token_));
+        governanceToken = token_;
+        governanceSkill = skill_;
     }
 
     // =========================================================================
@@ -133,7 +137,7 @@ contract MyGovernor is
     durante il voto.
     La funzione verifica che il topicId sia valido, chiama super.propose() per creare la proposta
     e poi salva il topicId in proposalTopic[proposalId].
-    @param topicId  Topic riconosciuto dal GovernanceToken/SkillCalculator
+    @param topicId  Topic riconosciuto da GovernanceSkill
     */
     function proposeWithTopic(
         address[] memory targets,
@@ -143,6 +147,35 @@ contract MyGovernor is
         uint256 topicId
     ) external returns (uint256 proposalId) {
         _validateTopicId(topicId);
+        proposalId = super.propose(targets, values, calldatas, description);
+        proposalTopic[proposalId] = topicId;
+        emit ProposalTopicSet(proposalId, topicId);
+    }
+
+    /*
+    Funzione helper per proporre un aggiornamento atomico dei pesi stake/skill.
+    Il Governor non conserva i pesi: costruisce una proposta batch che aggiorna
+    GovernanceToken e GovernanceSkill nello stesso ciclo Timelock.
+    */
+    function proposeWeightUpdate(
+        uint256 newSkillWeight,
+        uint256 newStakeWeight,
+        string memory description,
+        uint256 topicId
+    ) external returns (uint256 proposalId) {
+        if (newSkillWeight + newStakeWeight != governanceToken.BASIS_POINTS()) revert InvalidWeights();
+        _validateTopicId(topicId);
+
+        address[] memory targets = new address[](2);
+        targets[0] = address(governanceToken);
+        targets[1] = address(governanceSkill);
+
+        uint256[] memory values = new uint256[](2);
+
+        bytes[] memory calldatas = new bytes[](2);
+        calldatas[0] = abi.encodeCall(IGovernanceToken.setWeights, (newSkillWeight, newStakeWeight));
+        calldatas[1] = abi.encodeCall(IGovernanceSkill.setSkillWeight, (newSkillWeight));
+
         proposalId = super.propose(targets, values, calldatas, description);
         proposalTopic[proposalId] = topicId;
         emit ProposalTopicSet(proposalId, topicId);
@@ -182,7 +215,7 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
      /*
     Funzione di lettura del voting power di un membro, usata dal Governor durante il voto.
     VP_totale(account, timepoint, topic) = token.getPastVotes(account, timepoint)                        [stake]
-                 + governanceToken.getPastSkillVotes(account, topic, timepoint)
+                 + governanceSkill.getPastSkillVotes(account, topic, timepoint)
     Il timepoint è il blocco di snapshot della proposta. Gli upgrade o i depositi successivi non alterano votazioni già iniziate.
     La funzione prende in input l'account del membro, il blocco di snapshot della proposta e i parametri della proposta, in cui è contenuto il topicId.
     Si prendono i voti di stake usando la funzione getVotes() di ERC20Votes. Se i parametri sono vuoti, la funzione ritorna solo i voti provenienti da stake.
@@ -204,7 +237,7 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
 
         uint256 topicId = abi.decode(params, (uint256));
         _validateTopicId(topicId);
-        uint256 skillVotes = governanceToken.getPastSkillVotes(
+        uint256 skillVotes = governanceSkill.getPastSkillVotes(
             account,
             topicId,
             timepoint
@@ -233,7 +266,7 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
         uint256 timepoint
     ) internal view returns (uint256) {
         uint256 stakeSupply = governanceToken.getPastTotalSupply(timepoint); //supply storica del token
-        uint256 skillSupply = governanceToken.getPastTotalSkillSupply(
+        uint256 skillSupply = governanceSkill.getPastTotalSkillSupply(
             topicId,
             timepoint
         ); //supply skill storica del topic
@@ -326,9 +359,9 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
             );
     }
 
-    /// Controlla che il topic esista nel GovernanceToken.
+    /// Controlla che il topic esista in GovernanceSkill.
     function _validateTopicId(uint256 topicId) internal view {
-        if (!governanceToken.isValidTopic(topicId))
+        if (!governanceSkill.isValidTopic(topicId))
             revert InvalidTopicId(topicId);
     }
 

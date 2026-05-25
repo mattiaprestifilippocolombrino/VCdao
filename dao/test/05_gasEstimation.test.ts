@@ -9,7 +9,7 @@
 
 import { expect } from "chai";
 import { ethers, network } from "hardhat";
-import { GovernanceToken, TimelockController } from "../typechain-types";
+import { GovernanceSkill, GovernanceToken, TimelockController } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 const ETH_PRICE_USD = 2500; // Valore di riferimento ETH in USD per la tesi
@@ -35,10 +35,6 @@ function hashLegacyProof(proof: string): string {
     return ethers.keccak256(ethers.toUtf8Bytes(proof));
 }
 
-function skillIds(names: string[]): string[] {
-    return names.map((name) => ethers.id(name));
-}
-
 // Formatta un valore USD in formato testuale leggibile
 function fmtUsd(usd: number): string {
     if (usd < 0.0001) return `< $0.0001`;
@@ -49,6 +45,7 @@ function fmtUsd(usd: number): string {
 
 describe("Gas Estimation — Metriche per la Tesi", function () {
     let token: GovernanceToken;
+    let skillModule: GovernanceSkill;
     let timelock: TimelockController;
     let deployer: HardhatEthersSigner;
     let member1: HardhatEthersSigner;
@@ -74,20 +71,22 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         token = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
         await token.waitForDeployment();
 
-        // 3. Setup Trusted Issuer
-        await token.setTrustedIssuer(issuer.address);
-
-        // 4. Deploy Treasury and link it
+        // 3. Deploy Treasury and link it
         const Treasury_ = await ethers.getContractFactory("Treasury");
         const treasury = await Treasury_.deploy(await timelock.getAddress());
         await treasury.waitForDeployment();
         await token.setTreasury(await treasury.getAddress());
         
-        // 2.b Deploy SkillCalculator
+        // 4. Deploy SkillCalculator e GovernanceSkill
         const Calculator = await ethers.getContractFactory("SkillCalculator");
         const calculator = await Calculator.deploy();
         await calculator.waitForDeployment();
-        await token.setSkillCalculator(await calculator.getAddress());
+
+        const Skill = await ethers.getContractFactory("GovernanceSkill");
+        skillModule = await Skill.deploy(await token.getAddress(), await timelock.getAddress(), 5000n);
+        await skillModule.waitForDeployment();
+        await skillModule.setTrustedIssuer(issuer.address);
+        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // I membri entrano nella DAO (necessario per fare l'upgrade)
         await token.connect(member1).joinDAO({ value: ethers.parseEther("5") });
@@ -128,21 +127,21 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
         
         // Registriamo il DID (costo una tantum, separato dall'upgrade stesso)
-        await token.connect(member1).registerDID(holderDid);
+        await skillModule.connect(member1).registerDID(holderDid);
         
         // Generazione VC off-chain
         const { vcData, signature } = await signVC(holderDid, issuerDid, ["smart-contracts", "tokenomics"]);
 
         // Transazione 1: Upgrade con VC EIP-712 (Self-Sovereign)
         // L'utente chiama direttamente passando la prova crittografica.
-        const txVP = await token.connect(member1).upgradeSkillWithVC(vcData, signature);
+        const txVP = await skillModule.connect(member1).upgradeSkillWithVC(vcData, signature);
         const receiptVP = await txVP.wait();
         const gasTotal: bigint = receiptVP!.gasUsed;
 
         // Transazione 2: Upgrade legacy (Centralizzato)
         // Simulato chiamandolo dal Timelock, non effettua nessuna decodifica EIP-712.
         const txLeg = await callAsTimelock(s =>
-            token.connect(s).upgradeSkill(member2.address, skillIds(["smart-contracts"]), hashLegacyProof("legacy skill"))
+            skillModule.connect(s).upgradeSkill(member2.address, ["smart-contracts"], hashLegacyProof("legacy skill"))
         );
         const receiptLeg = await (txLeg as any).wait();
         const gasLegacy: bigint = receiptLeg!.gasUsed;

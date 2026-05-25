@@ -15,6 +15,7 @@ import { ethers, network } from "hardhat";
 import { mine, time } from "@nomicfoundation/hardhat-network-helpers";
 import {
     GovernanceToken,
+    GovernanceSkill,
     MyGovernor,
     Treasury,
     StartupRegistry,
@@ -52,6 +53,7 @@ async function getProposalId(governor: MyGovernor, tx: any): Promise<bigint> {
 // ────────────────────────────────────────────────────────────────────────────
 describe("Treasury & StartupRegistry — Investimenti e Access Control", function () {
     let token:    GovernanceToken;
+    let skillModule: GovernanceSkill;
     let governor: MyGovernor;
     let treasury: Treasury;
     let registry: StartupRegistry;
@@ -95,12 +97,20 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
         const SC = await ethers.getContractFactory("SkillCalculator");
         const calculator = await SC.deploy();
         await calculator.waitForDeployment();
-        await token.setSkillCalculator(await calculator.getAddress());
+
+        const SK = await ethers.getContractFactory("GovernanceSkill");
+        skillModule = await SK.deploy(
+            await token.getAddress(),
+            await timelock.getAddress(),
+            5000n
+        );
+        await skillModule.waitForDeployment();
+        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // 6. Governor
         const GV = await ethers.getContractFactory("MyGovernor");
         governor = await GV.deploy(
-            await token.getAddress(), await timelock.getAddress(),
+            await token.getAddress(), await skillModule.getAddress(), await timelock.getAddress(),
             VOTING_DELAY, VOTING_PERIOD, 0, 20, 70
         );
         await governor.waitForDeployment();

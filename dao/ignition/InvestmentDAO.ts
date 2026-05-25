@@ -10,12 +10,14 @@
 //  l'ordine di deploy automaticamente.
 //
 //  ORDINE DI DEPLOY:
-//  1. GovernanceToken  — nessuna dipendenza
-//  2. TimelockController — nessuna dipendenza (parametro: minDelay)
-//  3. MyGovernor — dipende da Token + Timelock
-//  4. Treasury — dipende da Timelock (solo il Timelock può chiamare invest)
-//  5. StartupRegistry — nessuna dipendenza
-//  6. MockStartup — nessuna dipendenza
+//  1. TimelockController — nessuna dipendenza (parametro: minDelay)
+//  2. GovernanceToken — dipende da Timelock
+//  3. SkillCalculator — nessuna dipendenza
+//  4. GovernanceSkill — dipende da Token + Timelock
+//  5. MyGovernor — dipende da Token + GovernanceSkill + Timelock
+//  6. Treasury — dipende da Timelock (solo il Timelock può chiamare invest)
+//  7. StartupRegistry — nessuna dipendenza
+//  8. MockStartup — nessuna dipendenza
 //
 //  SETUP RUOLI (post-deploy):
 //  - PROPOSER_ROLE  → Governor (propone operazioni al Timelock)
@@ -64,10 +66,20 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
     // Token ERC20Votes per la sola componente stake; la skill e' tracciata da checkpoint separati.
     const token = m.contract("GovernanceToken", [timelock, 5000, 5000]);
 
+    // ── 2b. SkillCalculator ──
+    // Calcola lo scoring delle skill; GovernanceSkill resta la fonte di verita' per topic e skill supportati.
+    const calculator = m.contract("SkillCalculator");
+
+    // ── 2c. GovernanceSkill ──
+    // Gestisce DID, issuer fidati, upgrade skill e checkpoint VP multi-topic.
+    const skillModule = m.contract("GovernanceSkill", [token, timelock, 5000]);
+    m.call(skillModule, "setSkillCalculator", [calculator], { id: "setSkillCalculator" });
+
     // ── 3. MyGovernor ──
     // Il "cervello" della DAO: proposte, voti, quorum, superquorum, timelock.
     const governor = m.contract("MyGovernor", [
         token,                  // Token ERC20Votes
+        skillModule,            // Modulo skill multi-topic
         timelock,               // TimelockController
         VOTING_DELAY,           // Ritardo prima del voto (blocchi)
         VOTING_PERIOD,          // Durata del voto (blocchi)
@@ -119,6 +131,8 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
 
     return {
         token,
+        skillModule,
+        calculator,
         timelock,
         governor,
         treasury,

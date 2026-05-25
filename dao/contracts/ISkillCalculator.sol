@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 /*
-Interfaccia usata per calcolare il voting power derivato da skill dei membri.
+Interfaccia minima usata da GovernanceSkill per calcolare il voting power derivato dalle skill.
+Espone solo l'operazione batch necessaria durante un upgrade: il calcolatore concreto
+puo' organizzare topic, pesi e boost come preferisce.
 */
 interface ISkillCalculator {
-    /// @notice Restituisce lo score (0-100) calcolato per un determinato topic, date le skill hashate dell'utente.
-    function calculateVP(uint256 topicId, bytes32[] calldata skills) external view returns (uint256);
-
-    /// @notice Controlla se un topicId è valido e supportato.
-    function isValidTopic(uint256 topicId) external view returns (bool);
-
-    /// @notice Restituisce i topic supportati dal calcolatore.
-    function getSupportedTopics() external view returns (uint256[] memory);
+    /// @notice Restituisce gli score (0-100) per tutti i topic supportati in una sola chiamata.
+    function calculateAllVP(bytes32[] calldata skills) external view returns (uint256[] memory);
 }

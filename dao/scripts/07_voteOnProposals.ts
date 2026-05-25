@@ -15,7 +15,7 @@ LOGICA DI VOTO MULTI-TOPIC:
   il chiamante usa castVote() normalmente; il Governor legge proposalTopic[proposalId]
   e lo passa a _getVotes() come parametro.
 
-I topic e gli score sono definiti in SkillCalculator:
+I topic supportati sono definiti in GovernanceSkill; lo score di ogni skill è calcolato da SkillCalculator:
   0 Web3 Infrastructure, 1 AI Products, 2 Digital Health, 3 Enterprise Software.
 Le VC assegnano skill realistiche come smart-contracts, tokenomics,
 machine-learning, digital-health, data-analysis e backend-java.
@@ -54,9 +54,13 @@ async function main() {
     const addresses = JSON.parse(
         fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
     );
+    if (!addresses.skillModule) {
+        throw new Error("deployedAddresses.json non contiene skillModule. Riesegui 01_deploy.ts dopo l'upgrade architetturale.");
+    }
     const governor  = await ethers.getContractAt("MyGovernor",      addresses.governor);
     const treasury  = await ethers.getContractAt("Treasury",        addresses.treasury);
     const token     = await ethers.getContractAt("GovernanceToken", addresses.token);
+    const skillModule = await ethers.getContractAt("GovernanceSkill", addresses.skillModule);
     const pState    = JSON.parse(
         fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8")
     );
@@ -69,7 +73,7 @@ async function main() {
     const stakeSupply = await token.totalSupply();
     console.log(`📊 Supply totale stake: ${ethers.formatEther(stakeSupply)} COMP`);
     for (let t = 0; t < 4; t++) {
-        const skillSup = await token.getTotalSkillSupply(t);
+        const skillSup = await skillModule.getTotalSkillSupply(t);
         console.log(`   Supply skill ${TOPIC_LABELS[t]}: ${ethers.formatEther(skillSup)} VP`);
     }
     console.log();

@@ -13,6 +13,7 @@ import { expect } from "chai";
 import { ethers, network } from "hardhat";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import {
+    GovernanceSkill,
     GovernanceToken,
     MyGovernor,
     Treasury,
@@ -42,10 +43,6 @@ function hashLegacyProof(proof: string): string {
     return ethers.keccak256(ethers.toUtf8Bytes(proof));
 }
 
-function skillIds(names: string[]): string[] {
-    return names.map((name) => ethers.id(name));
-}
-
 function fmtUsd(usd: number): string {
     if (usd < 0.0001) return `< $0.0001`;
     if (usd < 0.01) return `$${usd.toFixed(5)}`;
@@ -65,6 +62,7 @@ function calculateCalldataCost(hexString: string): bigint {
 
 describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
     let token: GovernanceToken;
+    let skillModule: GovernanceSkill;
     let governor: MyGovernor;
     let treasury: Treasury;
     let timelock: TimelockController;
@@ -103,17 +101,6 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         gasReport["Deploy Treasury"] = receiptTreasury!.gasUsed;
         treasury = Treasury_.attach(receiptTreasury!.contractAddress!) as Treasury;
 
-        const Governor = await ethers.getContractFactory("MyGovernor");
-        const txGov = await Governor.getDeployTransaction(
-            await token.getAddress(),
-            await timelock.getAddress(),
-            1, 50, 0, 20, 70
-        );
-        const receiptGov = await (await deployer.sendTransaction(txGov)).wait();
-        gasReport["Deploy MyGovernor"] = receiptGov!.gasUsed;
-        governor = Governor.attach(receiptGov!.contractAddress!) as MyGovernor;
-
-        await token.setTrustedIssuer(issuer.address);
         await token.setTreasury(await treasury.getAddress());
 
         // Deploy SkillCalculator
@@ -122,7 +109,26 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const receiptCalc = await (await deployer.sendTransaction(txCalc)).wait();
         gasReport["Deploy SkillCalculator"] = receiptCalc!.gasUsed;
         const calculator = Calculator.attach(receiptCalc!.contractAddress!) as any;
-        await token.setSkillCalculator(await calculator.getAddress());
+
+        const Skill = await ethers.getContractFactory("GovernanceSkill");
+        const txSkill = await Skill.getDeployTransaction(await token.getAddress(), await timelock.getAddress(), 5000n);
+        const receiptSkill = await (await deployer.sendTransaction(txSkill)).wait();
+        gasReport["Deploy GovernanceSkill"] = receiptSkill!.gasUsed;
+        skillModule = Skill.attach(receiptSkill!.contractAddress!) as GovernanceSkill;
+
+        await skillModule.setTrustedIssuer(issuer.address);
+        await skillModule.setSkillCalculator(await calculator.getAddress());
+
+        const Governor = await ethers.getContractFactory("MyGovernor");
+        const txGov = await Governor.getDeployTransaction(
+            await token.getAddress(),
+            await skillModule.getAddress(),
+            await timelock.getAddress(),
+            1, 50, 0, 20, 70
+        );
+        const receiptGov = await (await deployer.sendTransaction(txGov)).wait();
+        gasReport["Deploy MyGovernor"] = receiptGov!.gasUsed;
+        governor = Governor.attach(receiptGov!.contractAddress!) as MyGovernor;
 
         const govAddr = await governor.getAddress();
         await timelock.grantRole(await timelock.PROPOSER_ROLE(), govAddr);
@@ -164,7 +170,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
     it("5. Upgrade Competences (VC Overhead vs Legacy)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await token.connect(member1).registerDID(holderDid);
+        await skillModule.connect(member1).registerDID(holderDid);
 
         const vcData = {
             issuer: { id: issuerDid },
@@ -177,7 +183,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const signature = await issuer.signTypedData({ name: "Universal VC Protocol", version: "1" }, VC_TYPES, vcData);
 
         // VC Upgrade
-        const txVP = await token.connect(member1).upgradeSkillWithVC(vcData, signature);
+        const txVP = await skillModule.connect(member1).upgradeSkillWithVC(vcData, signature);
         const receiptVP = await txVP.wait();
         gasReport["UpgradeSkill VC (EIP-712)"] = receiptVP!.gasUsed;
         
@@ -190,7 +196,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         await deployer.sendTransaction({ to: tlAddr, value: ethers.parseEther("1") });
         const signerTL = await ethers.getSigner(tlAddr);
         
-        const txLeg = await token.connect(signerTL).upgradeSkill(member2.address, skillIds(["smart-contracts"]), hashLegacyProof("legacy skill"));
+        const txLeg = await skillModule.connect(signerTL).upgradeSkill(member2.address, ["smart-contracts"], hashLegacyProof("legacy skill"));
         const receiptLeg = await txLeg.wait();
         await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [tlAddr] });
         
@@ -206,9 +212,9 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
 
     it("6. Proposta e Vote Lifecycle", async function () {
         // Creazione Proposta
-        const calldata = token.interface.encodeFunctionData("upgradeSkill", [member1.address, skillIds(["backend-java", "data-analysis"]), ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
+        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [member1.address, ["backend-java", "data-analysis"], ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
         const desc = "Promuovi Member1";
-        const txProp = await governor.connect(member1).proposeWithTopic([await token.getAddress()], [0n], [calldata], desc, 0);
+        const txProp = await governor.connect(member1).proposeWithTopic([await skillModule.getAddress()], [0n], [calldata], desc, 0);
         const receiptProp = await txProp.wait();
         gasReport["Create Proposal (con Topic)"] = receiptProp!.gasUsed;
         
@@ -245,16 +251,16 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const pid = (this as any).proposalId;
         await network.provider.send("hardhat_mine", ["0x35"]); // Salta Voting Period
         
-        const calldata = token.interface.encodeFunctionData("upgradeSkill", [member1.address, skillIds(["backend-java", "data-analysis"]), ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
+        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [member1.address, ["backend-java", "data-analysis"], ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
         const descHash = ethers.id("Promuovi Member1");
         
-        const txQueue = await governor.queue([await token.getAddress()], [0n], [calldata], descHash);
+        const txQueue = await governor.queue([await skillModule.getAddress()], [0n], [calldata], descHash);
         const receiptQueue = await txQueue.wait();
         gasReport["Queue Proposal"] = receiptQueue!.gasUsed;
 
         await time.increase(3601); // Salta Timelock Delay
 
-        const txExec = await governor.execute([await token.getAddress()], [0n], [calldata], descHash);
+        const txExec = await governor.execute([await skillModule.getAddress()], [0n], [calldata], descHash);
         const receiptExec = await txExec.wait();
         gasReport["Execute Proposal"] = receiptExec!.gasUsed;
     });
@@ -299,10 +305,14 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         console.log(`      la funzione ecrecover per verificare la firma crittografica dell'EIP-712.`);
         console.log(`   `);
         console.log(`   3. Complessità O(log N) (Checkpoints Binary Search):`);
+        const checkpointOverhead = gasReport["[O(log N) Search Overhead]"];
+        const checkpointTrend = checkpointOverhead >= 0n
+            ? `spende circa ~${checkpointOverhead} gas in più`
+            : `ha consumato circa ~${-checkpointOverhead} gas in meno in questa misura locale`;
         console.log(`      Dopo aver creato artificialmente 10 nuovi Checkpoint (aumentando lo stake 10 volte su blocchi diversi),`);
-        console.log(`      la funzione castVote spende circa ~${gasReport["[O(log N) Search Overhead]"]} gas in più rispetto al primo voto.`);
-        console.log(`      Questo dimostra matematicamente che l'algoritmo di ricerca binaria scala in modo ottimale, mantenendo`);
-        console.log(`      i costi di scansione microscopici rispetto al costo complessivo della transazione.`);
+        console.log(`      la funzione castVote ${checkpointTrend} rispetto al primo voto.`);
+        console.log(`      La variazione resta microscopica rispetto al costo complessivo della transazione, coerentemente`);
+        console.log(`      con la ricerca binaria usata dai checkpoint.`);
         console.log(`   ==================================================================================================\n`);
     });
 });
