@@ -9,9 +9,9 @@ PREREQUISITI:
 FLUSSO:
   1. Legge le VC JSON generate da Veramo.
   2. Valida il formato (credentialSubject.skills deve essere un array).
-  3. Registra i DID dei membri nel contratto GovernanceSkill.
+  3. Registra il DID del membro se non è già stato registrato.
   4. Ogni membro chiama upgradeSkillWithVC() presentando la propria VC.
-  5. Il contratto verifica la firma EIP-712 (ecrecover), unisce le skill all'array
+  5. Il contratto verifica DID registrato e firma EIP-712, unisce le skill all'array
      del membro e aggiorna i checkpoint VP per ogni topic via SkillCalculator.
 
 SKILL RICONOSCIUTE (fonte di verità in GovernanceSkill):
@@ -139,17 +139,16 @@ async function main() {
         };
     });
 
-    console.log(`🔐 Registrazione DID e Upgrade self-sovereign...`);
+    console.log(`🔐 Registrazione DID e upgrade self-sovereign...`);
 
     for (const u of toUpgrade) {
-        // Registra DID se non ancora fatto
         const currentDid = await skillModule.memberDID(u.signer.address);
         const holderDidHash = ethers.keccak256(ethers.toUtf8Bytes(u.holderDid));
         if (currentDid === ethers.ZeroHash) {
             await skillModule.connect(u.signer).registerDID(u.holderDid);
             console.log(`   🔑 Registrato DID per signer[${u.signerIdx}]: ${u.holderDid}`);
         } else if (currentDid !== holderDidHash) {
-            console.log(`   ⚠️  DID mismatch per signer[${u.signerIdx}]. Salto.`);
+            console.log(`   ⚠️  DID già registrato diverso per signer[${u.signerIdx}]. Salto.`);
             continue;
         }
 
@@ -166,15 +165,15 @@ async function main() {
 
     // Report VP post-upgrade per tutti i signer coinvolti
     console.log("\n📊 Stato VP post-upgrade per i membri:");
-    for (let i = 0; i < Math.min(toUpgrade.length, signers.length); i++) {
-        const m = signers[i];
+    for (const u of toUpgrade) {
+        const m = u.signer;
         const skills = await skillModule.getMemberSkills(m.address);
         const topicVotes = await Promise.all(
             TOPIC_LABELS.map((_, topicId) => skillModule.getSkillVotes(m.address, topicId))
         );
 
         console.log(
-            `   Signer[${String(i).padEnd(2)}] [${skills.join(",").padEnd(30)}] | ` +
+            `   Signer[${String(u.signerIdx).padEnd(2)}] [${skills.join(",").padEnd(30)}] | ` +
             TOPIC_LABELS.map((label, topicId) =>
                 `${label}: ${ethers.formatEther(topicVotes[topicId]).padEnd(8)} VP`
             ).join(" | ")

@@ -111,13 +111,17 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const calculator = Calculator.attach(receiptCalc!.contractAddress!) as any;
 
         const Skill = await ethers.getContractFactory("GovernanceSkill");
-        const txSkill = await Skill.getDeployTransaction(await token.getAddress(), await timelock.getAddress(), 5000n);
+        const txSkill = await Skill.getDeployTransaction(
+            await token.getAddress(),
+            await timelock.getAddress(),
+            5000n,
+            await calculator.getAddress()
+        );
         const receiptSkill = await (await deployer.sendTransaction(txSkill)).wait();
         gasReport["Deploy GovernanceSkill"] = receiptSkill!.gasUsed;
         skillModule = Skill.attach(receiptSkill!.contractAddress!) as GovernanceSkill;
 
         await skillModule.setTrustedIssuer(issuer.address);
-        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         const Governor = await ethers.getContractFactory("MyGovernor");
         const txGov = await Governor.getDeployTransaction(
@@ -170,7 +174,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
     it("5. Upgrade Competences (VC Overhead vs Legacy)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member1).registerDID(holderDid);
+
 
         const vcData = {
             issuer: { id: issuerDid },
@@ -183,6 +187,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const signature = await issuer.signTypedData({ name: "Universal VC Protocol", version: "1" }, VC_TYPES, vcData);
 
         // VC Upgrade
+        await skillModule.connect(member1).registerDID(holderDid);
         const txVP = await skillModule.connect(member1).upgradeSkillWithVC(vcData, signature);
         const receiptVP = await txVP.wait();
         gasReport["UpgradeSkill VC (EIP-712)"] = receiptVP!.gasUsed;

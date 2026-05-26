@@ -102,10 +102,10 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
         skillModule = await SK.deploy(
             await token.getAddress(),
             await timelock.getAddress(),
-            5000n
+            5000n,
+            await calculator.getAddress()
         );
         await skillModule.waitForDeployment();
-        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // 6. Governor
         const GV = await ethers.getContractFactory("MyGovernor");

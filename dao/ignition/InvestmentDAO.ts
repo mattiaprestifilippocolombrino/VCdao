@@ -71,9 +71,8 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
     const calculator = m.contract("SkillCalculator");
 
     // ── 2c. GovernanceSkill ──
-    // Gestisce DID, issuer fidati, upgrade skill e checkpoint VP multi-topic.
-    const skillModule = m.contract("GovernanceSkill", [token, timelock, 5000]);
-    m.call(skillModule, "setSkillCalculator", [calculator], { id: "setSkillCalculator" });
+    // Gestisce issuer fidati, upgrade skill e checkpoint VP multi-topic.
+    const skillModule = m.contract("GovernanceSkill", [token, timelock, 5000, calculator]);
 
     // ── 3. MyGovernor ──
     // Il "cervello" della DAO: proposte, voti, quorum, superquorum, timelock.

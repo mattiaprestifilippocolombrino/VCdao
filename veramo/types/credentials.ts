@@ -1,7 +1,7 @@
 /**
  * Single source of truth per il modello VC usato da tutto il progetto:
  * - Veramo emette credenziali EIP-712 con `skills: string[]`
- * - GovernanceToken verifica la VC e salva solo hash di skill
+ * - GovernanceSkill verifica la VC e salva solo hash di skill
  * - SkillCalculator assegna punteggi e boost per topic
  */
 

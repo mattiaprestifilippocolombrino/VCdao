@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
-
 import "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "./VPVerifier.sol";
@@ -25,7 +24,7 @@ contract GovernanceSkill {
             )
         );
 
-    uint256 public weightSkill;     // Peso della componente skill nella formula del voting power, espresso in basis points.
+    uint256 public immutable weightSkill;     // Peso della componente skill nella formula del voting power, espresso in basis points.
 
     // Timelock e deployer non cambiano mai dopo il deploy.
     // Il deployer serve solo per il bootstrap iniziale; poi le modifiche passano dal Timelock.
@@ -39,12 +38,12 @@ contract GovernanceSkill {
     uint256 public trustedIssuerCount;
 
 
-    ISkillCalculator public skillCalculator;   // Contratto esterno che calcola lo score skill per topic. Implementa l'intefaccia ISkillCulculator.
+    ISkillCalculator public immutable skillCalculator;   // Contratto esterno immutabile che calcola lo score skill per topic.
 
 
-    mapping(address => bytes32) public memberDID;    // Mappa che associa ogni membro all'hash del suo DID. Evita di salvare stringhe nello storage.
-    mapping(bytes32 => address) public didToAddress;        // Mappa che associa ogni DID hash al suo indirizzo, per garantire l'unicita dei DID nella DAO.
-    
+    mapping(address => bytes32) public memberDID;    // Mappa che associa ogni membro all'hash del suo DID.
+    mapping(bytes32 => address) public didToAddress; // Garantisce che lo stesso DID non venga registrato da due address.
+
     // Storage canonico delle skill di un membro. Le skill sono salvate come hash
     // per evitare stringhe nello storage e confrontarle in modo economico.
     mapping(address => bytes32[]) public memberSkills;
@@ -65,28 +64,26 @@ contract GovernanceSkill {
 
     event SkillUpgradedWithVC(address indexed member, bytes32 indexed issuerDidHash);
     event SkillUpgraded(address indexed member, bytes32 indexed proofHash);
-    event DIDRegistered(address indexed member, bytes32 indexed didHash);
     event TrustedIssuerAdded(address indexed issuer);
     event TrustedIssuerRemoved(address indexed issuer);
     event SkillCalculatorSet(address indexed calculator);
-    event SkillWeightUpdated(uint256 weightSkill);
     event MemberSkillsMerged(address indexed member, uint256 addedSkills, uint256 totalSkills);
+    event DIDRegistered(address indexed member, bytes32 indexed didHash);
 
     error OnlyTimelock();
     error OnlyDeployer();
     error NotMember();
     error ZeroAddress();
+    error DIDMismatch();
     error DIDAlreadyRegistered();
     error DIDAlreadyBound();
     error NoDIDRegistered();
-    error DIDMismatch();
+    error EmptyDID();
     error UntrustedIssuer();
     error TrustedIssuerNotSet();
     error TrustedIssuerAlreadySet();
     error CannotRemoveLastTrustedIssuer();
-    error EmptyDID();
     error InvalidTopicId(uint256 topicId);
-    error CalculatorNotSet();
     error NotAContract();
     error InvalidCalculator();
     error InvalidWeights();
@@ -108,7 +105,8 @@ contract GovernanceSkill {
     constructor(
         address _governanceToken,
         address _timelock,
-        uint256 _weightSkill
+        uint256 _weightSkill,
+        address _skillCalculator
     ) {
         if (_governanceToken == address(0)) revert ZeroAddress();
         if (_timelock == address(0)) revert ZeroAddress();
@@ -117,6 +115,8 @@ contract GovernanceSkill {
         timelock = _timelock;
         deployer = msg.sender;
         weightSkill = _weightSkill;
+        skillCalculator = _validateSkillCalculator(_skillCalculator);
+        emit SkillCalculatorSet(_skillCalculator);
     }
 
     /*
@@ -151,18 +151,13 @@ contract GovernanceSkill {
     }
 
     /*
-        Imposta il calcolatore delle skill, che implementa l'interfaccia ISkillCalculator.
-        La prima configurazione e' bootstrap del deployer; le successive passano dal Timelock.
+        Valida il calcolatore delle skill, che implementa l'interfaccia ISkillCalculator.
+        Il calcolatore viene fissato al deploy per evitare che membri diversi vengano
+        valutati con logiche differenti nel tempo.
     */
-    function setSkillCalculator(address _calculator) external {
+    function _validateSkillCalculator(address _calculator) private view returns (ISkillCalculator) {
         if (_calculator == address(0)) revert ZeroAddress();
         if (_calculator.code.length == 0) revert NotAContract();
-
-        if (address(skillCalculator) == address(0)) {
-            if (msg.sender != deployer) revert OnlyDeployer();
-        } else {
-            if (msg.sender != timelock) revert OnlyTimelock();
-        }
 
         ISkillCalculator candidate = ISkillCalculator(_calculator);
         bytes32[] memory emptySkills = new bytes32[](0);
@@ -175,15 +170,9 @@ contract GovernanceSkill {
             revert InvalidCalculator();
         }
 
-        skillCalculator = candidate;
-        emit SkillCalculatorSet(_calculator);
+        return candidate;
     }
 
-    function setSkillWeight(uint256 _weightSkill) external onlyTimelock {
-        if (_weightSkill > BASIS_POINTS) revert InvalidWeights();
-        weightSkill = _weightSkill;
-        emit SkillWeightUpdated(_weightSkill);
-    }
 
     // Espone lo stesso clock del GovernanceToken, così i checkpoint skill dichiarano esplicitamente la stessa base temporale dello stake.
     function clock() public view returns (uint48) {
@@ -221,28 +210,34 @@ contract GovernanceSkill {
     }
 
 
+
+
     //  DID
 
-     /*  Funzione per la registrazione del DID di un membro. Un membro puo registrare un solo DID
-        e lo stesso DID non puo essere usato da due address.
-        Verifica che il msg.sender sia un membro della DAO e che non abbia gia registrato un DID.
-        Effettua l'hash del DID, controlla che non sia già stato registrato. 
-        In tal caso, registra nei mapping le associazioni address -> DID hash e DID hash -> address.
+    /*
+        Registra il DID del membro una sola volta.
+        Il DID resta salvato come hash per ridurre storage e privacy leak.
+        La verifica forte avviene quando una VC firmata da un issuer fidato
+        presenta lo stesso DID nel credentialSubject.
     */
     function registerDID(string calldata _did) external {
         if (!governanceToken.isMember(msg.sender)) revert NotMember();
         if (bytes(_did).length == 0) revert EmptyDID();
         if (memberDID[msg.sender] != bytes32(0)) revert DIDAlreadyRegistered();
-        bytes32 h = keccak256(bytes(_did));
-        if (didToAddress[h] != address(0)) revert DIDAlreadyBound();
-        memberDID[msg.sender] = h;
-        didToAddress[h] = msg.sender;
-        emit DIDRegistered(msg.sender, h);
+
+        bytes32 didHash = keccak256(bytes(_did));
+        if (didToAddress[didHash] != address(0)) revert DIDAlreadyBound();
+
+        memberDID[msg.sender] = didHash;
+        didToAddress[didHash] = msg.sender;
+
+        emit DIDRegistered(msg.sender, didHash);
     }
 
 
-    //  Upgrade Skill
 
+
+    //  Upgrade Skill
 
     // Getter comodo per leggere l'array di skill hashate del membro.
     function getMemberSkills(address member) public view returns (bytes32[] memory) {
@@ -295,23 +290,21 @@ contract GovernanceSkill {
         bytes32 _proofHash
     ) external onlyTimelock {
         if (!governanceToken.isMember(_member)) revert NotMember();
-        if (address(skillCalculator) == address(0)) revert CalculatorNotSet();
         bytes32[] memory mergedSkills = _mergeSkills(_member, _skillIds(_skills));
         _performUpgrade(_member, mergedSkills, _proofHash);
     }
 
     /*
-    Funzione che esegue l'upgrade del grado di competenza di un membro tramite VC. 
+    Funzione che esegue l'upgrade delle skill di un membro tramite VC.
     Usa la libreria VPVerifier per verificare una VC firmata e applica l'upgrade se la VC è valida.
     La funzione controlla se il membro è esistente e se è configurato nella DAO l'issuer fidato.
     Controlla se il DID del membro è coerente con il DID nel credentialSubject.
     Il typehash del dominio EIP-712 è precalcolato come constant (0 gas di hashing).
     Recupera l'address del firmatario usando le funzioni della libreria VPVerifier sulla firma EIP-712 
     contenuta nella VC.
-    Controlla se l'issuer recuperato è uguale al trustedIssuer. 
-    In caso positivo, mappa il titolo testuale nell'enum di grado di competenza.
+    Controlla che il signer recuperato sia trusted e coerente con il DID dell'issuer.
     Costruisce un hash della proof sintetica da esporre negli eventi. 
-    Esegue l'aggiornamento del grado del membro, tramite la funzione _performUpgrade, senza passare dalla governance.
+    Esegue l'aggiornamento delle skill del membro tramite _performUpgrade, senza passare dalla governance.
     */
     function upgradeSkillWithVC(
         VPVerifier.VerifiableCredential memory _vc,
@@ -319,7 +312,6 @@ contract GovernanceSkill {
     ) external {
         if (!governanceToken.isMember(msg.sender)) revert NotMember();
         if (trustedIssuerCount == 0) revert TrustedIssuerNotSet();
-        if (address(skillCalculator) == address(0)) revert CalculatorNotSet();
         bytes32 didHash = memberDID[msg.sender];
         if (didHash == bytes32(0)) revert NoDIDRegistered();
         if (keccak256(bytes(_vc.credentialSubject.id)) != didHash) revert DIDMismatch();
@@ -328,7 +320,7 @@ contract GovernanceSkill {
         if (!trustedIssuers[recovered]) revert UntrustedIssuer();
 
         bytes32[] memory mergedSkills = _mergeSkills(msg.sender, _skillIds(_vc.credentialSubject.skills));
-        
+
         bytes32 issuerDidHash = keccak256(bytes(_vc.issuer.id));
         bytes32 proofHash = _credentialSubjectProofHash(_vc.credentialSubject);
         _performUpgrade(msg.sender, mergedSkills, proofHash);

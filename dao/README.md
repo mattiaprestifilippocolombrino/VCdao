@@ -1,6 +1,6 @@
 # CompetenceDAO (DAO Module)
 
-Modulo on-chain del PoC di tesi: la DAO assegna peso di voto in base al grado di competenza certificato da VC firmate off-chain e verificate on-chain.
+Modulo on-chain del PoC di tesi: la DAO assegna peso di voto in base a stake economico e skill certificate da VC firmate off-chain e verificate on-chain.
 
 ## Obiettivo
 
@@ -15,12 +15,14 @@ Modulo on-chain del PoC di tesi: la DAO assegna peso di voto in base al grado di
 - `skillVP(topic) = skillScore(topic) * weightSkill / 10_000`
 - `totalVotingPower(topic) = stakeVP + skillVP(topic)`
 
-Gradi (`GovernanceToken.CompetenceGrade`):
+Skill riconosciute:
 
-1. `Student`
-2. `BachelorCS | MasterCS | PhDCS | ProfessorCS`
-3. `BachelorCE | MasterCE | PhDCE | ProfessorCE`
-4. `BachelorEE | MasterEE | PhDEE | ProfessorEE`
+- `smart-contracts`
+- `machine-learning`
+- `tokenomics`
+- `digital-health`
+- `data-analysis`
+- `backend-java`
 
 ## Contratti Principali
 
@@ -32,9 +34,15 @@ Gradi (`GovernanceToken.CompetenceGrade`):
 ### GovernanceToken
 
 - gestisce membership e stake
-- registra DID con binding 1:1 (`registerDID`)
+- minta la componente ERC20Votes del voting power da stake
+
+### GovernanceSkill
+
+- gestisce trusted issuer, DID registrati e skill dei membri
+- registra un DID unico per membro (`registerDID`)
 - applica upgrade legacy (`upgradeSkill`)
 - applica upgrade VC-based (`upgradeSkillWithVC`)
+- salva checkpoint VP skill topic-specifici
 
 ### VPVerifier
 
@@ -47,8 +55,7 @@ Firma coperta dai claim semantici:
 - `credentialSubject.id`
 - `credentialSubject.university`
 - `credentialSubject.faculty`
-- `credentialSubject.degreeTitle`
-- `credentialSubject.grade`
+- `credentialSubject.skills`
 
 ## Modello VC Atteso dalla DAO
 
@@ -66,10 +73,10 @@ Top-level obbligatori:
 - `id` (DID holder)
 - `university`
 - `faculty`
-- `degreeTitle` (`BachelorCS | MasterCE | PhDEE | ProfessorEE`, ecc.)
-- `grade`
+- `skills` (array di skill supportate)
 
-Non sono ammessi campi extra nella VC consumata dallo script DAO.
+Lo script DAO filtra gli issuer fidati e rifiuta skill non riconosciute.
+Prima dell'upgrade VC, il membro registra il proprio DID una sola volta; il contratto confronta poi l'hash del DID registrato con `credentialSubject.id`.
 
 ## Pipeline Script DAO
 
@@ -84,9 +91,9 @@ Non sono ammessi campi extra nella VC consumata dallo script DAO.
 
 Lo script `04_upgradeCompetences.ts` legge le VC da:
 
-- `dao/scripts/shared-credentials/*.json`
+- `shared-credentials/*.json`
 
-Questi file sono prodotti dal modulo Veramo (`veramo/scripts/2-issue-credential.ts`).
+Questi file sono prodotti dal modulo Veramo (`veramo/scripts/issue-for-dao.ts`).
 
 ## Run End-to-End (locale)
 

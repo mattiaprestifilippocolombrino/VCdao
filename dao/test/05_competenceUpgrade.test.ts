@@ -90,14 +90,14 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         skillModule = await Skill.deploy(
             await token.getAddress(),
             await timelock.getAddress(),
-            5000n
+            5000n,
+            await calculator.getAddress()
         );
         await skillModule.waitForDeployment();
 
         // 6. Setup moduli
         await token.setTreasury(await treasury.getAddress());
         await skillModule.setTrustedIssuer(issuer.address);
-        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // 7. Fondatore (deployer) entra e delega
         await token.joinDAO({ value: ethers.parseEther("100") });
@@ -130,7 +130,8 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         skills: string[],
         holderDid: string,
         issuerDid: string,
-        signer: HardhatEthersSigner = issuer
+        signer: HardhatEthersSigner = issuer,
+        registerDid: boolean = true
     ) {
         const vcData = {
             issuer: { id: issuerDid },
@@ -143,6 +144,9 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
             },
         };
         const signature = await signer.signTypedData(EIP712_DOMAIN, VC_TYPES, vcData);
+        if (registerDid && await skillModule.memberDID(target.address) === ethers.ZeroHash) {
+            await skillModule.connect(target).registerDID(holderDid);
+        }
         await skillModule.connect(target).upgradeSkillWithVC(vcData, signature);
         return vcData;
     }
@@ -216,10 +220,11 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         expect(await skillModule.isValidTopic(4)).to.be.false;
     });
 
-    it("setSkillCalculator() richiede il Timelock dopo la prima configurazione", async function () {
+    it("constructor rifiuta un calculator non-contract", async function () {
+        const Skill = await ethers.getContractFactory("GovernanceSkill");
         await expect(
-            skillModule.connect(member).setSkillCalculator(await calculator.getAddress())
-        ).to.be.revertedWithCustomError(skillModule, "OnlyTimelock");
+            Skill.deploy(await token.getAddress(), await timelock.getAddress(), 5000n, member.address)
+        ).to.be.revertedWithCustomError(skillModule, "NotAContract");
     });
 
     it("supporta un insieme di trusted issuer", async function () {
@@ -283,28 +288,35 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     });
 
     // =========================================================================
-    //  Test: DID registration
+    //  Test: DID binding
     // =========================================================================
-    it("un membro può registrare il proprio DID", async function () {
-        const did = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const didHash = ethers.keccak256(ethers.toUtf8Bytes(did));
-        await skillModule.connect(member).registerDID(did);
-        expect(await skillModule.memberDID(member.address)).to.equal(didHash);
-        expect(await skillModule.didToAddress(didHash)).to.equal(member.address);
+    it("registerDID salva un DID unico per il membro", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const holderDidHash = ethers.keccak256(ethers.toUtf8Bytes(holderDid));
+
+        await expect(skillModule.connect(member).registerDID(holderDid))
+            .to.emit(skillModule, "DIDRegistered")
+            .withArgs(member.address, holderDidHash);
+
+        expect(await skillModule.memberDID(member.address)).to.equal(holderDidHash);
+        expect(await skillModule.didToAddress(holderDidHash)).to.equal(member.address);
     });
 
-    it("un non-membro non può registrare un DID", async function () {
-        const [, , , nonMember] = await ethers.getSigners();
+    it("registerDID impedisce di cambiare DID dopo la prima registrazione", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+
+        await skillModule.connect(member).registerDID(holderDid);
         await expect(
-            skillModule.connect(nonMember).registerDID("did:ethr:test:0xABC")
-        ).to.be.revertedWithCustomError(skillModule, "NotMember");
+            skillModule.connect(member).registerDID(holderDid)
+        ).to.be.revertedWithCustomError(skillModule, "DIDAlreadyRegistered");
     });
 
-    it("due membri non possono registrare lo stesso DID", async function () {
-        const did = "did:ethr:sepolia:shared";
-        await skillModule.connect(member).registerDID(did);
+    it("registerDID impedisce a un altro membro di registrare lo stesso DID", async function () {
+        const holderDid = "did:example:alice-profile";
+
+        await skillModule.connect(member).registerDID(holderDid);
         await expect(
-            skillModule.connect(deployer).registerDID(did)
+            skillModule.connect(deployer).registerDID(holderDid)
         ).to.be.revertedWithCustomError(skillModule, "DIDAlreadyBound");
     });
 
@@ -314,7 +326,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("upgrade con VC: salva le skill nel membro e aggiorna i checkpoint", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
 
@@ -326,7 +337,14 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("upgrade con VC: aggiorna correttamente il checkpoint Web3", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
+
+        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+    });
+
+    it("accetta DID generici non legati all'address Ethereum", async function () {
+        const holderDid = "did:example:member-credential-subject";
+        const issuerDid = "did:example:issuer-unipi";
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
         expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
@@ -335,7 +353,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("upgrade con VC: score Digital Health per digital-health = 45 → 22.5 VP skill", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["digital-health"], holderDid, issuerDid);
         expect(await skillModule.getSkillVotes(member.address, 2)).to.equal(ethers.parseEther("22.5"));
@@ -344,7 +361,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("secondo upgrade con nuove skill: accumula le skill senza duplicati", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
         await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
@@ -357,7 +373,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("secondo upgrade con nuove skill: aumenta il checkpoint (delta cumulativo)", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
         const vpAfterFirst = await skillModule.getSkillVotes(member.address, 0);
@@ -371,7 +386,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("boost combinazionale si riflette nel checkpoint: smart-contracts+tokenomics su Web3", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts", "tokenomics"], holderDid, issuerDid);
         expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("47.5"));
@@ -380,11 +394,18 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("rifiuta VC con issuer non fidato", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const [, , , fakeIssuer] = await ethers.getSigners();
-        await skillModule.connect(member).registerDID(holderDid);
 
         await expect(
             doUpgradeWithVC(member, ["smart-contracts"], holderDid, "did:ethr:fake", fakeIssuer)
         ).to.be.revertedWithCustomError(skillModule, "UntrustedIssuer");
+    });
+
+    it("accetta VC firmata da issuer fidato anche con DID issuer generico", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const genericIssuerDid = "did:example:trusted-university";
+
+        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, genericIssuerDid);
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
     });
 
     it("accetta VC firmate da un secondo trusted issuer", async function () {
@@ -392,33 +413,40 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
 
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + secondIssuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["backend-java"], holderDid, issuerDid, secondIssuer);
         expect(await skillModule.getSkillVotes(member.address, 3)).to.equal(ethers.parseEther("20"));
     });
 
-    it("rifiuta VC con DID non registrato", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        // NON registriamo il DID
-        await expect(
-            doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid)
-        ).to.be.revertedWithCustomError(skillModule, "NoDIDRegistered");
-    });
-
     it("rifiuta VC con DID mismatch", async function () {
-        const wrongDid = "did:ethr:sepolia:0xWRONG";
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const wrongDid = "did:ethr:sepolia:0x" + deployer.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID("did:ethr:sepolia:0xREAL");
 
+        await skillModule.connect(member).registerDID(holderDid);
         await expect(
-            doUpgradeWithVC(member, ["smart-contracts"], wrongDid, issuerDid)
+            doUpgradeWithVC(member, ["smart-contracts"], wrongDid, issuerDid, issuer, false)
         ).to.be.revertedWithCustomError(skillModule, "DIDMismatch");
     });
 
-    it("rifiuta VC se SkillCalculator non è impostato", async function () {
-        // Deploy nuovo token senza calculator
+    it("accetta DID senza formato Ethereum se la VC firmata usa lo stesso DID", async function () {
+        const malformedDid = "not-a-standard-did-for-local-tests";
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        await doUpgradeWithVC(member, ["smart-contracts"], malformedDid, issuerDid);
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+    });
+
+    it("rifiuta VC se il membro non ha registrato un DID", async function () {
+        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+
+        await expect(
+            doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid, issuer, false)
+        ).to.be.revertedWithCustomError(skillModule, "NoDIDRegistered");
+    });
+
+    it("constructor rifiuta SkillCalculator zero address", async function () {
         const Timelock2 = await ethers.getContractFactory("TimelockController");
         const tl2 = await Timelock2.deploy(3600, [], [], deployer.address);
         await tl2.waitForDeployment();
@@ -426,30 +454,10 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         const token2 = await Token2.deploy(await tl2.getAddress(), 5000n, 5000n);
         await token2.waitForDeployment();
 
-        const Treasury2_ = await ethers.getContractFactory("Treasury");
-        const treasury2 = await Treasury2_.deploy(await tl2.getAddress());
-        await treasury2.waitForDeployment();
-        await token2.setTreasury(await treasury2.getAddress());
-
         const Skill2 = await ethers.getContractFactory("GovernanceSkill");
-        const skill2 = await Skill2.deploy(await token2.getAddress(), await tl2.getAddress(), 5000n);
-        await skill2.waitForDeployment();
-        await skill2.setTrustedIssuer(issuer.address);
-        // Nessun setSkillCalculator
-
-        await token2.connect(member).joinDAO({ value: ethers.parseEther("1") });
-        const did = "did:ethr:test:member";
-        await skill2.connect(member).registerDID(did);
-
-        const vcData = {
-            issuer: { id: "did:ethr:issuer" },
-            issuanceDate: "2026-01-01T00:00:00Z",
-            credentialSubject: { id: did, university: "UniPI", faculty: "Computer Science", skills: ["smart-contracts"] },
-        };
-        const signature = await issuer.signTypedData(EIP712_DOMAIN, VC_TYPES, vcData);
         await expect(
-            skill2.connect(member).upgradeSkillWithVC(vcData, signature)
-        ).to.be.revertedWithCustomError(skill2, "CalculatorNotSet");
+            Skill2.deploy(await token2.getAddress(), await tl2.getAddress(), 5000n, ethers.ZeroAddress)
+        ).to.be.revertedWithCustomError(skillModule, "ZeroAddress");
     });
 
     // =========================================================================
@@ -470,7 +478,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("stake VP e skill VP restano separati nei moduli corretti", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         // Stake: 5 ETH → 2.5 COMP
         const stakeVP = await token.balanceOf(member.address);
@@ -486,7 +493,6 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     it("getPastSkillVotes: upgrade successivo non altera snapshot precedente", async function () {
         const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        await skillModule.connect(member).registerDID(holderDid);
 
         await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
         const snapshot = await ethers.provider.getBlockNumber();

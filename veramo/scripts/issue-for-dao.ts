@@ -2,7 +2,7 @@
 =============================================================================
   SCRIPT: issue-for-dao.ts
   SCOPO: Emettere Verifiable Credentials (VC) in formato EIP-712, 
-         perfettamente allineate con gli Smart Contract `GovernanceToken.sol` 
+         perfettamente allineate con gli Smart Contract `GovernanceSkill.sol`
          e `VPVerifier.sol` del progetto CompetenceDAO.
 =============================================================================
 */
@@ -74,7 +74,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
     
     if (deployedIssuers.length > 0 && !deployedIssuers.includes(issuerWallet.address)) {
       console.error("❌ ERRORE CRITICO DI COERENZA (MISTMATCH ISSUER) ❌");
-      console.error(`   Il contratto GovernanceToken si fida di: ${deployedIssuers.join(", ")}`);
+      console.error(`   Il contratto GovernanceSkill si fida di: ${deployedIssuers.join(", ")}`);
       console.error(`   Ma questo script sta firmando le VC con il wallet:           ${issuerWallet.address}`);
       console.error("");
       console.error("💡 SOLUZIONE OBBLIGATORIA:");
@@ -83,7 +83,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
       console.error(`   export DAO_TRUSTED_ISSUER=${issuerWallet.address} && npx hardhat run scripts/01_deploy.ts --network localhost\n`);
       throw new Error("Esecuzione interrotta per proteggere la consistenza del sistema DAO.");
     } else {
-      console.log("✅ Coerenza Issuer verificata: Il GovernanceToken riconoscerà queste VC.\n");
+      console.log("✅ Coerenza Issuer verificata: GovernanceSkill riconoscerà queste VC.\n");
     }
   }
 
@@ -93,7 +93,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
   prepareDir(localDir);
   prepareDir(sharedDir);
 
-  // 4. Dominio EIP-712 universale (Allineato con GovernanceToken.sol)
+  // 4. Dominio EIP-712 universale (allineato con GovernanceSkill.sol)
   const domain = {
     name: "Universal VC Protocol",
     version: "1",

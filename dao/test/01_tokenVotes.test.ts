@@ -35,18 +35,18 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         treasury = await Treasury_.deploy(await timelock.getAddress());
         await treasury.waitForDeployment();
 
+        const Calculator = await ethers.getContractFactory("SkillCalculator");
+        calculator = await Calculator.deploy();
+        await calculator.waitForDeployment();
+
         const Skill = await ethers.getContractFactory("GovernanceSkill");
         skillModule = await Skill.deploy(
             await token.getAddress(),
             await timelock.getAddress(),
-            5000n
+            5000n,
+            await calculator.getAddress()
         );
         await skillModule.waitForDeployment();
-
-        const Calculator = await ethers.getContractFactory("SkillCalculator");
-        calculator = await Calculator.deploy();
-        await calculator.waitForDeployment();
-        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         await token.setTreasury(await treasury.getAddress());
     });
@@ -167,5 +167,16 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await token.connect(alice).increaseStake({ value: ethers.parseEther("2") });
         const balAfter = await treasury.getBalance();
         expect(balAfter - balBefore).to.equal(ethers.parseEther("2"));
+    });
+
+    it("increaseStake() reverta se l'utente supera il MAX_DEPOSIT (anti-bypass)", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("50") });
+        // Alice trasferisce i token a Bob per "svuotare" il saldo ERC20
+        await token.connect(alice).transfer(bob.address, ethers.parseEther("25"));
+        // Alice prova a versare altri 60 ETH.
+        // stakeDeposited di Alice e' 50. 50 + 60 = 110 > 100 MAX_DEPOSIT. Deve fallire!
+        await expect(
+            token.connect(alice).increaseStake({ value: ethers.parseEther("60") })
+        ).to.be.revertedWithCustomError(token, "ExceedsMaxDeposit");
     });
 });

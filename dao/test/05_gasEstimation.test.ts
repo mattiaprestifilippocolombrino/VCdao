@@ -83,10 +83,14 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         await calculator.waitForDeployment();
 
         const Skill = await ethers.getContractFactory("GovernanceSkill");
-        skillModule = await Skill.deploy(await token.getAddress(), await timelock.getAddress(), 5000n);
+        skillModule = await Skill.deploy(
+            await token.getAddress(),
+            await timelock.getAddress(),
+            5000n,
+            await calculator.getAddress()
+        );
         await skillModule.waitForDeployment();
         await skillModule.setTrustedIssuer(issuer.address);
-        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // I membri entrano nella DAO (necessario per fare l'upgrade)
         await token.connect(member1).joinDAO({ value: ethers.parseEther("5") });
@@ -126,14 +130,14 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
         const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
         
-        // Registriamo il DID (costo una tantum, separato dall'upgrade stesso)
-        await skillModule.connect(member1).registerDID(holderDid);
+
         
         // Generazione VC off-chain
         const { vcData, signature } = await signVC(holderDid, issuerDid, ["smart-contracts", "tokenomics"]);
 
         // Transazione 1: Upgrade con VC EIP-712 (Self-Sovereign)
         // L'utente chiama direttamente passando la prova crittografica.
+        await skillModule.connect(member1).registerDID(holderDid);
         const txVP = await skillModule.connect(member1).upgradeSkillWithVC(vcData, signature);
         const receiptVP = await txVP.wait();
         const gasTotal: bigint = receiptVP!.gasUsed;

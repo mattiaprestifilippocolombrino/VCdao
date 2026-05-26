@@ -126,6 +126,9 @@ async function main() {
       const recoveredAddress = ethers.getAddress(recovered)
       const issuerFromDid = parseIssuerAddressFromDid(String(vc.issuer?.id ?? ""))
 
+      if (recoveredAddress !== issuerFromDid) {
+        throw new Error(`issuer DID non coerente con la firma: recovered=${recoveredAddress}, did=${issuerFromDid}`)
+      }
       if (!trustedIssuers.has(recoveredAddress)) {
         throw new Error(
           `firma non trusted: recovered=${recoveredAddress}, trusted=${[...trustedIssuers].join(", ")}`

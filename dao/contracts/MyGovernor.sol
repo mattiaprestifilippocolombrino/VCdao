@@ -152,34 +152,6 @@ contract MyGovernor is
         emit ProposalTopicSet(proposalId, topicId);
     }
 
-    /*
-    Funzione helper per proporre un aggiornamento atomico dei pesi stake/skill.
-    Il Governor non conserva i pesi: costruisce una proposta batch che aggiorna
-    GovernanceToken e GovernanceSkill nello stesso ciclo Timelock.
-    */
-    function proposeWeightUpdate(
-        uint256 newSkillWeight,
-        uint256 newStakeWeight,
-        string memory description,
-        uint256 topicId
-    ) external returns (uint256 proposalId) {
-        if (newSkillWeight + newStakeWeight != governanceToken.BASIS_POINTS()) revert InvalidWeights();
-        _validateTopicId(topicId);
-
-        address[] memory targets = new address[](2);
-        targets[0] = address(governanceToken);
-        targets[1] = address(governanceSkill);
-
-        uint256[] memory values = new uint256[](2);
-
-        bytes[] memory calldatas = new bytes[](2);
-        calldatas[0] = abi.encodeCall(IGovernanceToken.setWeights, (newSkillWeight, newStakeWeight));
-        calldatas[1] = abi.encodeCall(IGovernanceSkill.setSkillWeight, (newSkillWeight));
-
-        proposalId = super.propose(targets, values, calldatas, description);
-        proposalTopic[proposalId] = topicId;
-        emit ProposalTopicSet(proposalId, topicId);
-    }
 
     /*
     Funzione propose standard disabilitata, poichè per il calcolo del vp skill
@@ -228,6 +200,10 @@ passando come parametro il topicId salvato in proposalTopic[proposalId].
         uint256 timepoint,
         bytes memory params
     ) internal view override(Governor, GovernorVotes) returns (uint256) {
+        if (!governanceToken.isMember(account)) {
+            return 0;
+        }
+
         uint256 stakeVotes = super._getVotes(account, timepoint, params);
 
         if (params.length == 0) {

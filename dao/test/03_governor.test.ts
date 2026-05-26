@@ -101,10 +101,10 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
         skillModule = await SK.deploy(
             await token.getAddress(),
             await timelock.getAddress(),
-            5000n
+            5000n,
+            await calculator.getAddress()
         );
         await skillModule.waitForDeployment();
-        await skillModule.setSkillCalculator(await calculator.getAddress());
 
         // 4. Governor
         const GV = await ethers.getContractFactory("MyGovernor");
@@ -176,17 +176,6 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             ).to.be.revertedWithCustomError(governor, "UseProposeWithTopic");
         });
 
-        it("proposeWeightUpdate crea una proposta atomica per i pesi stake/skill", async function () {
-            const tx = await governor.proposeWeightUpdate(6000n, 4000n, "Aggiorna pesi VP", 0);
-            const pid = await getProposalId(governor, tx);
-            expect(await governor.proposalTopic(pid)).to.equal(0n);
-        });
-
-        it("proposeWeightUpdate reverta se i pesi non sommano 100%", async function () {
-            await expect(
-                governor.proposeWeightUpdate(6000n, 3000n, "Pesi invalidi", 0)
-            ).to.be.revertedWithCustomError(governor, "InvalidWeights");
-        });
     });
 
     // ========================================================================
@@ -271,32 +260,6 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             expect(await governor.state(pid)).to.equal(3); // Defeated
         });
 
-        it("proposeWeightUpdate aggiorna weightStake e weightSkill nella stessa esecuzione", async function () {
-            const desc = "Aggiorna pesi VP atomici";
-            const newSkillWeight = 6000n;
-            const newStakeWeight = 4000n;
-
-            const tx = await governor.proposeWeightUpdate(newSkillWeight, newStakeWeight, desc, 0);
-            const pid = await getProposalId(governor, tx);
-
-            await mine(VOTING_DELAY + 1);
-            await governor.castVote(pid, 1);
-            await mine(VOTING_PERIOD + 1);
-
-            const targets = [await token.getAddress(), await skillModule.getAddress()];
-            const values = [0n, 0n];
-            const calldatas = [
-                token.interface.encodeFunctionData("setWeights", [newSkillWeight, newStakeWeight]),
-                skillModule.interface.encodeFunctionData("setSkillWeight", [newSkillWeight]),
-            ];
-
-            await governor.queue(targets, values, calldatas, ethers.id(desc));
-            await time.increase(TIMELOCK_DELAY + 1);
-            await governor.execute(targets, values, calldatas, ethers.id(desc));
-
-            expect(await token.weightStake()).to.equal(newStakeWeight);
-            expect(await skillModule.weightSkill()).to.equal(newSkillWeight);
-        });
     });
 
     // ========================================================================
@@ -349,6 +312,43 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             const { forVotes } = await governor.proposalVotes(pid);
             // Stake 20e18 + skill AI data-analysis=30 → VP = 20 + 15 = 35 COMP
             expect(forVotes).to.equal(ethers.parseEther("35"));
+        });
+
+        it("il VP stake trasferito non è votabile da un destinatario non membro", async function () {
+            await token.connect(alice).joinDAO({ value: ethers.parseEther("20") });
+            await token.connect(alice).transfer(bob.address, ethers.parseEther("10"));
+            await token.connect(bob).delegate(bob.address);
+            await mine(1);
+
+            const tx = await governor.proposeWithTopic(
+                [ethers.ZeroAddress], [0n], ["0x"], "Transferable stake VP", 0
+            );
+            const pid = await getProposalId(governor, tx);
+
+            await mine(VOTING_DELAY + 1);
+            await governor.connect(bob).castVote(pid, 1);
+
+            const { forVotes } = await governor.proposalVotes(pid);
+            expect(forVotes).to.equal(0n);
+        });
+
+        it("il VP stake trasferito resta votabile se il destinatario è membro", async function () {
+            await token.connect(alice).joinDAO({ value: ethers.parseEther("20") });
+            await token.connect(bob).joinDAO({ value: ethers.parseEther("1") });
+            await token.connect(alice).transfer(bob.address, ethers.parseEther("10"));
+            await token.connect(bob).delegate(bob.address);
+            await mine(1);
+
+            const tx = await governor.proposeWithTopic(
+                [ethers.ZeroAddress], [0n], ["0x"], "Member transferable stake VP", 0
+            );
+            const pid = await getProposalId(governor, tx);
+
+            await mine(VOTING_DELAY + 1);
+            await governor.connect(bob).castVote(pid, 1);
+
+            const { forVotes } = await governor.proposalVotes(pid);
+            expect(forVotes).to.equal(ethers.parseEther("10.5"));
         });
     });
 

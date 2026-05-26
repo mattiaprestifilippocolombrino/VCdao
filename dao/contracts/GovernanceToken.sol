@@ -33,8 +33,10 @@ Lo score delle skills di un utente viene calcolato da SkillCalculator, chiamato 
 Una DAO può sostituire il calcolatore e calcolare in modo diverso il voting power derivato da skill.
 
 I pesi weightSkill e weightStake sono configurabili al deploy e la loro somma deve essere uguale a
-10.000 basis points, cioè il 100%. Possono essere cambiati via proposal batchando la modifica su
-GovernanceToken e GovernanceSkill.
+10.000 basis points, cioè il 100%.
+Entrambi i pesi sono immutabili. Se i pesi cambiassero in futuro, i checkpoint passati del voting
+power (usati per le votazioni) rifletterebbero pesi diversi, e ricalcolarli sarebbe impossibile
+in termini di gas. Per modificarli è necessario deployare nuovi contratti.
 */
 
 
@@ -57,7 +59,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
     //  Stato configurabile
 
-    uint256 public weightStake;     // Peso della componente stake nella formula del voting power, espresso in basis points.
+    uint256 public immutable weightStake;     // Peso della componente stake nella formula del voting power, espresso in basis points.
+    uint256 public immutable weightSkill;     // Peso della componente skill.
 
     // Timelock e deployer non cambiano mai dopo il deploy.
     // Il deployer serve solo per il bootstrap iniziale; poi le modifiche passano dal Timelock.
@@ -76,7 +79,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
     event MemberJoined(address indexed member, uint256 stakeAmount, uint256 stakeTokensMinted);
     event StakeIncreased(address indexed member, uint256 stakeAmount, uint256 stakeTokensMinted);
-    event WeightsUpdated(uint256 weightSkill, uint256 weightStake);
 
 
     //  Errori
@@ -93,6 +95,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     error TreasuryTransferFailed();
     error InvalidWeights();
     error DepositTooSmall();
+    error MaxDepositReached();
 
     /// Decorator che obbliga la funzione interna ad essere eseguita solo dal TimeLockController.
     modifier onlyTimelock() {
@@ -125,6 +128,7 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         timelock = _timelock;
         deployer = msg.sender;
         weightStake = _weightStake;
+        weightSkill = _weightSkill;
     }
 
 
@@ -138,14 +142,6 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         if (treasury != address(0)) revert TreasuryAlreadySet();
         if (_treasury == address(0)) revert ZeroAddress();
         treasury = _treasury;
-    }
-
-    // Aggiornamento del peso stake via governance, validato insieme al peso skill previsto nella stessa proposal.
-    // La somma deve restare 100%, espressa in basis points.
-    function setWeights(uint256 _weightSkill, uint256 _weightStake) external onlyTimelock {
-        if (_weightSkill + _weightStake != BASIS_POINTS) revert InvalidWeights();
-        weightStake = _weightStake;
-        emit WeightsUpdated(_weightSkill, _weightStake);
     }
 
 
@@ -191,12 +187,16 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
        Calcola il numero di token da ricevere in base al deposito effettuato via formula VPC. weightStake × scoreStake, usando le funzioni di utility precedenti.
        Imposta il nuovo membro come attivo, con grado minimo Student e viene registrato il deposito effettuato.
        I token vengono mintati e inviati al membro. La funzione trasferisce gli ETH ricevuti direttamente al treasury.
+
+       Regola anti-bypass: se un utente ha depositato il massimo depositabile (senza tenere conto
+       del suo saldo attuale di token, che potrebbe aver trasferito), non può più effettuare minting.
     */
     function joinDAO() external payable {
         if (treasury == address(0)) revert TreasuryNotSet();
         if (isMember[msg.sender]) revert AlreadyMember();
         if (msg.value == 0) revert ZeroDeposit();
         if (msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
+        if (stakeDeposited[msg.sender] >= MAX_DEPOSIT) revert MaxDepositReached();
 
         uint256 tokenAmount = _calculateStakeTokens(msg.value, 0);
         if (tokenAmount == 0) revert DepositTooSmall();
@@ -218,11 +218,15 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
        Calcola i nuovi token in base solo all'incremento dello score stake e tiene conto degli ETH già depositati.
        Viene aggiornato il conto degli ETH depositati dall'utente. Vengono mintati i token.
        Gli ETH vengono trasferiti direttamente al Treasury.
+
+       Regola anti-bypass: se un utente ha depositato il massimo depositabile (senza tenere conto
+       del suo saldo attuale di token, che potrebbe aver trasferito), non può più effettuare minting.
     */
     function increaseStake() external payable {
         if (!isMember[msg.sender]) revert NotMember();
         if (msg.value == 0) revert ZeroDeposit();
         if (treasury == address(0)) revert TreasuryNotSet();
+        if (stakeDeposited[msg.sender] >= MAX_DEPOSIT) revert MaxDepositReached();
         if (stakeDeposited[msg.sender] + msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
 
         uint256 newTokens = _calculateStakeTokens(msg.value, stakeDeposited[msg.sender]);

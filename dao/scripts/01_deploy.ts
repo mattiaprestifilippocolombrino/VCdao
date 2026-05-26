@@ -10,7 +10,7 @@ PREREQUISITI:
 ORDINE DI DEPLOY:
   1. TimelockController — Ritarda l'esecuzione delle proposte approvate (1 ora di delay).
   2. GovernanceToken    — Token ERC20Votes con sistema di membership e VP da stake.
-  3. GovernanceSkill    — Modulo DID, VC e VP skill multi-topic.
+  3. GovernanceSkill    — Modulo VC, trusted issuer e VP skill multi-topic.
   4. MyGovernor         — Motore di governance: gestisce proposte, voti e quorum.
   5. Treasury           — Custodisce gli ETH della DAO; solo il Timelock può investirli.
   6. StartupRegistry    — Registro on-chain delle startup verso cui la DAO può investire.
@@ -78,7 +78,7 @@ async function main() {
 
     // ── 2. GovernanceToken ───────────────────────────────────────────────────
     // Implementa ERC20 + ERC20Votes per il VP da stake.
-    // I pesi weightStake/weightSkill sono modificabili via governance.
+    // I pesi weightStake/weightSkill sono immutabili e fissati al deploy.
     const Token = await ethers.getContractFactory("GovernanceToken");
     const token = await Token.deploy(
         await timelock.getAddress(),
@@ -94,7 +94,7 @@ async function main() {
     //   smart-contracts, machine-learning, tokenomics,
     //   digital-health, data-analysis, backend-java.
     // Applica anche boost combinazionali definiti nel calcolatore.
-    // La governance può sostituirlo in futuro dal modulo GovernanceSkill.
+    // Il calculator viene fissato nel modulo GovernanceSkill al deploy.
     const Calculator = await ethers.getContractFactory("SkillCalculator");
     const calculator = await Calculator.deploy();
     await calculator.waitForDeployment();
@@ -104,13 +104,14 @@ async function main() {
     console.log(`   └─ Boost: web3(smart-contracts+tokenomics) | ai(machine-learning+data-analysis) | health(digital-health+data-analysis) | enterprise(backend-java+data-analysis)`);
 
     // ── 2c. GovernanceSkill ──────────────────────────────────────────────────
-    // Tiene DID, trusted issuer, skill dei membri e checkpoint del VP skill.
+    // Tiene trusted issuer, skill dei membri e checkpoint del VP skill.
     // Il token rimane focalizzato sullo stake; il governor somma stake + skill.
     const Skill = await ethers.getContractFactory("GovernanceSkill");
     const skillModule = await Skill.deploy(
         await token.getAddress(),
         await timelock.getAddress(),
-        WEIGHT_SKILL
+        WEIGHT_SKILL,
+        await calculator.getAddress()
     );
     await skillModule.waitForDeployment();
     console.log(`2c GovernanceSkill:    ${await skillModule.getAddress()}`);
@@ -158,9 +159,8 @@ async function main() {
     // ETH direttamente al Treasury. setTreasury() è one-shot: solo il deployer
     // può chiamarla e solo una volta.
     await token.setTreasury(await treasury.getAddress());
-    await skillModule.setSkillCalculator(await calculator.getAddress());
     console.log(`   🔗 GovernanceToken → Treasury collegato`);
-    console.log(`   🔗 GovernanceSkill → SkillCalculator collegato`);
+    console.log(`   🔗 GovernanceSkill → SkillCalculator immutabile`);
 
     // ── Issuer fidato ────────────────────────────────────────────────────────
     // L'issuer è l'entità (es. università) che firma le Verifiable Credential
