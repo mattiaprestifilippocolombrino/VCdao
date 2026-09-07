@@ -1,0 +1,711 @@
+Sì. Con la quarta versione iniziale off-chain, il benchmark diventa molto più interessante perché puoi mostrare l’evoluzione del progetto e attribuire l’overhead a tre scelte architetturali successive, invece di confrontare soltanto “vecchio vs nuovo”.
+
+La imposterei così: quattro implementazioni, stesso scenario, stesso flusso utente e stessa operazione finale di governance. Il PDF attuale descrive già chiaramente joinDAO(), increaseStake(), registerDID(), l’upgrade tramite VC, proposeWithTopic(), castVote(), queue() ed execute(), quindi userei proprio queste operazioni come riferimento semantico del benchmark.
+
+1. Le quattro versioni da confrontare
+
+Darei loro nomi semplici e li manterrei identici in test, grafici e tesi.
+
+Versione	Voting power	Verifica competenze	Topic
+V0 – OffChain	stake + skill	off-chain	No
+V1 – UniqueToken	stake + skill rappresentati nello stesso ERC20Votes	on-chain VC	No
+V2 – SplitVP	token per stake + checkpoint separati per skill, combinati tramite _getVotes()	on-chain VC	No
+V3 – TopicBased	token stake + checkpoint skill per topic	on-chain VC	Sì
+
+La cosa importante è che questa sequenza ti permette di misurare tre passaggi distinti:
+
+$$ V0 \rightarrow V1: \text{overhead della verifica on-chain} $$ $$ V1 \rightarrow V2: \text{overhead della separazione stake/skill} $$ $$ V2 \rightarrow V3: \text{overhead del modello topic-based} $$
+
+E, oltre a questi confronti incrementali, terrei V1 – UniqueToken come baseline principale per il calcolo percentuale dell'overhead delle architetture più evolute, come hai proposto.
+
+2. La domanda sperimentale
+
+La formulerei nella tesi in maniera molto semplice:
+
+Qual è il costo computazionale, espresso in gas, introdotto dalle successive estensioni del modello competence-based rispetto a una soluzione in cui il voting power è rappresentato da un unico governance token?
+
+A questa aggiungerei una sottodomanda:
+
+Qual è il costo aggiuntivo necessario per spostare la verifica delle competenze da off-chain a on-chain?
+
+Così hai subito due risultati chiari.
+
+3. Non misurerei tutto: misurerei il flusso utente
+
+Il flusso principale sarebbe:
+
+Join DAO → Delegate → Competence Setup/Upgrade → Create Proposal → Vote → Queue → Execute
+
+È praticamente il ciclo che hai già modellato nella tesi. Nella versione corrente GovernanceToken gestisce joinDAO(), mentre GovernanceSkill gestisce DID e upgrade; MyGovernor gestisce proposta e voto e il TimelockController queue/esecuzione.
+
+Le misure precise che farei sono queste:
+
+#	Operazione semantica	V0	V1	V2	V3
+1	Join DAO – joinDAO()	✓	✓	✓	✓
+2	Self delegation – delegate(account)	✓	✓	✓	✓
+3	Register DID – registerDID()	se presente	✓/se presente	✓	✓
+4	Competence Upgrade	✓ off-chain verified	✓ VC on-chain	✓ VC on-chain	✓ VC on-chain
+5	Create Proposal	propose()	propose()	propose()	proposeWithTopic()
+6	Cast Vote – castVote()	✓	✓	✓	✓
+7	Queue – queue()	✓	✓	✓	✓
+8	Execute – execute()	✓	✓	✓	✓
+
+Questa è già sufficiente per una evaluation di gas convincente.
+
+increaseStake() lo misurerei, ma lo metterei come misura secondaria, non dentro il flusso principale. Nel progetto attuale serve a incrementare successivamente la componente stake, ma non è obbligatorio eseguirlo durante ogni ciclo di governance.
+
+4. Il confronto più importante: V0 OffChain vs V1 UniqueToken
+
+Qui devi fare molta attenzione, perché è il confronto che deve dimostrare quanto costa verificare realmente una VC sulla blockchain.
+
+Le due versioni dovrebbero arrivare allo stesso risultato finale:
+
+membro con skill X → voting power aumentato dello stesso valore.
+
+La differenza deve essere solo come viene autorizzato quell'upgrade.
+
+V0 – verifica off-chain
+
+La VC viene verificata esternamente. Lo smart contract riceve quindi un aggiornamento già autorizzato e deve soltanto aggiornare la competenza/voting power.
+
+Misuri:
+
+$$ G_{upgrade}^{offchain} $$
+
+L'operazione di verifica effettuata fuori Ethereum costa:
+
+$$ 0 \text{ gas} $$
+
+Naturalmente ha un costo computazionale off-chain, ma non è un costo EVM, quindi non va mescolato al gas.
+
+V1 – verifica on-chain
+
+L'utente presenta VC + firma e il contratto:
+
+ricostruisce EIP-712 digest → recupera signer → controlla trusted issuer → aggiorna competence/voting power.
+
+Misuri:
+
+$$ G_{upgrade}^{onchain} $$
+
+Quindi:
+
+$$ \Delta G_{verification} = G_{upgrade}^{V1} - G_{upgrade}^{V0} $$
+
+e:
+
+$$ Overhead_{verification} = \frac{G_{upgrade}^{V1}-G_{upgrade}^{V0}} {G_{upgrade}^{V0}} \times 100 $$
+
+Questo è un risultato molto pulito:
+
+“La verifica on-chain delle competenze introduce X gas, equivalenti a un overhead del Y% rispetto alla versione con verifica off-chain.”
+
+Il test precedente cercava già di confrontare UpgradeSkill VC (EIP-712) con un UpgradeSkill Legacy (Direct), ma lo faceva sullo stesso modulo topic-based corrente e tramite impersonazione del Timelock. È utile come test esplorativo, ma per la tesi non lo userei come benchmark definitivo di V0 vs V1: è meglio deployare realmente le due implementazioni e confrontare i loro flussi equivalenti.
+
+5. DID: non mischiarlo all'overhead crittografico
+
+Questo è importante.
+
+Nella versione corrente hai registerDID() prima di upgradeCompetenceWithVP(): registra l'associazione membro-DID e impedisce che lo stesso DID venga associato a due address.
+
+Quindi riporterei due risultati distinti:
+
+$$ G_{registerDID} $$
+
+e
+
+$$ G_{VCupgrade} $$
+
+e solo dopo anche:
+
+$$ G_{CompetenceSetup} = G_{registerDID} + G_{VCupgrade} $$
+
+Così non dici erroneamente che tutto il costo aggiuntivo rispetto alla versione off-chain deriva dalla verifica EIP-712.
+
+Hai tre concetti diversi:
+
+identity registration + cryptographic verification + voting-power update.
+
+6. V1 UniqueToken vs V2 SplitVP
+
+Questo è il confronto architetturale più interessante dopo la VC.
+
+Nella V1, se ho capito correttamente la tua versione precedente, lo stake e la skill finiscono nello stesso ERC20Votes.
+
+Nella V2 invece:
+
+$$ VP = VP_{token}+VP_{skillCheckpoint} $$
+
+e il Governor deve combinarli tramite override di _getVotes().
+
+Qui non serve inventare microbenchmark sulle funzioni interne.
+
+Misura soprattutto:
+
+Competence Upgrade
+
+Perché V2 deve aggiornare i checkpoint separati della skill.
+
+castVote()
+
+Perché V1 legge sostanzialmente il voting power dal token, mentre V2 deve recuperare:
+
+$$ token.getPastVotes(...) + skill.getPastSkillVotes(...) $$
+
+Il PDF identifica proprio questa separazione come la soluzione al problema della trasferibilità delle skill.
+
+Quindi:
+
+$$ \Delta G_{split,upgrade} = G_{upgrade}^{V2} - G_{upgrade}^{V1} $$
+
+e:
+
+$$ \Delta G_{split,vote} = G_{vote}^{V2} - G_{vote}^{V1} $$
+
+Questo ti consente di quantificare:
+
+quanto costa rendere la skill separata e non rappresentata dallo stesso token trasferibile.
+
+7. V2 SplitVP vs V3 TopicBased
+
+Qui misuri il prezzo dell'ultima innovazione.
+
+Nella versione corrente, per ogni topic GovernanceSkill mantiene sia il checkpoint storico del singolo membro sia il checkpoint della total skill supply; MyGovernor usa inoltre il topic della proposta per recuperare skill voting power, total supply, quorum e superquorum corretti.
+
+Le operazioni dove mi aspetterei una differenza sono soprattutto:
+
+Competence Upgrade
+
+V3 deve calcolare e aggiornare il voting power per più topic.
+
+Create Proposal
+
+V2:
+
+propose(...)
+
+V3:
+
+proposeWithTopic(..., topicId)
+
+perché V3 salva anche:
+
+proposalTopic[proposalId] = topicId.
+
+castVote()
+
+V3 deve individuare il topic della proposal e recuperare il checkpoint skill relativo a quel topic.
+
+Queue ed execute li misurerei comunque, ma non mi aspetterei necessariamente un overhead importante: se risultano quasi identici, è un risultato utile.
+
+8. La proposal deve essere IDENTICA nelle quattro versioni
+
+Qui cambierei il vecchio test.
+
+Nel test precedente la proposal esegue un upgrade di competenza.
+
+Non lo farei nel benchmark finale.
+
+Nel PDF il normale scenario della DAO è invece:
+
+proposal di investimento → voto → queue → Timelock → Treasury.invest() → startup.
+
+Quindi in tutte e quattro le versioni farei la stessa proposta:
+
+investire, ad esempio, 1 ETH nella stessa MockStartup.
+
+In questo modo:
+
+stesso target;
+stesso value;
+stessa calldata;
+stessa descrizione;
+stessa operazione finale.
+
+L'unica eccezione è V3, dove aggiungi topicId.
+
+Questo rende il confronto di propose, queue ed execute molto più pulito.
+
+9. Scenario sperimentale fisso
+
+Userei un solo scenario per tutte le architetture.
+
+Parametro	Valore
+Membri	5
+Stake per membro	5 ETH
+weightStake	50%
+weightSkill	50%
+Quorum	20%
+Superquorum	70%
+VC	identica semanticamente
+Skill	2 skill
+Voti	3 For
+Proposal	investimento 1 ETH
+Topic V3	WEB3
+
+I 3 membri su 5 danno un flusso semplice e, a parità di voting power, il 60% non raggiunge il 70% di superquorum. Quindi puoi far terminare normalmente il voting period e poi procedere con:
+
+Succeeded → Queue → Execute.
+
+10. Due costi aggregati
+
+Non farei un enorme “total gas” che include deployment, join, cambio delega, 10 checkpoint artificiali ecc., come nel vecchio test.
+
+Definirei invece due metriche leggibili.
+
+A. Member Activation Cost
+$$ G_{member} = G_{join} + G_{delegate} + G_{DID} + G_{upgrade} $$
+
+Se V0 non usa DID:
+
+$$ G_{member}^{V0} = G_{join}+G_{delegate}+G_{upgrade} $$
+
+Questo risponde a:
+
+Quanto costa rendere un nuovo membro pienamente operativo nella DAO?
+
+B. Governance Cycle Cost
+
+Con tre votanti:
+
+$$ G_{cycle} = G_{propose} + 3G_{vote} + G_{queue} + G_{execute} $$
+
+Questo risponde a:
+
+Quanto costa completare una decisione della DAO?
+
+Questi sarebbero i due numeri principali della sezione gas.
+
+11. Overhead rispetto a UniqueToken
+
+Per ogni operazione comune calcoli:
+
+$$ \Delta G_i^{V_k} = G_i^{V_k}-G_i^{V1} $$
+
+e:
+
+$$ Overhead_i^{V_k} = \frac{G_i^{V_k}-G_i^{V1}} {G_i^{V1}}\times100 $$
+
+Tabella finale:
+
+Operation	V0 OffChain	V1 UniqueToken	V2 SplitVP	V3 TopicBased
+Join	gas	gas	gas	gas
+Delegate	gas	gas	gas	gas
+Register DID	—	gas	gas	gas
+Competence Upgrade	gas	baseline	gas (+X%)	gas (+Y%)
+Proposal	gas	baseline	gas (+X%)	gas (+Y%)
+Vote	gas	baseline	gas (+X%)	gas (+Y%)
+Queue	gas	baseline	gas (+X%)	gas (+Y%)
+Execute	gas	baseline	gas (+X%)	gas (+Y%)
+Member Activation		baseline		
+Governance Cycle		baseline		
+
+V0 può tranquillamente risultare negativo rispetto a V1, cioè più economico:
+
+−35%
+
+e questo è perfettamente corretto.
+
+12. Un solo test aggiuntivo di scalabilità
+
+Dopo il confronto delle quattro versioni farei solo un microbenchmark extra, esclusivamente su V3:
+
+$$ 1,\ 2,\ 4 \text{ topic} $$
+
+e misurerei solo:
+
+Competence Upgrade Gas
+
+Perché _performUpgrade() nella versione corrente calcola gli score e aggiorna i checkpoint dei topic.
+
+Ottieni:
+
+Topic supportati	Upgrade gas
+1	
+2	
+4	
+
+È sufficiente per mostrare il costo della scalabilità topic-based.
+
+Non farei più il test “1 checkpoint vs 10 checkpoint” nel benchmark principale. Può stare eventualmente in appendice. Il vecchio test lo faceva per studiare la binary search dei checkpoint, ma è più un microbenchmark dell'implementazione OpenZeppelin che una misura centrale del contributo della tua tesi.
+
+Struttura finale della sezione della tesi
+
+Io farei proprio:
+
+8.X Gas Cost Evaluation
+
+8.X.1 Compared Architectures
+V0, V1, V2, V3.
+
+8.X.2 Experimental Setup
+Hardhat, compiler, optimizer, 5 utenti, 50/50, quorum, VC, proposta identica.
+
+8.X.3 Cost of On-Chain Credential Verification
+V0 vs V1.
+
+8.X.4 Member Activation Cost
+Join + delegate + DID + upgrade.
+
+8.X.5 Governance Lifecycle Cost
+Proposal + 3 votes + queue + execute.
+
+8.X.6 Architectural Overhead
+V1 vs V2 vs V3.
+
+8.X.7 Topic Scalability
+1/2/4 topic.
+
+8.X.8 Results Discussion
+Dove spieghi perché aumenta il gas.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Perfetto: allora cambierei il piano in modo importante.
+
+Il fatto che le quattro versioni siano su quattro branch Git distinti è in realtà un vantaggio: possiamo trattarle come quattro sistemi indipendenti, deployare ciascun branch nello stesso ambiente e confrontare soltanto operazioni semanticamente equivalenti. Non cercherei di forzare gli stessi nomi di contratto o funzione tra le versioni.
+
+E visto che il modello di VC è cambiato, non userei più il vecchio VC_TYPES del test che mi hai passato. Il PDF può ancora servirci per il flusso generale della DAO e per l'architettura dell'ultima versione, ma la parte legacy della VC non va presa come riferimento per i nuovi test.
+
+Le quattro implementazioni
+
+Le chiamerei così nel benchmark:
+
+V0 – Off-chain competence verification
+La competenza viene verificata fuori dalla blockchain e on-chain arriva solo l'aggiornamento autorizzato.
+
+V1 – Unique-token competence governance
+Stake e competenza confluiscono nello stesso token/voting power; la VC viene verificata on-chain.
+
+V2 – Split voting power
+Token per la componente economica + checkpoint separati per le competenze; il Governor compone le due parti tramite _getVotes().
+
+V3 – Topic-based split voting power
+Come V2, ma la componente skill è diversa per ogni topic e vengono mantenuti checkpoint distinti per topic.
+
+Non confrontiamo le funzioni: confrontiamo le operazioni
+
+Questo è fondamentale perché i branch possono avere API diverse.
+
+Il benchmark deve dire:
+
+Operazione logica	V0	V1	V2	V3
+Join DAO	funzione equivalente	funzione equivalente	joinDAO()	joinDAO()
+Delegate	equivalente	equivalente	delegate()	delegate()
+Register identity/DID	se presente	se presente	se presente	registerDID()
+Upgrade competence	off-chain verified	VC on-chain	VC on-chain	VC on-chain
+Create proposal	proposal standard	proposal standard	proposal standard	proposeWithTopic()
+Vote	castVote() equivalente	idem	idem	idem
+Queue	equivalente	equivalente	equivalente	equivalente
+Execute	equivalente	equivalente	equivalente	equivalente
+
+Nella versione attuale il PDF mostra proprio joinDAO(), registrazione DID, upgrade della competenza, proposeWithTopic(), voto, queue ed execute; questi ci danno il flusso semantico della versione finale.
+
+Come gestire il nuovo modello VC
+
+Non dobbiamo rendere identico il JSON tra i branch. Dobbiamo rendere identico il significato della credential.
+
+Per esempio, in ogni versione usiamo una credenziale che semanticamente afferma:
+
+Holder: stesso membro
+Issuer: stesso issuer logico
+Competences: le stesse 2 competenze
+Livello/score: equivalente
+Timestamp/validità: valori equivalenti
+
+Poi ogni branch costruisce tale informazione nel formato previsto da quella specifica implementazione.
+
+Quindi avremo qualcosa del genere:
+
+Logical test credential
+    ↓
+V0 adapter → formato V0
+V1 adapter → formato V1
+V2 adapter → formato V2
+V3 adapter → formato V3 attuale
+
+In altre parole: non confrontiamo la dimensione di due credential artificialmente uguali; confrontiamo il costo per ottenere lo stesso risultato funzionale nelle quattro architetture.
+
+Attenzione all'overhead V0 → V1
+
+Qui c'è un punto metodologico importante.
+
+Se il modello VC di V1 è diverso dai dati usati in V0, allora:
+
+$$ Gas(V1)-Gas(V0) $$
+
+non misura esclusivamente ecrecover o la crittografia.
+
+Misura l'overhead end-to-end dell'introduzione della verifica on-chain, quindi comprende eventualmente:
+
+calldata aggiuntiva;
+decoding dei dati della credential;
+hashing;
+verifica della firma;
+controllo trusted issuer;
+eventuali controlli su holder/identity;
+storage aggiuntivo.
+
+E per la tesi secondo me va benissimo. Anzi, è la misura più realistica.
+
+La chiamerei:
+
+On-chain verification overhead
+
+e non:
+
+“EIP-712 cryptographic overhead”.
+
+Il vecchio test faceva invece una sottrazione tra UpgradeSkill VC e UpgradeSkill Legacy, ma questa tendeva a mescolare implementazioni e percorsi diversi, quindi non la userei come misura definitiva.
+
+Piano concreto dei test
+
+Farei un benchmark per branch che produce sempre lo stesso JSON finale.
+
+Ad esempio:
+
+{
+  "version": "V3-topic",
+  "join": 0,
+  "delegate": 0,
+  "identityRegistration": 0,
+  "competenceUpgrade": 0,
+  "propose": 0,
+  "vote": 0,
+  "queue": 0,
+  "execute": 0
+}
+
+Poi uno script esterno raccoglie i quattro JSON e calcola i confronti.
+
+Questo è molto meglio di cercare di importare quattro versioni diverse nello stesso test Hardhat.
+
+Benchmark A — Member activation
+
+Per ciascun branch:
+
+Join → Delegate → eventuale identity registration → competence upgrade
+
+e calcoliamo:
+
+$$ G_{activation} = G_{join} + G_{delegate} + G_{identity} + G_{upgrade} $$
+
+Dove le operazioni non presenti valgono N/A, non zero.
+
+Benchmark B — Competence upgrade
+
+Questa operazione la terrei anche separata perché è uno dei risultati centrali.
+
+Confronto:
+
+$$ V0 \rightarrow V1 $$
+
+= costo introdotto dalla verifica on-chain.
+
+$$ V1 \rightarrow V2 $$
+
+= costo introdotto dalla separazione della skill dal token.
+
+$$ V2 \rightarrow V3 $$
+
+= costo introdotto dal calcolo e aggiornamento topic-specifico.
+
+Questa può diventare una tabella molto forte.
+
+Benchmark C — Proposal creation
+
+Stessa operazione reale in tutte le versioni.
+
+Userei una proposta di investimento della Treasury, non una proposta di upgrade skill.
+
+Per esempio:
+
+Invest 1 ETH in MockStartup.
+
+Questo è coerente col flusso della DAO descritto nella tesi: proposal → voto → Timelock → Treasury → destinatario.
+
+V3 avrà in più il topicId.
+
+Questo permette di misurare bene l'overhead di proposeWithTopic().
+
+Benchmark D — Vote
+
+Questa è probabilmente la misura più importante dopo l'upgrade.
+
+Perché:
+
+V1
+
+$$ VP = token.getPastVotes(...) $$
+
+V2
+
+$$ VP = stakeCheckpoint + skillCheckpoint $$
+
+V3
+
+$$ VP = stakeCheckpoint + skillCheckpoint(topic) $$
+
+Quindi castVote() riflette direttamente il costo delle tre architetture.
+
+Userei sempre lo stesso singolo votante per la tabella del costo unitario.
+
+Poi per il lifecycle totale puoi moltiplicare/eseguire tre voti reali.
+
+Benchmark E — Queue ed Execute
+
+Le misurerei comunque.
+
+Mi aspetto che siano abbastanza simili, ma questo è un risultato interessante:
+
+l'aggiunta di competence-based voting aumenta il costo delle fasi in cui viene determinato il voting power, ma non necessariamente quello dell'esecuzione finale della decisione.
+
+Il confronto finale con UniqueToken
+
+Come hai richiesto, prenderei V1 UniqueToken = baseline 0%.
+
+Per ogni operazione:
+
+$$ Overhead_{Vx} = \frac{G_{Vx}-G_{V1}} {G_{V1}} \times100 $$
+
+Esempio di tabella:
+
+Operation	V0 Off-chain	V1 UniqueToken	V2 SplitVP	V3 Topic
+Competence upgrade	−X%	0%	+Y%	+Z%
+Proposal	−X%	0%	+Y%	+Z%
+Vote	−X%	0%	+Y%	+Z%
+Queue	−X%	0%	+Y%	+Z%
+Execute	−X%	0%	+Y%	+Z%
+
+Per V0 il valore negativo è assolutamente sensato.
+
+Poi un confronto incrementale
+
+Accanto alla baseline V1 farei anche una piccola seconda tabella:
+
+Passaggio	Cosa misura
+V0 → V1	costo della verifica delle competenze on-chain
+V1 → V2	costo della separazione token/skill checkpoint
+V2 → V3	costo della specializzazione per topic
+
+Questa secondo me è la vera storia sperimentale della tesi.
+
+Non stai soltanto dicendo quale versione costa di più.
+
+Stai mostrando:
+
+quanto costa ogni decisione progettuale introdotta durante l'evoluzione del sistema.
+
+Ultimo microbenchmark solo su V3
+
+Dato che la versione finale salva la skill per topic, farei:
+
+1 topic → 2 topic → 4 topic
+
+e misurerei solo:
+
+competenceUpgrade
+
+Non serve ripetere proposal/vote/queue/execute per ogni numero di topic.
+
+Così dimostri il costo della scalabilità della componente più particolare della tua architettura.
+
+Come procederei praticamente
+
+Per non fare confusione tra branch, preparerei in ciascuno:
+
+test/gas/benchmark.ts
+
+che stampa/esporta lo stesso schema di risultati.
+
+Quindi:
+
+branch V0 → benchmark-v0.json
+branch V1 → benchmark-v1.json
+branch V2 → benchmark-v2.json
+branch V3 → benchmark-v3.json
+
+Infine un unico script:
+
+scripts/compare-gas.ts
+
+legge i quattro risultati e genera:
+
+gas assoluto;
+overhead vs UniqueToken;
+delta V0→V1;
+delta V1→V2;
+delta V2→V3;
+costo totale member activation;
+costo totale governance lifecycle.
+
+Questa impostazione rimane valida anche se il nuovo modello VC è completamente diverso dal precedente, perché il benchmark confronta il comportamento del sistema e non dipende da uno schema VC hardcoded comune.

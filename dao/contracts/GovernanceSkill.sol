@@ -32,14 +32,10 @@ contract GovernanceSkill {
     address public immutable deployer;      /// Indirizzo del deployer, cioè la il token, usato solo per il setup iniziale.
 
     IGovernanceToken public immutable governanceToken;
-
+    ISkillCalculator public immutable skillCalculator;   // Contratto esterno immutabile che calcola lo score skill per topic.
     
     mapping(address => bool) public trustedIssuers;  // Issuer attendibili dal contratto che firmano le Verifiable Credential contenenti le skill dei membri.
     uint256 public trustedIssuerCount;
-
-
-    ISkillCalculator public immutable skillCalculator;   // Contratto esterno immutabile che calcola lo score skill per topic.
-
 
     mapping(address => bytes32) public memberDID;    // Mappa che associa ogni membro all'hash del suo DID.
     mapping(bytes32 => address) public didToAddress; // Garantisce che lo stesso DID non venga registrato da due address.
@@ -151,6 +147,7 @@ contract GovernanceSkill {
     }
 
     /*
+        Da togliere.
         Valida il calcolatore delle skill, che implementa l'interfaccia ISkillCalculator.
         Il calcolatore viene fissato al deploy per evitare che membri diversi vengano
         valutati con logiche differenti nel tempo.
@@ -263,14 +260,6 @@ contract GovernanceSkill {
         return skills;
     }
 
-    function _skillIds(string[] memory skillNames) private pure returns (bytes32[] memory skillIds) {
-        uint256 skillCount = skillNames.length;
-        skillIds = new bytes32[](skillCount);
-        for (uint256 i = 0; i < skillCount; i++) {
-            skillIds[i] = SkillDefinitions.skillId(skillNames[i]);
-        }
-    }
-
     function _addValidSkill(address member, bytes32[] storage skills, bytes32 skillId) private returns (bool) {
         if (!SkillDefinitions.isValidSkill(skillId)) revert InvalidSkill(skillId);
         if (memberHasSkill[member][skillId]) return false;
@@ -279,6 +268,16 @@ contract GovernanceSkill {
         skills.push(skillId);
         return true;
     }
+
+    function _skillIds(string[] memory skillNames) private pure returns (bytes32[] memory skillIds) {
+        uint256 skillCount = skillNames.length;
+        skillIds = new bytes32[](skillCount);
+        for (uint256 i = 0; i < skillCount; i++) {
+            skillIds[i] = SkillDefinitions.skillId(skillNames[i]);
+        }
+    }
+
+
 
     /*
         Upgrade amministrativo via governance No VC, usato a fini di test.
