@@ -1,6 +1,6 @@
 // ============================================================================
-//  05_competenceUpgrade.test.ts — Upgrade skill array via VC EIP-712
-//  Nuova architettura: ogni utente accumula un array di skill eterogenee.
+//  05_competenceUpgrade.test.ts — Upgrade skill bitmap via VC EIP-712
+//  Ogni utente accumula skill in una bitmap; le VC mantengono i nomi testuali.
 //  Il calcolo del VP è delegato a SkillCalculator (contratto esterno).
 // ============================================================================
 
@@ -16,8 +16,14 @@ import {
     SkillCalculator,
 } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import {
+    EIP712_DOMAIN,
+    LoadedCredential,
+    loadCredentialForAddress,
+    loadSharedCredentials,
+} from "./helpers/sharedCredentials";
 
-describe("Competence Upgrade — skill array + SkillCalculator", function () {
+describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
     let token: GovernanceToken;
     let skillModule: GovernanceSkill;
     let treasury: Treasury;
@@ -28,29 +34,12 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     let member: HardhatEthersSigner;
     let issuer: HardhatEthersSigner;
     let secondIssuer: HardhatEthersSigner;
+    let memberCredential: LoadedCredential;
 
     const VOTING_DELAY  = 1;
     const VOTING_PERIOD = 50;
     const TIMELOCK_DELAY = 3600;
 
-    // Tipi EIP-712 aggiornati: CredentialSubject ha skills[] invece di degreeTitle/grade
-    const VC_TYPES = {
-        Issuer: [{ name: "id", type: "string" }],
-        CredentialSubject: [
-            { name: "id",         type: "string"   },
-            { name: "university", type: "string"   },
-            { name: "faculty",    type: "string"   },
-            { name: "skills",     type: "string[]" },
-        ],
-        VerifiableCredential: [
-            { name: "issuer",             type: "Issuer"            },
-            { name: "issuanceDate",       type: "string"            },
-            { name: "credentialSubject",  type: "CredentialSubject" },
-        ],
-    };
-
-    // Domain EIP-712 universale (deve coincidere con UNIVERSAL_DOMAIN_SEPARATOR)
-    const EIP712_DOMAIN = { name: "Universal VC Protocol", version: "1" };
     const skill = (name: string) => ethers.id(name);
     const skillIds = (names: string[]) => names.map(skill);
 
@@ -64,6 +53,10 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     // =========================================================================
     beforeEach(async function () {
         [deployer, member, issuer, secondIssuer] = await ethers.getSigners();
+        memberCredential = loadCredentialForAddress(member.address);
+        if (memberCredential.issuerAddress !== issuer.address) {
+            throw new Error("L'issuer della VC condivisa non coincide con il trusted issuer del test");
+        }
 
         // 1. Timelock
         const Timelock = await ethers.getContractFactory("TimelockController");
@@ -123,32 +116,17 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     });
 
     // =========================================================================
-    //  Helper: firma e invia una VC con array di skill
+    //  Helper: carica e presenta una VC reale da shared-credentials
     // =========================================================================
-    async function doUpgradeWithVC(
+    async function upgradeWithSharedCredential(
         target: HardhatEthersSigner,
-        skills: string[],
-        holderDid: string,
-        issuerDid: string,
-        signer: HardhatEthersSigner = issuer,
-        registerDid: boolean = true
+        credential: LoadedCredential = loadCredentialForAddress(target.address),
+        registerDid: boolean = true,
     ) {
-        const vcData = {
-            issuer: { id: issuerDid },
-            issuanceDate: "2026-01-01T00:00:00Z",
-            credentialSubject: {
-                id: holderDid,
-                university: "University of Pisa",
-                faculty: "Computer Science",
-                skills: skills,
-            },
-        };
-        const signature = await signer.signTypedData(EIP712_DOMAIN, VC_TYPES, vcData);
         if (registerDid && await skillModule.memberDID(target.address) === ethers.ZeroHash) {
-            await skillModule.connect(target).registerDID(holderDid);
+            await skillModule.connect(target).registerDID(credential.vcData.credentialSubject.id);
         }
-        await skillModule.connect(target).upgradeSkillWithVC(vcData, signature);
-        return vcData;
+        await skillModule.connect(target).upgradeSkillWithVC(credential.vcData, credential.signature);
     }
 
     // =========================================================================
@@ -193,6 +171,19 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         }
     }
 
+    async function upgradeAsTimelock(names: string[]) {
+        const address = await timelock.getAddress();
+        await ethers.provider.send("hardhat_setBalance", [address, "0xDE0B6B3A7640000"]);
+        await ethers.provider.send("hardhat_impersonateAccount", [address]);
+        try {
+            return await skillModule.connect(await ethers.getSigner(address)).upgradeSkill(
+                member.address, names, ethers.id("bitmap test"),
+            );
+        } finally {
+            await ethers.provider.send("hardhat_stopImpersonatingAccount", [address]);
+        }
+    }
+
     async function removeTrustedIssuerThroughTimelock(oldIssuer: string) {
         const timelockAddr = await timelock.getAddress();
         await deployer.sendTransaction({ to: timelockAddr, value: ethers.parseEther("1") });
@@ -212,12 +203,37 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
         expect(await skillModule.skillCalculator()).to.equal(await calculator.getAddress());
     });
 
+    it("VPVerifier usa lo stesso domain separator EIP-712 dello script Veramo", async function () {
+        expect(await skillModule.UNIVERSAL_DOMAIN_SEPARATOR()).to.equal(
+            ethers.TypedDataEncoder.hashDomain(EIP712_DOMAIN),
+        );
+    });
+
     it("isValidTopic() riflette i topic del SkillCalculator (0,1,2,3 validi; 4 no)", async function () {
         expect(await skillModule.isValidTopic(0)).to.be.true;
         expect(await skillModule.isValidTopic(1)).to.be.true;
         expect(await skillModule.isValidTopic(2)).to.be.true;
         expect(await skillModule.isValidTopic(3)).to.be.true;
         expect(await skillModule.isValidTopic(4)).to.be.false;
+    });
+
+    it("espone soltanto le otto nuove skill case-sensitive", async function () {
+        const expectedSkills = [
+            "machineLearning",
+            "dataEngineering",
+            "cyberSecurity",
+            "cloudArchitecture",
+            "distributedSystems",
+            "blockchain",
+            "softwareArchitecture",
+            "startupFinance",
+        ];
+
+        expect(await skillModule.getSupportedSkills()).to.deep.equal(skillIds(expectedSkills));
+        for (const skillName of expectedSkills) {
+            expect(await skillModule.isValidSkill(skill(skillName))).to.be.true;
+        }
+        expect(await skillModule.isValidSkill(skill("machine-learning"))).to.be.false;
     });
 
     it("constructor rifiuta un calculator non-contract", async function () {
@@ -252,46 +268,128 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     // =========================================================================
     //  Test: SkillCalculator puro (logica di scoring)
     // =========================================================================
-    it("SkillCalculator calcola score corretto per skill singola 'smart-contracts' su Web3", async function () {
-        const score = await scoreForTopic(0, ["smart-contracts"]);
-        expect(score).to.equal(40n);
+    it("SkillCalculator implementa l'intera matrice di rilevanza skill-topic", async function () {
+        const matrix: Array<[string, bigint[]]> = [
+            ["machineLearning",      [35n,  5n,  5n, 15n]],
+            ["dataEngineering",      [30n, 20n, 15n, 20n]],
+            ["cyberSecurity",        [15n, 35n, 25n, 20n]],
+            ["cloudArchitecture",    [15n, 30n, 20n, 30n]],
+            ["distributedSystems",   [20n, 30n, 25n, 30n]],
+            ["blockchain",            [5n, 15n, 35n, 15n]],
+            ["softwareArchitecture", [15n, 25n, 20n, 35n]],
+            ["startupFinance",       [15n, 10n, 30n, 25n]],
+        ];
+
+        for (const [skillName, expectedScores] of matrix) {
+            expect(await calculator.calculateAllVP(skillIds([skillName]))).to.deep.equal(expectedScores);
+        }
     });
 
-    it("SkillCalculator calcola score corretto per skill singola 'digital-health' su Digital Health", async function () {
-        const score = await scoreForTopic(2, ["digital-health"]);
-        expect(score).to.equal(45n);
+    it("SkillCalculator applica il boost blockchain+startupFinance su FinTech & Blockchain", async function () {
+        const scoreCombo = await scoreForTopic(2, ["blockchain", "startupFinance"]);
+        expect(scoreCombo).to.equal(75n);
     });
 
-    it("SkillCalculator applica boost machine-learning+data-analysis su AI Products", async function () {
-        const scoreCombo = await scoreForTopic(1, ["machine-learning", "data-analysis"]);
-        expect(scoreCombo).to.equal(90n);
+    it("SkillCalculator applica il boost softwareArchitecture+cloudArchitecture su Enterprise Software", async function () {
+        const scoreCombo = await scoreForTopic(3, ["softwareArchitecture", "cloudArchitecture"]);
+        expect(scoreCombo).to.equal(75n);
     });
 
-    it("SkillCalculator applica boost smart-contracts+tokenomics su Web3", async function () {
-        const scoreCombo = await scoreForTopic(0, ["smart-contracts", "tokenomics"]);
-        expect(scoreCombo).to.equal(95n);
+    it("SkillCalculator applica +10 alle coppie AI e Cloud senza annullarlo col cap", async function () {
+        expect(await scoreForTopic(0, ["machineLearning", "dataEngineering"])).to.equal(75n);
+        expect(await scoreForTopic(1, ["cyberSecurity", "cloudArchitecture"])).to.equal(75n);
     });
 
-    it("SkillCalculator applica boost digital-health+data-analysis su Digital Health", async function () {
-        const scoreCombo = await scoreForTopic(2, ["digital-health", "data-analysis"]);
-        expect(scoreCombo).to.equal(85n);
+    it("SkillCalculator riproduce l'esempio AI 35+30+15+10 = 90", async function () {
+        expect(
+            await scoreForTopic(0, ["machineLearning", "dataEngineering", "cyberSecurity"])
+        ).to.equal(90n);
     });
 
-    it("SkillCalculator cappa il punteggio a 100", async function () {
-        const score = await scoreForTopic(0, ["smart-contracts", "tokenomics", "machine-learning"]);
-        expect(score).to.equal(100n);
+    it("SkillCalculator cappa a 100 un profilo multidisciplinare", async function () {
+        expect(
+            await scoreForTopic(0, ["machineLearning", "dataEngineering", "cyberSecurity", "distributedSystems"])
+        ).to.equal(100n);
     });
 
-    it("SkillCalculator ignora skill duplicate nello stesso array", async function () {
-        const score = await scoreForTopic(0, ["smart-contracts", "smart-contracts"]);
-        expect(score).to.equal(40n);
+    it("SkillCalculator ignora skill duplicate e sconosciute", async function () {
+        const scores = await calculator.calculateAllVP(
+            skillIds(["machineLearning", "machineLearning", "unknownSkill"])
+        );
+        expect(scores).to.deep.equal([35n, 5n, 5n, 15n]);
+    });
+
+    it("le 256 bitmap rispettano matrice, boost e cap per tutti i topic", async function () {
+        const relevance = [
+            [35, 5, 5, 15], [30, 20, 15, 20], [15, 35, 25, 20], [15, 30, 20, 30],
+            [20, 30, 25, 30], [5, 15, 35, 15], [15, 25, 20, 35], [15, 10, 30, 25],
+        ];
+        const pairs = [[0, 1], [2, 3], [5, 7], [6, 3]];
+        const supported = Array.from(await skillModule.getSupportedSkills());
+        for (let bitmap = 0; bitmap < 256; bitmap++) {
+            const present = (index: number) => (bitmap & (1 << index)) !== 0;
+            const expected = pairs.map(([first, second], topic) => BigInt(Math.min(100,
+                relevance.reduce((sum, row, index) => sum + (present(index) ? row[topic] : 0), 0)
+                    + (present(first) && present(second) ? 10 : 0),
+            )));
+            expect(await calculator.calculateAllVPFromBitmap(bitmap)).to.deep.equal(expected);
+            expect(await calculator.calculateAllVP(supported.filter((_, i) => present(i)))).to.deep.equal(expected);
+        }
+        expect(await calculator.calculateAllVPFromBitmap(1n << 255n)).to.deep.equal([0n, 0n, 0n, 0n]);
+        expect(await calculator.calculateAllVPFromBitmap((1n << 255n) | 1n)).to.deep.equal([35n, 5n, 5n, 15n]);
+    });
+
+    it("bitmap vuota, tutti gli otto bit e getter sono coerenti", async function () {
+        expect(await skillModule.memberSkillBitmap(member.address)).to.equal(0n);
+        expect(await skillModule.getMemberSkills(member.address)).to.deep.equal([]);
+        expect(await skillModule.hasSkill(member.address, skill("machineLearning"))).to.be.false;
+        await expect(upgradeAsTimelock([])).not.to.emit(skillModule, "MemberSkillsMerged");
+
+        const names = ["machineLearning", "dataEngineering", "cyberSecurity", "cloudArchitecture",
+            "distributedSystems", "blockchain", "softwareArchitecture", "startupFinance"];
+        // Inserimento inverso: il getter deve comunque restituire l'ordine canonico.
+        for (let i = names.length - 1; i >= 0; i--) {
+            await expect(upgradeAsTimelock([names[i], names[i]]))
+                .to.emit(skillModule, "MemberSkillsMerged").withArgs(member.address, 1n, BigInt(8 - i));
+            expect(await skillModule.memberSkillBitmap(member.address)).to.equal(BigInt(256 - (1 << i)));
+            expect(await skillModule.getMemberSkills(member.address)).to.deep.equal(skillIds(names.slice(i)));
+            expect(await skillModule.hasSkill(member.address, skill(names[i]))).to.be.true;
+        }
+        expect(await skillModule.hasSkill(member.address, skill("unknownSkill"))).to.be.false;
+        for (let topic = 0; topic < 4; topic++) {
+            expect(await skillModule.getSkillVotes(member.address, topic)).to.equal(ethers.parseEther("50"));
+        }
+    });
+
+    it("merge di skill sovrapposte alla VC preserva i bit e lo snapshot", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
+        expect(await skillModule.memberSkillBitmap(member.address)).to.equal(12n);
+        const snapshot = await ethers.provider.getBlockNumber();
+        const oldVotes = await skillModule.getSkillVotes(member.address, 3);
+        const oldTotal = await skillModule.getTotalSkillSupply(3);
+        await expect(upgradeAsTimelock(["cloudArchitecture", "softwareArchitecture", "softwareArchitecture"]))
+            .to.emit(skillModule, "MemberSkillsMerged").withArgs(member.address, 1n, 3n);
+        expect(await skillModule.memberSkillBitmap(member.address)).to.equal(76n);
+        expect(await skillModule.getSkillVotes(member.address, 3)).to.equal(ethers.parseEther("47.5"));
+        expect(await skillModule.getTotalSkillSupply(3)).to.equal(oldTotal + ethers.parseEther("47.5") - oldVotes);
+        expect(await skillModule.getPastSkillVotes(member.address, 3, snapshot)).to.equal(oldVotes);
+        expect(await skillModule.getPastTotalSkillSupply(3, snapshot)).to.equal(oldTotal);
+    });
+
+    it("una skill sconosciuta annulla l'intero merge senza modificare bitmap o VP", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
+        await expect(upgradeAsTimelock(["machineLearning", "unknownSkill"]))
+            .to.be.revertedWithCustomError(skillModule, "InvalidSkill").withArgs(skill("unknownSkill"));
+        expect(await skillModule.memberSkillBitmap(member.address)).to.equal(12n);
+        expect(await skillModule.hasSkill(member.address, skill("machineLearning"))).to.be.false;
+        expect(await skillModule.getSkillVotes(member.address, 1)).to.equal(ethers.parseEther("37.5"));
     });
 
     // =========================================================================
     //  Test: DID binding
     // =========================================================================
     it("registerDID salva un DID unico per il membro", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const holderDid = memberCredential.vcData.credentialSubject.id;
         const holderDidHash = ethers.keccak256(ethers.toUtf8Bytes(holderDid));
 
         await expect(skillModule.connect(member).registerDID(holderDid))
@@ -303,7 +401,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     });
 
     it("registerDID impedisce di cambiare DID dopo la prima registrazione", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
+        const holderDid = memberCredential.vcData.credentialSubject.id;
 
         await skillModule.connect(member).registerDID(holderDid);
         await expect(
@@ -312,7 +410,7 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     });
 
     it("registerDID impedisce a un altro membro di registrare lo stesso DID", async function () {
-        const holderDid = "did:example:alice-profile";
+        const holderDid = memberCredential.vcData.credentialSubject.id;
 
         await skillModule.connect(member).registerDID(holderDid);
         await expect(
@@ -321,128 +419,116 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     });
 
     // =========================================================================
-    //  Test: upgradeSkillWithVC
+    //  Test: VC reali condivise e upgradeSkillWithVC
     // =========================================================================
-    it("upgrade con VC: salva le skill nel membro e aggiorna i checkpoint", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+    it("shared-credentials contiene 13 VC EIP-712 coerenti e tutte le skill supportate", async function () {
+        const credentials = loadSharedCredentials();
+        expect(credentials).to.have.length(13);
+        expect(new Set(credentials.map((credential) => credential.holderAddress)).size).to.equal(13);
+        expect(new Set(credentials.map((credential) => credential.issuerAddress))).to.deep.equal(new Set([issuer.address]));
 
-        await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
+        const certifiedSkills = new Set(
+            credentials.flatMap((credential) => credential.vcData.credentialSubject.skills),
+        );
+        expect(certifiedSkills).to.deep.equal(new Set([
+            "machineLearning",
+            "dataEngineering",
+            "cyberSecurity",
+            "cloudArchitecture",
+            "distributedSystems",
+            "blockchain",
+            "softwareArchitecture",
+            "startupFinance",
+        ]));
+    });
+
+    it("tutte le VC reali di shared-credentials sono verificabili on-chain", async function () {
+        const credentials = loadSharedCredentials();
+        const signers = await ethers.getSigners();
+
+        for (const credential of credentials) {
+            const holder = signers.find((signer) => signer.address === credential.holderAddress);
+            expect(holder, `signer assente per ${credential.fileName}`).not.to.equal(undefined);
+
+            if (!await token.isMember(credential.holderAddress)) {
+                await token.connect(holder!).joinDAO({ value: ethers.parseEther("1") });
+            }
+            await skillModule.connect(holder!).registerDID(credential.vcData.credentialSubject.id);
+            await skillModule.connect(holder!).upgradeSkillWithVC(credential.vcData, credential.signature);
+
+            const scores = await calculator.calculateAllVP(
+                credential.vcData.credentialSubject.skills.map(skill),
+            );
+            for (let topicId = 0; topicId < scores.length; topicId++) {
+                const expectedVotes = scores[topicId] * 5000n * 10n ** 18n / 10_000n;
+                expect(await skillModule.getSkillVotes(credential.holderAddress, topicId)).to.equal(expectedVotes);
+            }
+        }
+    });
+
+    it("upgrade con la VC JSON reale salva le skill certificate", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
 
         const skills = await skillModule.getMemberSkills(member.address);
-        expect(skills).to.include(skill("smart-contracts"));
-        expect(skills).to.include(skill("machine-learning"));
+        expect(skills).to.deep.equal(memberCredential.vcData.credentialSubject.skills.map(skill));
     });
 
-    it("upgrade con VC: aggiorna correttamente il checkpoint Web3", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+    it("la coppia cyberSecurity+cloudArchitecture della VC reale produce 37.5 VP sul topic Cloud", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
+        expect(await skillModule.getSkillVotes(member.address, 1)).to.equal(ethers.parseEther("37.5"));
     });
 
-    it("accetta DID generici non legati all'address Ethereum", async function () {
-        const holderDid = "did:example:member-credential-subject";
-        const issuerDid = "did:example:issuer-unipi";
+    it("ripresentare la stessa VC reale non duplica skill o voting power", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
+        const vpBefore = await skillModule.getSkillVotes(member.address, 1);
 
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+        const totalBefore = await skillModule.getTotalSkillSupply(1);
+        const tx = skillModule.connect(member).upgradeSkillWithVC(memberCredential.vcData, memberCredential.signature);
+        await expect(tx).not.to.emit(skillModule, "MemberSkillsMerged");
+        await expect(tx).to.emit(skillModule, "SkillUpgraded");
+        await expect(tx).to.emit(skillModule, "SkillUpgradedWithVC");
+
+        expect(await skillModule.memberSkillBitmap(member.address)).to.equal(12n);
+        expect(await skillModule.getTotalSkillSupply(1)).to.equal(totalBefore);
+        expect(await skillModule.getMemberSkills(member.address)).to.have.length(2);
+        expect(await skillModule.getSkillVotes(member.address, 1)).to.equal(vpBefore);
     });
 
-    it("upgrade con VC: score Digital Health per digital-health = 45 → 22.5 VP skill", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["digital-health"], holderDid, issuerDid);
-        expect(await skillModule.getSkillVotes(member.address, 2)).to.equal(ethers.parseEther("22.5"));
-    });
-
-    it("secondo upgrade con nuove skill: accumula le skill senza duplicati", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
-
-        const skills = await skillModule.getMemberSkills(member.address);
-        expect(skills.filter((s: string) => s === skill("smart-contracts")).length).to.equal(1);
-        expect(skills).to.include(skill("machine-learning"));
-    });
-
-    it("secondo upgrade con nuove skill: aumenta il checkpoint (delta cumulativo)", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        const vpAfterFirst = await skillModule.getSkillVotes(member.address, 0);
-
-        await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
-        const vpAfterSecond = await skillModule.getSkillVotes(member.address, 0);
-
-        expect(vpAfterSecond).to.be.greaterThan(vpAfterFirst);
-    });
-
-    it("boost combinazionale si riflette nel checkpoint: smart-contracts+tokenomics su Web3", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["smart-contracts", "tokenomics"], holderDid, issuerDid);
-        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("47.5"));
-    });
-
-    it("rifiuta VC con issuer non fidato", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const [, , , fakeIssuer] = await ethers.getSigners();
+    it("rifiuta la VC reale quando il suo firmatario non è più trusted", async function () {
+        await addTrustedIssuerThroughTimelock(secondIssuer.address);
+        await removeTrustedIssuerThroughTimelock(issuer.address);
+        await skillModule.connect(member).registerDID(memberCredential.vcData.credentialSubject.id);
 
         await expect(
-            doUpgradeWithVC(member, ["smart-contracts"], holderDid, "did:ethr:fake", fakeIssuer)
+            upgradeWithSharedCredential(member, memberCredential, false)
         ).to.be.revertedWithCustomError(skillModule, "UntrustedIssuer");
     });
 
-    it("accetta VC firmata da issuer fidato anche con DID issuer generico", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const genericIssuerDid = "did:example:trusted-university";
-
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, genericIssuerDid);
-        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
-    });
-
-    it("accetta VC firmate da un secondo trusted issuer", async function () {
-        await addTrustedIssuerThroughTimelock(secondIssuer.address);
-
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + secondIssuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["backend-java"], holderDid, issuerDid, secondIssuer);
-        expect(await skillModule.getSkillVotes(member.address, 3)).to.equal(ethers.parseEther("20"));
-    });
-
     it("rifiuta VC con DID mismatch", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const wrongDid = "did:ethr:sepolia:0x" + deployer.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await skillModule.connect(member).registerDID(holderDid);
+        await skillModule.connect(member).registerDID("did:example:wrong-holder");
         await expect(
-            doUpgradeWithVC(member, ["smart-contracts"], wrongDid, issuerDid, issuer, false)
+            upgradeWithSharedCredential(member, memberCredential, false)
         ).to.be.revertedWithCustomError(skillModule, "DIDMismatch");
     });
 
-    it("accetta DID senza formato Ethereum se la VC firmata usa lo stesso DID", async function () {
-        const malformedDid = "not-a-standard-did-for-local-tests";
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
+    it("rifiuta una VC reale alterata dopo la firma", async function () {
+        await skillModule.connect(member).registerDID(memberCredential.vcData.credentialSubject.id);
+        const tamperedVc = {
+            ...memberCredential.vcData,
+            credentialSubject: {
+                ...memberCredential.vcData.credentialSubject,
+                unit: "Tampered unit",
+            },
+        };
 
-        await doUpgradeWithVC(member, ["smart-contracts"], malformedDid, issuerDid);
-        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+        await expect(
+            skillModule.connect(member).upgradeSkillWithVC(tamperedVc, memberCredential.signature)
+        ).to.be.revertedWithCustomError(skillModule, "UntrustedIssuer");
     });
 
     it("rifiuta VC se il membro non ha registrato un DID", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
         await expect(
-            doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid, issuer, false)
+            upgradeWithSharedCredential(member, memberCredential, false)
         ).to.be.revertedWithCustomError(skillModule, "NoDIDRegistered");
     });
 
@@ -464,45 +550,37 @@ describe("Competence Upgrade — skill array + SkillCalculator", function () {
     //  Test: governance legacy upgradeSkill (via proposta)
     // =========================================================================
     it("upgradeSkill via governance: aggiunge skill e aggiorna checkpoint", async function () {
-        await doUpgradeViaGovernance(member, ["backend-java", "tokenomics"], "Approvato da governance", 0);
+        await doUpgradeViaGovernance(member, ["softwareArchitecture", "blockchain"], "Approvato da governance", 0);
 
         const skills = await skillModule.getMemberSkills(member.address);
-        expect(skills).to.include(skill("backend-java"));
-        expect(skills).to.include(skill("tokenomics"));
-        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("20"));
+        expect(skills).to.include(skill("softwareArchitecture"));
+        expect(skills).to.include(skill("blockchain"));
+        expect(await skillModule.getSkillVotes(member.address, 0)).to.equal(ethers.parseEther("10"));
     });
 
     // =========================================================================
     //  Test: stake + skill VP correnti
     // =========================================================================
     it("stake VP e skill VP restano separati nei moduli corretti", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
         // Stake: 5 ETH → 2.5 COMP
         const stakeVP = await token.balanceOf(member.address);
 
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
-        const totalVP = stakeVP + await skillModule.getSkillVotes(member.address, 0);
-        expect(totalVP).to.equal(stakeVP + ethers.parseEther("20"));
+        await upgradeWithSharedCredential(member, memberCredential);
+        const totalVP = stakeVP + await skillModule.getSkillVotes(member.address, 1);
+        expect(totalVP).to.equal(stakeVP + ethers.parseEther("37.5"));
     });
 
     // =========================================================================
     //  Test: getPastSkillVotes (snapshot invarianza)
     // =========================================================================
-    it("getPastSkillVotes: upgrade successivo non altera snapshot precedente", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-        await doUpgradeWithVC(member, ["smart-contracts"], holderDid, issuerDid);
+    it("getPastSkillVotes: ripresentare la VC non altera lo snapshot precedente", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
         const snapshot = await ethers.provider.getBlockNumber();
         await mine(1);
 
-        // Secondo upgrade con skill aggiuntive
-        await doUpgradeWithVC(member, ["smart-contracts", "machine-learning"], holderDid, issuerDid);
+        await upgradeWithSharedCredential(member, memberCredential);
 
-        // Il VP allo snapshot deve riflettere solo il primo upgrade
-        const pastVP = await skillModule.getPastSkillVotes(member.address, 0, snapshot);
-        expect(pastVP).to.equal(ethers.parseEther("20"));
+        const pastVP = await skillModule.getPastSkillVotes(member.address, 1, snapshot);
+        expect(pastVP).to.equal(ethers.parseEther("37.5"));
     });
 });

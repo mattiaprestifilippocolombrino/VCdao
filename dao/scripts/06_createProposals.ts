@@ -12,10 +12,10 @@ Le proposte sono associate a un topicId tramite proposeWithTopic().
 Il topicId influenza il VP skill usato nel voto e il calcolo del quorum.
 
 PROPOSTE CREATE:
-  A — Audit protocollo DeFi       (10 ETH, topic Web3)
-  B — Piattaforma AI decisionale  (5 ETH,  topic AI)
-  C — Interoperabilità sanitaria  (7 ETH,  topic Digital Health)
-  D — Migrazione gestionale Java  (1 ETH,  topic Enterprise)
+  A — Piattaforma AI decisionale  (10 ETH, topic AI & Data)
+  B — Infrastruttura zero-trust    (5 ETH,  topic Cloud & Cybersecurity)
+  C — Protocollo pagamenti         (7 ETH,  topic FinTech & Blockchain)
+  D — Piattaforma ERP SaaS         (1 ETH,  topic Enterprise Software)
 
 Gli ID e i parametri delle proposte vengono salvati in proposalState.json
 per essere letti dagli script 07 e 08.
@@ -24,18 +24,13 @@ per essere letti dagli script 07 e 08.
 import { ethers } from "hardhat";
 import * as fs   from "fs";
 import * as path from "path";
-
-// Costanti topic — devono corrispondere ai topic supportati da GovernanceSkill.
-const TOPIC_WEB3 = 0;
-const TOPIC_AI = 1;
-const TOPIC_HEALTH = 2;
-const TOPIC_ENTERPRISE = 3;
-const TOPIC_LABELS: Record<number, string> = {
-    0: "Web3",
-    1: "AI",
-    2: "Health",
-    3: "Enterprise",
-};
+import {
+    TOPIC_AI_DATA,
+    TOPIC_CLOUD_CYBERSECURITY,
+    TOPIC_ENTERPRISE_SOFTWARE,
+    TOPIC_FINTECH_BLOCKCHAIN,
+    TOPIC_LABELS,
+} from "../../veramo/types/credentials";
 
 async function main() {
     console.log("══════════════════════════════════════════════════════════");
@@ -56,26 +51,26 @@ async function main() {
     const proposals = [
         {
             amount:  "10",
-            topicId: TOPIC_WEB3,
-            desc:    "Proposta A: Investire 10 ETH in audit di protocollo DeFi",
+            topicId: TOPIC_AI_DATA,
+            desc:    "Proposta A: Investire 10 ETH in una piattaforma AI decisionale",
             // Risultato atteso: SUPERQUORUM → Succeeded early
         },
         {
             amount:  "5",
-            topicId: TOPIC_AI,
-            desc:    "Proposta B: Investire 5 ETH in piattaforma AI decisionale",
+            topicId: TOPIC_CLOUD_CYBERSECURITY,
+            desc:    "Proposta B: Investire 5 ETH in infrastruttura cloud zero-trust",
             // Risultato atteso: Succeeded a fine periodo (quorum raggiunto, FOR > AGAINST)
         },
         {
             amount:  "7",
-            topicId: TOPIC_HEALTH,
-            desc:    "Proposta C: Investire 7 ETH in interoperabilita sanitaria digitale",
+            topicId: TOPIC_FINTECH_BLOCKCHAIN,
+            desc:    "Proposta C: Investire 7 ETH in un protocollo di pagamenti decentralizzato",
             // Risultato atteso: Defeated (quorum raggiunto, ma AGAINST > FOR)
         },
         {
             amount:  "1",
-            topicId: TOPIC_ENTERPRISE,
-            desc:    "Proposta D: Investire 1 ETH in migrazione gestionale Java",
+            topicId: TOPIC_ENTERPRISE_SOFTWARE,
+            desc:    "Proposta D: Investire 1 ETH in una piattaforma ERP SaaS",
             // Risultato atteso: Defeated (sotto quorum — pochi membri votano)
         },
     ];

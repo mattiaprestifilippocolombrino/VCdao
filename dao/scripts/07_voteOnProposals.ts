@@ -16,15 +16,15 @@ LOGICA DI VOTO MULTI-TOPIC:
   e lo passa a _getVotes() come parametro.
 
 I topic supportati sono definiti in GovernanceSkill; lo score di ogni skill è calcolato da SkillCalculator:
-  0 Web3 Infrastructure, 1 AI Products, 2 Digital Health, 3 Enterprise Software.
-Le VC assegnano skill realistiche come smart-contracts, tokenomics,
-machine-learning, digital-health, data-analysis e backend-java.
+  0 AI & Data, 1 Cloud & Cybersecurity, 2 FinTech & Blockchain, 3 Enterprise Software.
+Le VC assegnano le otto skill riconosciute definite in SkillDefinitions.
 */
 
 import { ethers } from "hardhat";
 import { mine }   from "@nomicfoundation/hardhat-network-helpers";
 import * as fs    from "fs";
 import * as path  from "path";
+import { TOPIC_LABELS } from "../../veramo/types/credentials";
 
 const FOR     = 1;  // Voto favorevole
 const AGAINST = 0;  // Voto contrario
@@ -34,13 +34,6 @@ const STATES: Record<number, string> = {
     0: "Pending", 1: "Active",    2: "Canceled",
     3: "Defeated", 4: "Succeeded", 5: "Queued",
     6: "Expired",  7: "Executed",
-};
-
-const TOPIC_LABELS: Record<number, string> = {
-    0: "Web3",
-    1: "AI",
-    2: "Health",
-    3: "Enterprise",
 };
 
 async function main() {
@@ -98,38 +91,38 @@ async function main() {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA A — topic Web3
-    //  Votano i membri con skill forti su smart contracts e tokenomics.
+    //  PROPOSTA A — topic AI & Data
+    //  Votano i membri con machineLearning e dataEngineering.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("🅰️  PROPOSTA A — topic Web3:");
-    await governor.connect(signers[0]).castVote(pA.id, FOR);  // web3 lead
-    await governor.connect(signers[1]).castVote(pA.id, FOR);  // web3 lead
-    await governor.connect(signers[2]).castVote(pA.id, FOR);  // protocol analyst
-    await governor.connect(signers[10]).castVote(pA.id, FOR); // tokenomics analyst
+    console.log("🅰️  PROPOSTA A — topic AI & Data:");
+    await governor.connect(signers[0]).castVote(pA.id, FOR);     // AI & Data lead
+    await governor.connect(signers[6]).castVote(pA.id, FOR);     // ML engineer
+    await governor.connect(signers[8]).castVote(pA.id, FOR);     // data engineer
+    await governor.connect(signers[2]).castVote(pA.id, AGAINST); // FinTech lead
     await printProposalStatus("Proposta A", pA);
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA B — topic AI
-    //  Votano i membri con machine-learning e data-analysis.
+    //  PROPOSTA B — topic Cloud & Cybersecurity
+    //  Votano i membri con cyberSecurity, cloudArchitecture e distributedSystems.
     //  Risultato atteso: Succeeded a fine periodo.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("\n🅱️  PROPOSTA B — topic AI:");
-    await governor.connect(signers[3]).castVote(pB.id, FOR);     // ai product lead
-    await governor.connect(signers[6]).castVote(pB.id, FOR);     // ml engineer
-    await governor.connect(signers[8]).castVote(pB.id, FOR);     // data analyst
-    await governor.connect(signers[0]).castVote(pB.id, AGAINST); // web3 lead
+    console.log("\n🅱️  PROPOSTA B — topic Cloud & Cybersecurity:");
+    await governor.connect(signers[1]).castVote(pB.id, FOR);  // cloud security lead
+    await governor.connect(signers[4]).castVote(pB.id, FOR);  // cybersecurity engineer
+    await governor.connect(signers[5]).castVote(pB.id, FOR);  // cloud platform architect
+    await governor.connect(signers[11]).castVote(pB.id, FOR); // security architect
     await printProposalStatus("Proposta B", pB);
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  PROPOSTA C — topic Digital Health
-    //  I membri health votano FOR, altri gruppi votano AGAINST.
+    //  PROPOSTA C — topic FinTech & Blockchain
+    //  Gli specialisti FinTech votano FOR, altri gruppi votano AGAINST.
     // ══════════════════════════════════════════════════════════════════════════
-    console.log("\n🅲  PROPOSTA C — topic Digital Health:");
-    await governor.connect(signers[4]).castVote(pC.id, FOR);     // health tech lead
-    await governor.connect(signers[7]).castVote(pC.id, FOR);     // health analyst
-    await governor.connect(signers[0]).castVote(pC.id, AGAINST); // web3 lead
-    await governor.connect(signers[1]).castVote(pC.id, AGAINST); // web3 lead
-    await governor.connect(signers[2]).castVote(pC.id, AGAINST); // protocol analyst
+    console.log("\n🅲  PROPOSTA C — topic FinTech & Blockchain:");
+    await governor.connect(signers[2]).castVote(pC.id, FOR);     // FinTech lead
+    await governor.connect(signers[7]).castVote(pC.id, FOR);     // blockchain engineer
+    await governor.connect(signers[10]).castVote(pC.id, FOR);    // startup finance analyst
+    await governor.connect(signers[0]).castVote(pC.id, AGAINST); // AI & Data lead
+    await governor.connect(signers[1]).castVote(pC.id, AGAINST); // cloud security lead
     await printProposalStatus("Proposta C", pC);
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -137,8 +130,8 @@ async function main() {
     //  Votano solo membri con VP limitato sul topic.
     // ══════════════════════════════════════════════════════════════════════════
     console.log("\n🅳  PROPOSTA D — topic Enterprise:");
-    await governor.connect(signers[9]).castVote(pD.id, FOR);  // backend engineer
-    await governor.connect(signers[12]).castVote(pD.id, FOR); // junior data analyst
+    await governor.connect(signers[3]).castVote(pD.id, FOR); // enterprise architect
+    await governor.connect(signers[9]).castVote(pD.id, FOR); // software architect
     await printProposalStatus("Proposta D", pD);
 
     // ── Fine voting period ────────────────────────────────────────────────────

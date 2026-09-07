@@ -7,5 +7,5 @@ puo' organizzare topic, pesi e boost come preferisce.
 */
 interface ISkillCalculator {
     /// @notice Restituisce gli score (0-100) per tutti i topic supportati in una sola chiamata.
-    function calculateAllVP(bytes32[] calldata skills) external view returns (uint256[] memory);
+    function calculateAllVPFromBitmap(uint256 skillBitmap) external view returns (uint256[] memory);
 }

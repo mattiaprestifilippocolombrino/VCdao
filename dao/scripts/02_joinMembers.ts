@@ -14,18 +14,19 @@ Le skill arriveranno dopo tramite VC: qui si gestisce solo lo stake.
 La delega (eseguita nel prossimo script) è necessaria per attivare il VP.
 
 DISTRIBUZIONE DIDATTICA (le label anticipano le VC dello script 04):
-  signers[1]  → 80 ETH  (Web3 lead)
-  signers[2]  → 90 ETH  (Protocol analyst)
-  signers[3]  → 70 ETH  (AI product lead)
-  signers[4]  → 60 ETH  (Health tech lead)
-  signers[5]  → 30 ETH  (Enterprise architect)
+  signers[0]  → fondatore + VC AI & Data Lead
+  signers[1]  → 80 ETH  (Cloud Security Lead)
+  signers[2]  → 90 ETH  (FinTech Lead)
+  signers[3]  → 70 ETH  (Enterprise Architect)
+  signers[4]  → 60 ETH  (Cybersecurity Engineer)
+  signers[5]  → 30 ETH  (Cloud Platform Architect)
   signers[6]  → 25 ETH  (Machine learning engineer)
-  signers[7]  → 20 ETH  (Health analyst)
-  signers[8]  → 15 ETH  (Data analyst)
-  signers[9]  → 10 ETH  (Backend engineer)
-  signers[10] →  8 ETH  (Tokenomics analyst)
-  signers[11] →  5 ETH  (Smart contract auditor)
-  signers[12] →  6 ETH  (Junior data analyst)
+  signers[7]  → 20 ETH  (Blockchain Engineer)
+  signers[8]  → 15 ETH  (Data Engineer)
+  signers[9]  → 10 ETH  (Software Architect)
+  signers[10] →  8 ETH  (Startup Finance Analyst)
+  signers[11] →  5 ETH  (Security Architect)
+  signers[12] →  6 ETH  (Distributed Systems Engineer)
   signers[13] →  2 ETH  (Observer)
   signers[14] →  1 ETH  (Observer)
 */
@@ -55,18 +56,18 @@ async function main() {
     // L'etichetta (label) indica le skill che arriveranno nel passo 04.
     // Il deposito in ETH determina il VP stake di ogni membro.
     const members = [
-        { signer: signers[1],  eth: "80", label: "Web3 lead (futuro)"              },
-        { signer: signers[2],  eth: "90", label: "Protocol analyst (futuro)"       },
-        { signer: signers[3],  eth: "70", label: "AI product lead (futuro)"        },
-        { signer: signers[4],  eth: "60", label: "Health tech lead (futuro)"       },
-        { signer: signers[5],  eth: "30", label: "Enterprise architect (futuro)"   },
+        { signer: signers[1],  eth: "80", label: "Cloud Security Lead"             },
+        { signer: signers[2],  eth: "90", label: "FinTech Lead"                    },
+        { signer: signers[3],  eth: "70", label: "Enterprise Architect"            },
+        { signer: signers[4],  eth: "60", label: "Cybersecurity Engineer"          },
+        { signer: signers[5],  eth: "30", label: "Cloud Platform Architect"        },
         { signer: signers[6],  eth: "25", label: "Machine learning engineer"       },
-        { signer: signers[7],  eth: "20", label: "Health analyst (futuro)"         },
-        { signer: signers[8],  eth: "15", label: "Data analyst (futuro)"           },
-        { signer: signers[9],  eth: "10", label: "Backend engineer (futuro)"       },
-        { signer: signers[10], eth: "8",  label: "Tokenomics analyst (futuro)"     },
-        { signer: signers[11], eth: "5",  label: "Smart contract auditor (futuro)" },
-        { signer: signers[12], eth: "6",  label: "Junior data analyst (futuro)"    },
+        { signer: signers[7],  eth: "20", label: "Blockchain Engineer"             },
+        { signer: signers[8],  eth: "15", label: "Data Engineer"                   },
+        { signer: signers[9],  eth: "10", label: "Software Architect"              },
+        { signer: signers[10], eth: "8",  label: "Startup Finance Analyst"         },
+        { signer: signers[11], eth: "5",  label: "Security Architect"              },
+        { signer: signers[12], eth: "6",  label: "Distributed Systems Engineer"    },
         { signer: signers[13], eth: "2",  label: "Observer"                        },
         { signer: signers[14], eth: "1",  label: "Observer"                        },
     ];

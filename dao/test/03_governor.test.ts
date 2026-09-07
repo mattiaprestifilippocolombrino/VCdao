@@ -134,17 +134,17 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
     // ========================================================================
     describe("1. proposeWithTopic()", function () {
 
-        it("salva correttamente il topicId per una proposta CS (0)", async function () {
+        it("salva correttamente il topicId per una proposta AI & Data (0)", async function () {
             const tx = await governor.proposeWithTopic(
-                [ethers.ZeroAddress], [0n], ["0x"], "Test CS", 0
+                [ethers.ZeroAddress], [0n], ["0x"], "Test AI & Data", 0
             );
             const pid = await getProposalId(governor, tx);
             expect(await governor.proposalTopic(pid)).to.equal(0n);
         });
 
-        it("salva correttamente il topicId per una proposta EE (2)", async function () {
+        it("salva correttamente il topicId per una proposta FinTech & Blockchain (2)", async function () {
             const tx = await governor.proposeWithTopic(
-                [ethers.ZeroAddress], [0n], ["0x"], "Test EE", 2
+                [ethers.ZeroAddress], [0n], ["0x"], "Test FinTech & Blockchain", 2
             );
             const pid = await getProposalId(governor, tx);
             expect(await governor.proposalTopic(pid)).to.equal(2n);
@@ -183,17 +183,17 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
     // ========================================================================
     describe("2. Ciclo completo di una proposta", function () {
 
-        it("ciclo completo skill upgrade: proposta CS passata e eseguita", async function () {
+        it("ciclo completo skill upgrade: proposta AI & Data passata e eseguita", async function () {
             // Alice entra con 5 ETH
             await token.connect(alice).joinDAO({ value: ethers.parseEther("5") });
             await token.connect(alice).delegate(alice.address);
             await mine(1);
 
-            // Proposta: upgrade alice a PhDCS (grado 3) sul topic CS (0)
+            // Proposta: assegna ad Alice la coppia complementare del topic AI & Data.
             const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [
-                alice.address, ["smart-contracts", "machine-learning"], ethers.keccak256(ethers.toUtf8Bytes("skills proof"))
+                alice.address, ["machineLearning", "dataEngineering"], ethers.keccak256(ethers.toUtf8Bytes("skills proof"))
             ]);
-            const desc = "Upgrade alice skill CS";
+            const desc = "Upgrade Alice skills AI & Data";
             const tx   = await governor.proposeWithTopic(
                 [await skillModule.getAddress()], [0n], [calldata], desc, 0
             );
@@ -268,15 +268,14 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
     describe("3. VP composito stake+skill nel castVote", function () {
 
         it("i voti FOR contano sia stake che skill del topic della proposta", async function () {
-            // alice: 40 ETH stake → 20 token; ProfessorCS → 50 VP skill su CS
-            // VP totale su topic CS = 20 + 50 = 70 token
+            // alice: 40 ETH stake → 20 token; coppia AI complementare → 37.5 VP skill
             await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
             await token.connect(alice).delegate(alice.address);
             await asTimelock(timelock, deployer,
-                s => skillModule.connect(s).upgradeSkill(alice.address, ["smart-contracts", "tokenomics", "data-analysis"], ethers.ZeroHash));
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["machineLearning", "dataEngineering"], ethers.ZeroHash));
             await mine(1);
 
-            // Proposta su topic CS
+            // Proposta su topic AI & Data
             const tx  = await governor.connect(alice).proposeWithTopic(
                 [ethers.ZeroAddress], [0n], ["0x"], "CS prop", 0
             );
@@ -287,20 +286,18 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
 
             const { forVotes } = await governor.proposalVotes(pid);
             // Stake: 40e18×100×5000×1e18/(100e18×10000) = 20e18
-            // Skill Web3: smart-contracts + tokenomics + data-analysis + boost = capped 100 → VP=50e18
-            expect(forVotes).to.equal(ethers.parseEther("70"));
+            // Skill AI & Data: machineLearning + dataEngineering + boost = 75 → VP=37.5e18
+            expect(forVotes).to.equal(ethers.parseEther("57.5"));
         });
 
-        it("i voti su topic AI & Data usano skill topic-specifiche", async function () {
-            // ProfessorCS su topic CE ha cross-topic penalty: score = 100-25 = 75
-            // VP skill CE = 75×5000/10000×1e18 = 37.5e18
+        it("i voti su Cloud & Cybersecurity usano skill topic-specifiche", async function () {
             await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
             await token.connect(alice).delegate(alice.address);
             await asTimelock(timelock, deployer,
-                s => skillModule.connect(s).upgradeSkill(alice.address, ["data-analysis"], ethers.ZeroHash));
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["cyberSecurity"], ethers.ZeroHash));
             await mine(1);
 
-            // Proposta su topic CE (1)
+            // Proposta su topic Cloud & Cybersecurity (1)
             const tx  = await governor.connect(alice).proposeWithTopic(
                 [ethers.ZeroAddress], [0n], ["0x"], "CE prop", 1
             );
@@ -310,8 +307,8 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await governor.connect(alice).castVote(pid, 1);
 
             const { forVotes } = await governor.proposalVotes(pid);
-            // Stake 20e18 + skill AI data-analysis=30 → VP = 20 + 15 = 35 COMP
-            expect(forVotes).to.equal(ethers.parseEther("35"));
+            // Stake 20e18 + cyberSecurity score 35 × weightSkill 50% = 17.5 COMP
+            expect(forVotes).to.equal(ethers.parseEther("37.5"));
         });
 
         it("il VP stake trasferito non è votabile da un destinatario non membro", async function () {
@@ -360,7 +357,7 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
         it("quorumForProposal = quorumNumerator% × (stakeSupply + skillSupply topic)", async function () {
             // Dopo joinDAO del deployer (100 ETH → 50 token stake)
             // Nessuna skill → skillSupply = 0
-            // Supply totale topic CS = 50e18
+            // Supply totale topic AI & Data = 50e18
             // Quorum 20% → 10e18
             const tx  = await governor.proposeWithTopic(
                 [ethers.ZeroAddress], [0n], ["0x"], "Q test", 0
@@ -373,11 +370,11 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
         });
 
         it("quorum aumenta quando la skillSupply del topic cresce", async function () {
-            // Aggiungi skill a alice → skillSupply CS cresce → quorum cresce
+            // Aggiungi skill ad alice → skillSupply AI & Data cresce → quorum cresce
             await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
             await token.connect(alice).delegate(alice.address);
             await asTimelock(timelock, deployer,
-                s => skillModule.connect(s).upgradeSkill(alice.address, ["smart-contracts"], ethers.ZeroHash));
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["machineLearning"], ethers.ZeroHash));
             await mine(1);
 
             const tx  = await governor.proposeWithTopic(
@@ -387,9 +384,9 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             await mine(VOTING_DELAY + 1);
             const q   = await governor.quorumForProposal(pid);
 
-            // stakeSupply = deployer(50) + alice(5), skillSupply topic 0 = smart-contracts(40)*50% = 20
-            // totale = 75e18; quorum 20% = 15e18
-            expect(q).to.equal(ethers.parseEther("15"));
+            // stakeSupply = deployer(50) + alice(5), skillSupply topic 0 = machineLearning(35)*50% = 17.5
+            // totale = 72.5e18; quorum 20% = 14.5e18
+            expect(q).to.equal(ethers.parseEther("14.5"));
         });
     });
 

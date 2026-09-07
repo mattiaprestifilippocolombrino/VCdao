@@ -11,6 +11,13 @@ Il contratto chiamante confronta poi questo address con il trusted issuer. Se co
 */
 
 library VPVerifier {
+    bytes32 internal constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version)");
+    bytes32 internal constant EIP712_NAME_HASH = keccak256(bytes("Universal VC Protocol"));
+    bytes32 internal constant EIP712_VERSION_HASH = keccak256(bytes("1"));
+    bytes32 internal constant UNIVERSAL_DOMAIN_SEPARATOR =
+        keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, EIP712_NAME_HASH, EIP712_VERSION_HASH));
+
     /*
     Costruiamo i typeHash, ovvero gli hash delle strutture EIP-712 che compongono la VC.
     I nomi dei campi, l'ordine e l'annidamento DEVONO essere identici a quelli usati
@@ -20,14 +27,13 @@ library VPVerifier {
     */
     bytes32 internal constant ISSUER_TYPEHASH = keccak256("Issuer(string id)");
 
-    // Aggiornato: ora usiamo skills come array di stringhe, rimossi grade e title
-    /// TypeHash della struct CredentialSubject, cioè il payload certificato sull'holder.
+    /// TypeHash canonico del CredentialSubject firmato dallo script issue-for-dao.
     bytes32 internal constant CREDENTIAL_SUBJECT_TYPEHASH =
         keccak256(
             "CredentialSubject("
             "string id,"
-            "string university,"
-            "string faculty,"
+            "string organization,"
+            "string unit,"
             "string[] skills"
             ")"
         );
@@ -43,8 +49,8 @@ library VPVerifier {
             ")"
             "CredentialSubject("
             "string id,"
-            "string university,"
-            "string faculty,"
+            "string organization,"
+            "string unit,"
             "string[] skills"
             ")"
             "Issuer("
@@ -62,8 +68,8 @@ library VPVerifier {
     /// Struct contenente i dati certificati relativi all'holder.
     struct CredentialSubject {
         string id;
-        string university;
-        string faculty;
+        string organization;
+        string unit;
         string[] skills; // Array dinamico di skill
     }
 
@@ -85,7 +91,7 @@ library VPVerifier {
         return keccak256(abi.encode(ISSUER_TYPEHASH, keccak256(bytes(issuer.id))));
     }
 
-    // Funzione per hashare l'harray di skills
+    // Hash EIP-712 dell'array di stringhe: hash concatenato dei singoli elementi hashati.
     function hashSkills(string[] memory skills) internal pure returns (bytes32) {
         bytes32[] memory skillHashes = new bytes32[](skills.length);
         for (uint256 i = 0; i < skills.length; i++) {
@@ -100,8 +106,8 @@ library VPVerifier {
             abi.encode(
                 CREDENTIAL_SUBJECT_TYPEHASH,
                 keccak256(bytes(cs.id)),
-                keccak256(bytes(cs.university)),
-                keccak256(bytes(cs.faculty)),
+                keccak256(bytes(cs.organization)),
+                keccak256(bytes(cs.unit)),
                 hashSkills(cs.skills)
             )
         );
@@ -132,11 +138,12 @@ library VPVerifier {
     */
     function recoverIssuer(
         VerifiableCredential memory vc,
-        bytes memory signature,
-        bytes32 domainSeparator
+        bytes memory signature
     ) internal pure returns (address signer) {
         bytes32 structHash = hashVerifiableCredential(vc);
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", UNIVERSAL_DOMAIN_SEPARATOR, structHash)
+        );
         signer = ECDSA.recover(digest, signature);
     }
 }

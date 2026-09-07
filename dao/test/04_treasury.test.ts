@@ -293,7 +293,7 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
     // ========================================================================
     describe("4. Flusso governance end-to-end: investimento in startup", function () {
 
-        it("proposta di investimento CS: approve → queue → execute → ETH alla startup", async function () {
+        it("proposta di investimento AI & Data: approve → queue → execute → ETH alla startup", async function () {
             // Setup: registra startup e verifica saldo treasury
             await asTimelock(timelock, deployer,
                 s => registry.connect(s).registerStartup("Startup Gov", startup.address, "end-to-end"));
@@ -301,9 +301,9 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
             const investAmount = ethers.parseEther("20");
             const startupBalBefore = await ethers.provider.getBalance(startup.address);
 
-            // Proposta: chiama Treasury.investStartup(0, 20 ETH) — topic CS
+            // Proposta: chiama Treasury.investStartup(0, 20 ETH) — topic AI & Data
             const calldata = treasury.interface.encodeFunctionData("investStartup", [0, investAmount]);
-            const desc     = "Investimento di 20 ETH in Startup Gov (CS)";
+            const desc     = "Investimento di 20 ETH in Startup Gov (AI & Data)";
 
             const tx  = await governor.proposeWithTopic(
                 [await treasury.getAddress()], [0n], [calldata], desc, 0

@@ -1,0 +1,160 @@
+{
+  "version": "V3-TopicBased",
+  "timestamp": "2026-09-07T21:48:50.168Z",
+  "gasPriceGwei": 1.000000007,
+  "ethPriceUsd": 2500,
+  "scenario": {
+    "members": 5,
+    "stakeEth": 5,
+    "weightStakeBp": 5000,
+    "weightSkillBp": 5000,
+    "quorumPct": 20,
+    "superquorumPct": 70,
+    "vcSkills": [
+      "cyberSecurity",
+      "cloudArchitecture"
+    ],
+    "proposalAmountEth": 10,
+    "proposalTopic": "FINTECH_BLOCKCHAIN (WEB3)",
+    "proposalTopicId": 2,
+    "votersFor": 3,
+    "votersAgainst": 2
+  },
+  "flow": [
+    {
+      "operation": "joinDAO  (first member — cold SSTORE)",
+      "gasUsed": "178286",
+      "costEth": "0.000178286001248002",
+      "costUsd": "$0.4457"
+    },
+    {
+      "operation": "delegate (first — creates checkpoint)",
+      "gasUsed": "95623",
+      "costEth": "0.000095623000669361",
+      "costUsd": "$0.2391"
+    },
+    {
+      "operation": "registerDID (first member — cold SSTORE)",
+      "gasUsed": "74713",
+      "costEth": "0.000074713000522991",
+      "costUsd": "$0.1868"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (EIP-712 + bitmap + 4-topic checkpoints)",
+      "gasUsed": "455549",
+      "costEth": "0.000455549003188843",
+      "costUsd": "$1.14"
+    },
+    {
+      "operation": "proposeWithTopic   (topicId stored + ProposalCreated)",
+      "gasUsed": "96590",
+      "costEth": "0.00009659000067613",
+      "costUsd": "$0.2415"
+    },
+    {
+      "operation": "castVote For       (1st — topic-aware VP calc)",
+      "gasUsed": "128375",
+      "costEth": "0.000128375000898625",
+      "costUsd": "$0.3209"
+    },
+    {
+      "operation": "castVote For       (2nd voter)",
+      "gasUsed": "111275",
+      "costEth": "0.000111275000778925",
+      "costUsd": "$0.2782"
+    },
+    {
+      "operation": "castVote For       (3rd voter)",
+      "gasUsed": "111275",
+      "costEth": "0.000111275000778925",
+      "costUsd": "$0.2782"
+    },
+    {
+      "operation": "castVote Against   (4th voter)",
+      "gasUsed": "128331",
+      "costEth": "0.000128331000898317",
+      "costUsd": "$0.3208"
+    },
+    {
+      "operation": "castVote Against   (5th voter)",
+      "gasUsed": "111231",
+      "costEth": "0.000111231000778617",
+      "costUsd": "$0.2781"
+    },
+    {
+      "operation": "queue",
+      "gasUsed": "172825",
+      "costEth": "0.000172825001209775",
+      "costUsd": "$0.4321"
+    },
+    {
+      "operation": "execute            (Timelock → Treasury.investStartup)",
+      "gasUsed": "215687",
+      "costEth": "0.000215687001509809",
+      "costUsd": "$0.5392"
+    }
+  ],
+  "aggregates": {
+    "memberActivationCost": {
+      "gas": "804171",
+      "usd": "$2.01"
+    },
+    "governanceCycleCost": {
+      "gas": "1075589",
+      "usd": "$2.69"
+    },
+    "totalGas": {
+      "gas": "1879760",
+      "usd": "$4.70"
+    }
+  },
+  "scalability": [
+    {
+      "skillCount": 1,
+      "skills": [
+        "cyberSecurity"
+      ],
+      "upgradeGas": "451593",
+      "costEth": "0.000451593003161151",
+      "costUsd": "$1.13"
+    },
+    {
+      "skillCount": 2,
+      "skills": [
+        "cyberSecurity",
+        "cloudArchitecture"
+      ],
+      "upgradeGas": "455249",
+      "costEth": "0.000455249003186743",
+      "costUsd": "$1.14"
+    },
+    {
+      "skillCount": 4,
+      "skills": [
+        "blockchain",
+        "cloudArchitecture",
+        "cyberSecurity",
+        "distributedSystems"
+      ],
+      "upgradeGas": "462709",
+      "costEth": "0.000462709003238963",
+      "costUsd": "$1.16"
+    },
+    {
+      "skillCount": 8,
+      "skills": [
+        "machineLearning",
+        "dataEngineering",
+        "cyberSecurity",
+        "cloudArchitecture",
+        "distributedSystems",
+        "blockchain",
+        "softwareArchitecture",
+        "startupFinance"
+      ],
+      "upgradeGas": "477599",
+      "costEth": "0.000477599003343193",
+      "costUsd": "$1.19"
+    }
+  ]
+}

@@ -28,19 +28,13 @@ import { ethers } from "hardhat";
 import { time }   from "@nomicfoundation/hardhat-network-helpers";
 import * as fs    from "fs";
 import * as path  from "path";
+import { TOPIC_LABELS } from "../../veramo/types/credentials";
 
 // Mappa degli stati interi del Governor agli stati testuali.
 const STATES: Record<number, string> = {
     0: "Pending", 1: "Active",    2: "Canceled",
     3: "Defeated", 4: "Succeeded", 5: "Queued",
     6: "Expired",  7: "Executed",
-};
-
-const TOPIC_LABELS: Record<number, string> = {
-    0: "Web3",
-    1: "AI",
-    2: "Health",
-    3: "Enterprise",
 };
 
 async function main() {

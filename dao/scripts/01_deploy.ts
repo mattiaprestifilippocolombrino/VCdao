@@ -4,7 +4,7 @@ ESECUZIONE: npx hardhat run scripts/01_deploy.ts --network localhost
 
 PREREQUISITI:
   - Hardhat node locale in esecuzione: npx hardhat node
-  - Variabile d'ambiente DAO_TRUSTED_ISSUER impostata con l'address dell'issuer fidato (università).
+  - Variabile d'ambiente DAO_TRUSTED_ISSUER impostata con l'address dell'issuer fidato (ente certificatore).
     Esempio: DAO_TRUSTED_ISSUER=0xAbc... npx hardhat run scripts/01_deploy.ts --network localhost
 
 ORDINE DI DEPLOY:
@@ -91,17 +91,17 @@ async function main() {
     // ── 2b. SkillCalculator ────────────────────────────────────────────────────
     // Contratto esterno immutabile (0 SLOAD) che calcola il VP da skill.
     // Ogni topic assegna uno score diverso per ogni skill riconosciuta:
-    //   smart-contracts, machine-learning, tokenomics,
-    //   digital-health, data-analysis, backend-java.
+    //   machineLearning, dataEngineering, cyberSecurity, cloudArchitecture,
+    //   distributedSystems, blockchain, softwareArchitecture, startupFinance.
     // Applica anche boost combinazionali definiti nel calcolatore.
     // Il calculator viene fissato nel modulo GovernanceSkill al deploy.
     const Calculator = await ethers.getContractFactory("SkillCalculator");
     const calculator = await Calculator.deploy();
     await calculator.waitForDeployment();
     console.log(`2b SkillCalculator:    ${await calculator.getAddress()}`);
-    console.log(`   └─ Skill: smart-contracts | machine-learning | tokenomics | digital-health | data-analysis | backend-java`);
-    console.log(`   └─ Topic: Web3 Infrastructure | AI Products | Digital Health | Enterprise Software`);
-    console.log(`   └─ Boost: web3(smart-contracts+tokenomics) | ai(machine-learning+data-analysis) | health(digital-health+data-analysis) | enterprise(backend-java+data-analysis)`);
+    console.log(`   └─ Skill: machineLearning | dataEngineering | cyberSecurity | cloudArchitecture | distributedSystems | blockchain | softwareArchitecture | startupFinance`);
+    console.log(`   └─ Topic: AI & Data | Cloud & Cybersecurity | FinTech & Blockchain | Enterprise Software`);
+    console.log(`   └─ Boost +10: AI(machineLearning+dataEngineering) | Cloud(cyberSecurity+cloudArchitecture) | FinTech(blockchain+startupFinance) | Enterprise(softwareArchitecture+cloudArchitecture)`);
 
     // ── 2c. GovernanceSkill ──────────────────────────────────────────────────
     // Tiene trusted issuer, skill dei membri e checkpoint del VP skill.
@@ -163,7 +163,7 @@ async function main() {
     console.log(`   🔗 GovernanceSkill → SkillCalculator immutabile`);
 
     // ── Issuer fidato ────────────────────────────────────────────────────────
-    // L'issuer è l'entità (es. università) che firma le Verifiable Credential
+    // L'issuer è l'entità (es. università, azienda o DAO) che firma le Verifiable Credential
     // con EIP-712. Il contratto supporta un insieme di issuer fidati; qui
     // configuriamo il primo issuer durante il bootstrap.
     // Obbligatorio come variabile d'ambiente per sicurezza (nessun fallback implicito).

@@ -136,7 +136,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     it("upgradeSkill reverta se non dal Timelock", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         await expect(
-            skillModule.upgradeSkill(alice.address, ["smart-contracts", "tokenomics"], ethers.id("Proof test"))
+            skillModule.upgradeSkill(alice.address, ["blockchain", "startupFinance"], ethers.id("Proof test"))
         ).to.be.revertedWithCustomError(skillModule, "OnlyTimelock");
     });
 

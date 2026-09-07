@@ -4,7 +4,7 @@
 //  Esegue tutto il ciclo di governance: deploy, join, delegate, increaseStake,
 //  upgradeCompetences, createProposal, voteOnProposal, executeProposal.
 //  Focus Accademico:
-//   - Overhead crittografico EIP-712 vs Aggiornamento Legacy
+//   - Costi di scenari VC e legacy nel ciclo (profili e stato differenti)
 //   - Costo dei checkpoint (SSTORE Cold vs Warm)
 //   - Costo di calldata (Tx data size) e complessità O(log N) nei checkpoint
 // ============================================================================
@@ -20,24 +20,9 @@ import {
     TimelockController
 } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { LoadedCredential, loadCredentialForAddress } from "./helpers/sharedCredentials";
 
 const ETH_PRICE_USD = 2100; // Valore aggiornato per la tesi
-
-// EIP-712 Schema
-const VC_TYPES = {
-    Issuer: [{ name: "id", type: "string" }],
-    CredentialSubject: [
-        { name: "id",         type: "string"   },
-        { name: "university", type: "string"   },
-        { name: "faculty",    type: "string"   },
-        { name: "skills",     type: "string[]" },
-    ],
-    VerifiableCredential: [
-        { name: "issuer",            type: "Issuer"            },
-        { name: "issuanceDate",      type: "string"            },
-        { name: "credentialSubject", type: "CredentialSubject" },
-    ],
-};
 
 function hashLegacyProof(proof: string): string {
     return ethers.keccak256(ethers.toUtf8Bytes(proof));
@@ -71,6 +56,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
     let member1: HardhatEthersSigner;
     let member2: HardhatEthersSigner;
     let issuer: HardhatEthersSigner;
+    let memberCredential: LoadedCredential;
 
     let currentGasPrice: bigint;
     const gasReport: Record<string, bigint> = {};
@@ -79,7 +65,11 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
     before(async function () {
         const feeData = await ethers.provider.getFeeData();
         currentGasPrice = feeData.gasPrice ?? feeData.maxFeePerGas ?? ethers.parseUnits("1", "gwei");
-        [deployer, member1, member2, issuer] = await ethers.getSigners();
+        [deployer, member1, issuer, member2] = await ethers.getSigners();
+        memberCredential = loadCredentialForAddress(member1.address);
+        if (memberCredential.issuerAddress !== issuer.address) {
+            throw new Error("L'issuer della VC condivisa non coincide con il trusted issuer del test gas");
+        }
     });
 
     it("1. Deploy dei Contratti", async function () {
@@ -172,23 +162,12 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
     });
 
     it("5. Upgrade Competences (VC Overhead vs Legacy)", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-
-
-        const vcData = {
-            issuer: { id: issuerDid },
-            issuanceDate: "2026-01-15T10:00:00Z",
-            credentialSubject: {
-                id: holderDid, university: "Pisa", faculty: "Protocol Security",
-                skills: ["smart-contracts", "tokenomics"],
-            },
-        };
-        const signature = await issuer.signTypedData({ name: "Universal VC Protocol", version: "1" }, VC_TYPES, vcData);
-
         // VC Upgrade
-        await skillModule.connect(member1).registerDID(holderDid);
-        const txVP = await skillModule.connect(member1).upgradeSkillWithVC(vcData, signature);
+        await skillModule.connect(member1).registerDID(memberCredential.vcData.credentialSubject.id);
+        const txVP = await skillModule.connect(member1).upgradeSkillWithVC(
+            memberCredential.vcData,
+            memberCredential.signature,
+        );
         const receiptVP = await txVP.wait();
         gasReport["UpgradeSkill VC (EIP-712)"] = receiptVP!.gasUsed;
         
@@ -201,14 +180,14 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         await deployer.sendTransaction({ to: tlAddr, value: ethers.parseEther("1") });
         const signerTL = await ethers.getSigner(tlAddr);
         
-        const txLeg = await skillModule.connect(signerTL).upgradeSkill(member2.address, ["smart-contracts"], hashLegacyProof("legacy skill"));
+        const txLeg = await skillModule.connect(signerTL).upgradeSkill(member2.address, ["blockchain"], hashLegacyProof("legacy skill"));
         const receiptLeg = await txLeg.wait();
         await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [tlAddr] });
         
         gasReport["UpgradeSkill Legacy (Direct)"] = receiptLeg!.gasUsed;
         const legacyCalldataCost = calculateCalldataCost(txLeg.data);
 
-        gasReport["[Overhead EIP-712 (Crypto)]"] = gasReport["UpgradeSkill VC (EIP-712)"] - gasReport["UpgradeSkill Legacy (Direct)"];
+        gasReport["[Differenza scenari VC/Legacy]"] = gasReport["UpgradeSkill VC (EIP-712)"] - gasReport["UpgradeSkill Legacy (Direct)"];
         
         // Salviamo in memoria i costi calldata per reportarli alla fine
         (this as any).vcCalldata = vcCalldataCost;
@@ -217,9 +196,9 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
 
     it("6. Proposta e Vote Lifecycle", async function () {
         // Creazione Proposta
-        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [member1.address, ["backend-java", "data-analysis"], ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
+        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [member1.address, ["blockchain", "startupFinance"], ethers.keccak256(ethers.toUtf8Bytes("FinTech profile"))]);
         const desc = "Promuovi Member1";
-        const txProp = await governor.connect(member1).proposeWithTopic([await skillModule.getAddress()], [0n], [calldata], desc, 0);
+        const txProp = await governor.connect(member1).proposeWithTopic([await skillModule.getAddress()], [0n], [calldata], desc, 2);
         const receiptProp = await txProp.wait();
         gasReport["Create Proposal (con Topic)"] = receiptProp!.gasUsed;
         
@@ -256,7 +235,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         const pid = (this as any).proposalId;
         await network.provider.send("hardhat_mine", ["0x35"]); // Salta Voting Period
         
-        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [member1.address, ["backend-java", "data-analysis"], ethers.keccak256(ethers.toUtf8Bytes("Prof"))]);
+        const calldata = skillModule.interface.encodeFunctionData("upgradeSkill", [member1.address, ["blockchain", "startupFinance"], ethers.keccak256(ethers.toUtf8Bytes("FinTech profile"))]);
         const descHash = ethers.id("Promuovi Member1");
         
         const txQueue = await governor.queue([await skillModule.getAddress()], [0n], [calldata], descHash);
@@ -288,7 +267,7 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
             
             if (action === "Deploy MyGovernor" || 
                 action === "Increase Stake (SSTORE Warm)" || 
-                action === "[Overhead EIP-712 (Crypto)]" || 
+                action === "[Differenza scenari VC/Legacy]" ||
                 action === "[O(log N) Search Overhead]" ||
                 action === "Execute Proposal") {
                 console.log(`   --------------------------------------------------------------------------------------------------`);
@@ -304,10 +283,10 @@ describe("Gas Estimation — Full Governance Cycle & Checkpoints", function () {
         console.log(`      JoinDAO ha un costo maggiore rispetto a IncreaseStake perché inizializza una variabile a 0 (SSTORE a freddo).`);
         console.log(`      IncreaseStake modifica un valore esistente, costando molto meno (SSTORE a caldo).`);
         console.log(`   `);
-        console.log(`   2. Calldata Payload e Overhead Crittografico (VC vs Legacy):`);
+        console.log(`   2. Calldata e differenza tra scenari (VC vs Legacy):`);
         console.log(`      Calldata inviata per VC: ~${(this as any).vcCalldata} gas | Calldata per Legacy: ~${(this as any).legacyCalldata} gas.`);
-        console.log(`      L'overhead calcolato (${gasReport["[Overhead EIP-712 (Crypto)]"]} gas) copre l'operazione di decodifica ABI e`);
-        console.log(`      la funzione ecrecover per verificare la firma crittografica dell'EIP-712.`);
+        console.log(`      La differenza (${gasReport["[Differenza scenari VC/Legacy]"]} gas) include skill e stato iniziale diversi.`);
+        console.log(`      Per isolare i percorsi a parità di profilo e stato, usare 05_gasEstimation.test.ts.`);
         console.log(`   `);
         console.log(`   3. Complessità O(log N) (Checkpoints Binary Search):`);
         const checkpointOverhead = gasReport["[O(log N) Search Overhead]"];

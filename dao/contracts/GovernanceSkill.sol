@@ -13,16 +13,8 @@ contract GovernanceSkill {
     uint256 public constant BASIS_POINTS = 10_000;      /// Denominatore basis points per effettuare i calcoli in %, che rappresenta il 100% = 10.000 bp.
     bytes32 public constant VC_PROOF_TYPEHASH = keccak256("VCProof(bytes32 credentialSubjectHash)");
 
-    /// Domain separator EIP-712 universale, precalcolato a compile-time, identico al dominio usato off-chain da Veramo per firmare le VC.
-    /// Essendo `constant`, il valore viene incorporato direttamente nel bytecode senza occupare storage e senza costi di SLOAD (risparmio ~600 gas)
-    bytes32 public constant UNIVERSAL_DOMAIN_SEPARATOR =
-        keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version)"),
-                keccak256(bytes("Universal VC Protocol")),
-                keccak256(bytes("1"))
-            )
-        );
+    /// Domain separator canonico definito in VPVerifier e usato anche dall'emittente off-chain.
+    bytes32 public constant UNIVERSAL_DOMAIN_SEPARATOR = VPVerifier.UNIVERSAL_DOMAIN_SEPARATOR;
 
     uint256 public immutable weightSkill;     // Peso della componente skill nella formula del voting power, espresso in basis points.
 
@@ -40,10 +32,8 @@ contract GovernanceSkill {
     mapping(address => bytes32) public memberDID;    // Mappa che associa ogni membro all'hash del suo DID.
     mapping(bytes32 => address) public didToAddress; // Garantisce che lo stesso DID non venga registrato da due address.
 
-    // Storage canonico delle skill di un membro. Le skill sono salvate come hash
-    // per evitare stringhe nello storage e confrontarle in modo economico.
-    mapping(address => bytes32[]) public memberSkills;
-    mapping(address => mapping(bytes32 => bool)) public memberHasSkill;
+    // Un solo slot per membro; SkillDefinitions assegna un bit a ciascuna skill.
+    mapping(address => uint256) public memberSkillBitmap;
 
 
     // Checkpoint skill per topic
@@ -147,7 +137,6 @@ contract GovernanceSkill {
     }
 
     /*
-        Da togliere.
         Valida il calcolatore delle skill, che implementa l'interfaccia ISkillCalculator.
         Il calcolatore viene fissato al deploy per evitare che membri diversi vengano
         valutati con logiche differenti nel tempo.
@@ -157,8 +146,7 @@ contract GovernanceSkill {
         if (_calculator.code.length == 0) revert NotAContract();
 
         ISkillCalculator candidate = ISkillCalculator(_calculator);
-        bytes32[] memory emptySkills = new bytes32[](0);
-        try candidate.calculateAllVP(emptySkills) returns (uint256[] memory scores) {
+        try candidate.calculateAllVPFromBitmap(0) returns (uint256[] memory scores) {
             if (scores.length != SkillDefinitions.TOPIC_COUNT) revert InvalidCalculator();
             for (uint256 topicId = 0; topicId < SkillDefinitions.TOPIC_COUNT; topicId++) {
                 if (scores[topicId] > 100) revert InvalidCalculator();
@@ -236,44 +224,34 @@ contract GovernanceSkill {
 
     //  Upgrade Skill
 
-    // Getter comodo per leggere l'array di skill hashate del membro.
+    // Ricostruisce gli hash in ordine canonico di bit, senza un array in storage.
     function getMemberSkills(address member) public view returns (bytes32[] memory) {
-        return memberSkills[member];
+        return SkillDefinitions.skillsFromBitmap(memberSkillBitmap[member]);
     }
 
     // Controlla se un membro possiede una skill.
     function hasSkill(address member, bytes32 skillId) public view returns (bool) {
-        return memberHasSkill[member][skillId];
+        return (memberSkillBitmap[member] & SkillDefinitions.skillFlag(skillId)) != 0;
     }
 
-    // Aggiunge skill gia' hashate, senza duplicati, e restituisce la lista aggiornata.
-    function _mergeSkills(address member, bytes32[] memory skillIds) internal returns (bytes32[] memory) {
-        bytes32[] storage skills = memberSkills[member];
-        uint256 added;
-        uint256 skillCount = skillIds.length;
-        for (uint256 i = 0; i < skillCount; i++) {
-            if (_addValidSkill(member, skills, skillIds[i])) {
-                ++added;
-            }
+    // Valida tutte le skill prima di scrivere; l'OR elimina automaticamente i duplicati.
+    function _mergeSkills(address member, string[] memory skillNames) internal returns (uint256 bitmap, bool changed) {
+        uint256 oldBitmap = memberSkillBitmap[member];
+        bitmap = oldBitmap;
+        for (uint256 i = 0; i < skillNames.length; i++) {
+            bytes32 skillId = SkillDefinitions.skillId(skillNames[i]);
+            uint256 flag = SkillDefinitions.skillFlag(skillId);
+            if (flag == 0) revert InvalidSkill(skillId);
+            bitmap |= flag;
         }
-        if (added > 0) emit MemberSkillsMerged(member, added, skills.length);
-        return skills;
-    }
-
-    function _addValidSkill(address member, bytes32[] storage skills, bytes32 skillId) private returns (bool) {
-        if (!SkillDefinitions.isValidSkill(skillId)) revert InvalidSkill(skillId);
-        if (memberHasSkill[member][skillId]) return false;
-
-        memberHasSkill[member][skillId] = true;
-        skills.push(skillId);
-        return true;
-    }
-
-    function _skillIds(string[] memory skillNames) private pure returns (bytes32[] memory skillIds) {
-        uint256 skillCount = skillNames.length;
-        skillIds = new bytes32[](skillCount);
-        for (uint256 i = 0; i < skillCount; i++) {
-            skillIds[i] = SkillDefinitions.skillId(skillNames[i]);
+        changed = bitmap != oldBitmap;
+        if (changed) {
+            memberSkillBitmap[member] = bitmap;
+            emit MemberSkillsMerged(
+                member,
+                SkillDefinitions.countSkills(bitmap ^ oldBitmap),
+                SkillDefinitions.countSkills(bitmap)
+            );
         }
     }
 
@@ -289,8 +267,9 @@ contract GovernanceSkill {
         bytes32 _proofHash
     ) external onlyTimelock {
         if (!governanceToken.isMember(_member)) revert NotMember();
-        bytes32[] memory mergedSkills = _mergeSkills(_member, _skillIds(_skills));
-        _performUpgrade(_member, mergedSkills, _proofHash);
+        (uint256 bitmap, bool changed) = _mergeSkills(_member, _skills);
+        if (changed) _performUpgrade(_member, bitmap);
+        emit SkillUpgraded(_member, _proofHash);
     }
 
     /*
@@ -315,21 +294,22 @@ contract GovernanceSkill {
         if (didHash == bytes32(0)) revert NoDIDRegistered();
         if (keccak256(bytes(_vc.credentialSubject.id)) != didHash) revert DIDMismatch();
 
-        address recovered = VPVerifier.recoverIssuer(_vc, _issuerSignature, UNIVERSAL_DOMAIN_SEPARATOR);
+        address recovered = VPVerifier.recoverIssuer(_vc, _issuerSignature);
         if (!trustedIssuers[recovered]) revert UntrustedIssuer();
 
-        bytes32[] memory mergedSkills = _mergeSkills(msg.sender, _skillIds(_vc.credentialSubject.skills));
+        (uint256 bitmap, bool changed) = _mergeSkills(msg.sender, _vc.credentialSubject.skills);
 
         bytes32 issuerDidHash = keccak256(bytes(_vc.issuer.id));
         bytes32 proofHash = _credentialSubjectProofHash(_vc.credentialSubject);
-        _performUpgrade(msg.sender, mergedSkills, proofHash);
+        if (changed) _performUpgrade(msg.sender, bitmap);
 
+        emit SkillUpgraded(msg.sender, proofHash);
         emit SkillUpgradedWithVC(msg.sender, issuerDidHash);
     }
 
     /*
         Proof sintetica per gli eventi: lega l'upgrade al CredentialSubject certificato
-        (holder DID, universita', faculty e hash ordinato delle skill) senza salvare stringhe on-chain.
+        (holder DID, organization, unit e hash ordinato delle skill) senza salvare stringhe on-chain.
         VPVerifier resta responsabile solo dell'hashing EIP-712 della VC; GovernanceSkill decide
         quale proof esporre nella logica DAO.
     */
@@ -348,20 +328,16 @@ contract GovernanceSkill {
     Funzione di upgrade di competenza, che si occupa di effettuare nella DAO le modifiche
     al voting power del membro dopo che la VC è stata verificata (oppure dopo che il Timelock ha autorizzato
     l'upgrade legacy).
-    Per ogni topic t ∈:
-        VPSkills(skills[], t) = skillsScoreForTopic(skills[], t) × weightSkill × 10^18 / BASIS_POINTS
-    Per calcolare skillsScoreForTopic(skills[], t) si usa l'interfaccia ISkillCalculator.
-    Viene preso il blocco attuale. Si prende la lista di topic. Per ogni topic, si chiama lo SkillCalculator per calcolare
-    il voting power dell'utente per tale topic.
-    Si chiama la funzione che aggiorna i checkpoint.
+    Passa la bitmap al calcolatore in una sola chiamata e aggiorna i checkpoint:
+        VPSkills(bitmap, t) = score(bitmap, t) × weightSkill × 10^18 / BASIS_POINTS.
+    Senza nuove skill il chiamante evita calcolo e checkpoint, ma mantiene gli eventi.
     */
     function _performUpgrade(
         address _member,
-        bytes32[] memory _skills,
-        bytes32 _proofHash
+        uint256 _skillBitmap
     ) internal {
         uint48 blk = clock();
-        uint256[] memory scores = skillCalculator.calculateAllVP(_skills);
+        uint256[] memory scores = skillCalculator.calculateAllVPFromBitmap(_skillBitmap);
         if (scores.length != SkillDefinitions.TOPIC_COUNT) revert InvalidCalculator();
 
         for (uint256 topicId = 0; topicId < SkillDefinitions.TOPIC_COUNT; topicId++) {
@@ -372,7 +348,6 @@ contract GovernanceSkill {
             _writeSkillVotes(_member, topicId, newVP, blk);
         }
 
-        emit SkillUpgraded(_member, _proofHash);
     }
 
     /*

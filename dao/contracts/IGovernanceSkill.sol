@@ -11,6 +11,8 @@ interface IGovernanceSkill {
     /// @dev Flusso utente minimo: registrare DID, aggiornare le skill via VC e leggerle.
     function registerDID(string calldata _did) external;
     function getMemberSkills(address member) external view returns (bytes32[] memory);
+    function memberSkillBitmap(address member) external view returns (uint256);
+    function hasSkill(address member, bytes32 skillId) external view returns (bool);
     function upgradeSkillWithVC(
         VPVerifier.VerifiableCredential memory _vc,
         bytes memory _issuerSignature

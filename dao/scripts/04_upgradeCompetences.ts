@@ -1,5 +1,5 @@
 /*
-04_upgradeCompetences.ts — Upgrade skill con VC firmata EIP-712 (skill array multi-topic)
+04_upgradeCompetences.ts — Upgrade skill con VC firmata EIP-712 (bitmap multi-topic)
 ESECUZIONE: npx hardhat run scripts/04_upgradeCompetences.ts --network localhost
 
 PREREQUISITI:
@@ -11,34 +11,34 @@ FLUSSO:
   2. Valida il formato (credentialSubject.skills deve essere un array).
   3. Registra il DID del membro se non è già stato registrato.
   4. Ogni membro chiama upgradeSkillWithVC() presentando la propria VC.
-  5. Il contratto verifica DID registrato e firma EIP-712, unisce le skill all'array
+  5. Il contratto verifica DID registrato e firma EIP-712, unisce le skill nella bitmap
      del membro e aggiorna i checkpoint VP per ogni topic via SkillCalculator.
 
 SKILL RICONOSCIUTE (fonte di verità in GovernanceSkill):
-  smart-contracts | machine-learning | tokenomics
-  digital-health | data-analysis | backend-java
+  machineLearning | dataEngineering | cyberSecurity | cloudArchitecture
+  distributedSystems | blockchain | softwareArchitecture | startupFinance
 
 BOOST COMBINAZIONALI:
-  smart-contracts + tokenomics       su Web3       → +20
-  machine-learning + data-analysis   su AI         → +20
-  digital-health + data-analysis     su Health     → +20
-  backend-java + data-analysis       su Enterprise → +15
+  machineLearning + dataEngineering            su AI & Data             → +10
+  cyberSecurity + cloudArchitecture             su Cloud & Cybersecurity → +10
+  blockchain + startupFinance                   su FinTech & Blockchain  → +10
+  softwareArchitecture + cloudArchitecture      su Enterprise Software   → +10
 */
 
 import { ethers } from "hardhat";
 import * as fs   from "fs";
 import * as path from "path";
+import { RECOGNIZED_SKILLS, TOPIC_LABELS } from "../../veramo/types/credentials";
 
 // Skill valide per validazione client-side
-const ALLOWED_SKILLS = new Set([
-    "smart-contracts",
-    "machine-learning",
-    "tokenomics",
-    "digital-health",
-    "data-analysis",
-    "backend-java",
-]);
-const TOPIC_LABELS = ["Web3", "AI", "Health", "Enterprise"];
+const ALLOWED_SKILLS = new Set<string>(RECOGNIZED_SKILLS);
+const SKILL_NAMES_BY_ID = new Map<string, string>(
+    RECOGNIZED_SKILLS.map((name) => [ethers.id(name), name])
+);
+
+function formatSkillIds(skillIds: readonly string[]): string {
+    return skillIds.map((skillId) => SKILL_NAMES_BY_ID.get(skillId) ?? skillId).join(", ");
+}
 
 function addressFromDid(did: string): string {
     const tail = did.split(":").pop();
@@ -52,6 +52,9 @@ function addressFromDid(did: string): string {
 function parseCredential(filePath: string) {
     const c = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     if (!c.issuer?.id)                          throw new Error("VC manca issuer.id");
+    if (!c.credentialSubject?.id)               throw new Error("VC manca credentialSubject.id");
+    if (!c.credentialSubject?.organization)     throw new Error("VC manca credentialSubject.organization");
+    if (!c.credentialSubject?.unit)             throw new Error("VC manca credentialSubject.unit");
     if (!Array.isArray(c.credentialSubject?.skills)) throw new Error("VC manca skills[] nel credentialSubject");
     if (!c.proof?.proofValue)                   throw new Error("VC manca proofValue");
 
@@ -66,10 +69,10 @@ function parseCredential(filePath: string) {
         issuerDid:   c.issuer.id,
         issuanceDate: c.issuanceDate,
         credentialSubject: {
-            id:         c.credentialSubject.id,
-            university: c.credentialSubject.university,
-            faculty:    c.credentialSubject.faculty,
-            skills:     skills,
+            id:           c.credentialSubject.id,
+            organization: c.credentialSubject.organization,
+            unit:         c.credentialSubject.unit,
+            skills:       skills,
         },
         signature: c.proof.proofValue,
     };
@@ -79,7 +82,7 @@ async function main() {
     const signers = await ethers.getSigners();
 
     console.log("══════════════════════════════════════════════════════════");
-    console.log("  CompetenceDAO — Upgrade skill array via VC EIP-712");
+    console.log("  CompetenceDAO — Upgrade skill bitmap via VC EIP-712");
     console.log("══════════════════════════════════════════════════════════\n");
 
     const addresses = JSON.parse(
@@ -159,7 +162,7 @@ async function main() {
         const skills = await skillModule.getMemberSkills(u.signer.address);
         console.log(
             `   ✅ Signer[${u.signerIdx}] (${u.signer.address.slice(0, 8)}...) ` +
-            `→ Skill: [${skills.join(", ")}]`
+            `→ Skill: [${formatSkillIds(skills)}]`
         );
     }
 
@@ -173,7 +176,7 @@ async function main() {
         );
 
         console.log(
-            `   Signer[${String(u.signerIdx).padEnd(2)}] [${skills.join(",").padEnd(30)}] | ` +
+            `   Signer[${String(u.signerIdx).padEnd(2)}] [${formatSkillIds(skills).padEnd(42)}] | ` +
             TOPIC_LABELS.map((label, topicId) =>
                 `${label}: ${ethers.formatEther(topicVotes[topicId]).padEnd(8)} VP`
             ).join(" | ")

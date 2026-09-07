@@ -11,24 +11,9 @@ import { expect } from "chai";
 import { ethers, network } from "hardhat";
 import { GovernanceSkill, GovernanceToken, TimelockController } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { LoadedCredential, loadCredentialForAddress } from "./helpers/sharedCredentials";
 
 const ETH_PRICE_USD = 2500; // Valore di riferimento ETH in USD per la tesi
-
-// Schema EIP-712 per la firma della Verifiable Credential, identico a VPVerifier.sol
-const VC_TYPES = {
-    Issuer: [{ name: "id", type: "string" }],
-    CredentialSubject: [
-        { name: "id",         type: "string"   },
-        { name: "university", type: "string"   },
-        { name: "faculty",    type: "string"   },
-        { name: "skills",     type: "string[]" },
-    ],
-    VerifiableCredential: [
-        { name: "issuer",            type: "Issuer"            },
-        { name: "issuanceDate",      type: "string"            },
-        { name: "credentialSubject", type: "CredentialSubject" },
-    ],
-};
 
 // Funzione helper per simulare una prova "legacy" senza EIP-712
 function hashLegacyProof(proof: string): string {
@@ -51,6 +36,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
     let member1: HardhatEthersSigner;
     let member2: HardhatEthersSigner;
     let issuer: HardhatEthersSigner;
+    let memberCredential: LoadedCredential;
 
     let currentGasPrice: bigint;
 
@@ -59,7 +45,11 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         const feeData = await ethers.provider.getFeeData();
         currentGasPrice = feeData.gasPrice ?? feeData.maxFeePerGas ?? ethers.parseUnits("1", "gwei");
 
-        [deployer, member1, member2, issuer] = await ethers.getSigners();
+        [deployer, member1, issuer, member2] = await ethers.getSigners();
+        memberCredential = loadCredentialForAddress(member1.address);
+        if (memberCredential.issuerAddress !== issuer.address) {
+            throw new Error("L'issuer della VC condivisa non coincide con il trusted issuer del test gas");
+        }
 
         // 1. Deploy Timelock
         const Timelock = await ethers.getContractFactory("TimelockController");
@@ -99,58 +89,49 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         await token.connect(member2).delegate(member2.address);
     });
 
-    // Simula la firma EIP-712 off-chain da parte dell'Università (Issuer)
-    async function signVC(holderDid: string, issuerDid: string, skills: string[]) {
-        const vcData = {
-            issuer: { id: issuerDid },
-            issuanceDate: "2026-01-15T10:00:00Z",
-            credentialSubject: {
-                id: holderDid, university: "University of Pisa",
-                faculty: "Computer Science", skills,
-            },
-        };
-        const signature = await issuer.signTypedData(
-            { name: "Universal VC Protocol", version: "1" }, VC_TYPES, vcData
-        );
-        return { vcData, signature };
-    }
-
     // Esegue una funzione impersonando il Timelock (necessario per forzare l'upgrade legacy)
     async function callAsTimelock<T>(fn: (signer: HardhatEthersSigner) => Promise<T>): Promise<T> {
         const addr = await timelock.getAddress();
         await network.provider.request({ method: "hardhat_impersonateAccount", params: [addr] });
         await deployer.sendTransaction({ to: addr, value: ethers.parseEther("1") });
         const signer = await ethers.getSigner(addr);
-        const result = await fn(signer);
-        await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [addr] });
-        return result;
+        try {
+            return await fn(signer);
+        } finally {
+            await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [addr] });
+        }
     }
 
     it("Calcolo costo esatto e overhead per upgradeSkillWithVC (EIP-712)", async function () {
-        const holderDid = "did:ethr:sepolia:0x" + member1.address.slice(2);
-        const issuerDid = "did:ethr:sepolia:0x" + issuer.address.slice(2);
-        
-
-        
-        // Generazione VC off-chain
-        const { vcData, signature } = await signVC(holderDid, issuerDid, ["smart-contracts", "tokenomics"]);
-
         // Transazione 1: Upgrade con VC EIP-712 (Self-Sovereign)
-        // L'utente chiama direttamente passando la prova crittografica.
-        await skillModule.connect(member1).registerDID(holderDid);
-        const txVP = await skillModule.connect(member1).upgradeSkillWithVC(vcData, signature);
+        // L'utente presenta direttamente la VC reale generata in shared-credentials.
+        await skillModule.connect(member1).registerDID(memberCredential.vcData.credentialSubject.id);
+        const snapshot = await network.provider.send("evm_snapshot");
+        const txVP = await skillModule.connect(member1).upgradeSkillWithVC(
+            memberCredential.vcData,
+            memberCredential.signature,
+        );
         const receiptVP = await txVP.wait();
         const gasTotal: bigint = receiptVP!.gasUsed;
+
+        const replay = await skillModule.connect(member1).upgradeSkillWithVC(
+            memberCredential.vcData, memberCredential.signature,
+        );
+        const gasReplay = (await replay.wait())!.gasUsed;
+        // Ripristina lo stesso membro e gli stessi checkpoint per un confronto omogeneo.
+        await network.provider.send("evm_revert", [snapshot]);
 
         // Transazione 2: Upgrade legacy (Centralizzato)
         // Simulato chiamandolo dal Timelock, non effettua nessuna decodifica EIP-712.
         const txLeg = await callAsTimelock(s =>
-            skillModule.connect(s).upgradeSkill(member2.address, ["smart-contracts"], hashLegacyProof("legacy skill"))
+            skillModule.connect(s).upgradeSkill(
+                member1.address, memberCredential.vcData.credentialSubject.skills, hashLegacyProof("legacy skill"),
+            )
         );
         const receiptLeg = await (txLeg as any).wait();
         const gasLegacy: bigint = receiptLeg!.gasUsed;
         
-        // Calcolo dell'overhead crittografico (ecrecover + decode)
+        // Differenza tra i due percorsi a parità di skill e stato iniziale (include calldata ed eventi).
         const overhead = gasTotal - gasLegacy;
 
         // Conversioni in ETH e USD
@@ -162,6 +143,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         console.log(`   ╠════════════════════════════════════════════════════════════════════════╣`);
         console.log(`   ║  Gas upgradeSkillWithVC:  ${String(gasTotal).padStart(10)} gas                        ║`);
         console.log(`   ║  Gas upgradeSkill legacy: ${String(gasLegacy).padStart(10)} gas                        ║`);
+        console.log(`   ║  Gas stessa VC ripetuta:  ${String(gasReplay).padStart(10)} gas                        ║`);
         console.log(`   ║  Overhead verifica VC:        +${String(overhead).padStart(10)} gas                        ║`);
         console.log(`   ╠════════════════════════════════════════════════════════════════════════╣`);
         console.log(`   ║  Costi Stimati (Gas Price: ${ethers.formatUnits(currentGasPrice, "gwei")} gwei, ETH: $${ETH_PRICE_USD})                   ║`);
@@ -172,6 +154,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         // Verifiche di coerenza di base
         expect(gasTotal).to.be.greaterThan(50000n);
         expect(gasTotal).to.be.lessThan(700000n);
+        expect(gasReplay).to.be.lessThan(gasTotal);
         expect(overhead).to.be.greaterThan(0n);
     });
 });
