@@ -1,6 +1,6 @@
 {
   "version": "V3-TopicBased",
-  "timestamp": "2026-09-08T07:34:30.156Z",
+  "timestamp": "2026-09-08T08:29:38.824Z",
   "gasPriceGwei": 1.03244,
   "ethPriceUsd": 2638.48,
   "scenario": {
@@ -399,6 +399,20 @@
       "upgradeGas": "462709",
       "costEth": "0.00047771927996",
       "costUsd": "$1.26"
+    },
+    {
+      "skillCount": 6,
+      "skills": [
+        "blockchain",
+        "cloudArchitecture",
+        "cyberSecurity",
+        "distributedSystems",
+        "machineLearning",
+        "dataEngineering"
+      ],
+      "upgradeGas": "469457",
+      "costEth": "0.00048468618508",
+      "costUsd": "$1.28"
     },
     {
       "skillCount": 8,

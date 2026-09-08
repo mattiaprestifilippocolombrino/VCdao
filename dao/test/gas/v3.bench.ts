@@ -14,7 +14,7 @@
 //    Esito  : 6 For < 70% → Succeeded → Queue → Execute
 //
 //  Micro-benchmark scalabilità (solo V3):
-//    upgradeSkillWithVC con 1, 2, 4 e 8 skill (8 = full bitmap, worst case).
+//    upgradeSkillWithVC con 1, 2, 4, 6 e 8 skill (8 = full bitmap, worst case).
 //
 //  Gas: letto da ContractTransactionReceipt.gasUsed (hardhat-network).
 //  Gas Price: rilevato dalla rete tramite ethers.provider.getFeeData() nel before().
@@ -534,7 +534,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
     // ── Micro-benchmark di scalabilità (solo V3) ───────────────────────────
     //
     //  Misura upgradeSkillWithVC al variare del numero di skill nella VC:
-    //    1 → 2 → 4 → 8 (full bitmap = worst case / upper bound).
+    //    1 → 2 → 4 → 6 → 8 (full bitmap = worst case / upper bound).
     //
     //  I 4 topic checkpoint vengono sempre scritti indipendentemente dal numero
     //  di skill: il delta tra i casi isola il costo del solo parsing EIP-712
@@ -575,6 +575,19 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
             const skills = ['blockchain', 'cloudArchitecture', 'cyberSecurity', 'distributedSystems'];
             const gas = await runScalabilityUpgrade(skills);
             scalabilityRows.push({ skillCount: 4, skills, upgradeGas: gas });
+        });
+
+        it('6 skills — adds machineLearning + dataEngineering', async function () {
+            const skills = [
+                'blockchain',
+                'cloudArchitecture',
+                'cyberSecurity',
+                'distributedSystems',
+                'machineLearning',
+                'dataEngineering',
+            ];
+            const gas = await runScalabilityUpgrade(skills);
+            scalabilityRows.push({ skillCount: 6, skills, upgradeGas: gas });
         });
 
         it('8 skills — full bitmap (all skills — worst case)', async function () {
