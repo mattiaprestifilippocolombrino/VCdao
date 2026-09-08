@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test test/01_tokenVotes.test.ts test/03_governor.test.ts test/04_treasury.test.ts test/05_competenceUpgrade.test.ts",
+    "test:all": "hardhat test",
+    "test:gas": "hardhat test test/gas/v3.bench.ts"
   },
   "keywords": [],
   "author": "",

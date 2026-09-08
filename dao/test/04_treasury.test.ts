@@ -35,9 +35,11 @@ async function asTimelock(
     await network.provider.request({ method: "hardhat_impersonateAccount", params: [addr] });
     await funder.sendTransaction({ to: addr, value: ethers.parseEther("2") });
     const signer = await ethers.getSigner(addr);
-    const result = await fn(signer);
-    await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [addr] });
-    return result;
+    try {
+        return await fn(signer);
+    } finally {
+        await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [addr] });
+    }
 }
 
 // Helper: estrae il proposalId dai log
@@ -171,6 +173,13 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
             ).to.be.revertedWithCustomError(registry, "OnlyTimelock");
         });
 
+        it("registerStartup: rifiuta wallet zero anche se chiamata dal Timelock", async function () {
+            await expect(
+                asTimelock(timelock, deployer,
+                    s => registry.connect(s).registerStartup("NoWallet", ethers.ZeroAddress, "desc"))
+            ).to.be.revertedWithCustomError(registry, "ZeroAddress");
+        });
+
         it("registerStartup: il Timelock può registrare una startup", async function () {
             await asTimelock(timelock, deployer,
                 s => registry.connect(s).registerStartup("StartupA", startup.address, "Desc A"));
@@ -190,6 +199,19 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
 
             const [, , , active] = await registry.getStartup(0);
             expect(active).to.be.false;
+        });
+
+        it("deactivateStartup e reactivateStartup revertono se chiamate fuori dal Timelock", async function () {
+            await asTimelock(timelock, deployer,
+                s => registry.connect(s).registerStartup("StartupD", startup.address, "Desc D"));
+
+            await expect(
+                registry.connect(alice).deactivateStartup(0)
+            ).to.be.revertedWithCustomError(registry, "OnlyTimelock");
+
+            await expect(
+                registry.connect(alice).reactivateStartup(0)
+            ).to.be.revertedWithCustomError(registry, "OnlyTimelock");
         });
 
         it("reactivateStartup: ripristina lo stato active", async function () {
@@ -264,6 +286,25 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
             ).to.be.revertedWithCustomError(treasury, "StartupInactive");
         });
 
+        it("investStartup revert RegistryNotSet se il Treasury non ha un registry", async function () {
+            const TR2 = await ethers.getContractFactory("Treasury");
+            const tr2 = await TR2.deploy(await timelock.getAddress());
+            await tr2.waitForDeployment();
+            await tr2.deposit({ value: ethers.parseEther("1") });
+
+            await expect(
+                asTimelock(timelock, deployer,
+                    s => tr2.connect(s).investStartup(0, ethers.parseEther("1")))
+            ).to.be.revertedWithCustomError(tr2, "RegistryNotSet");
+        });
+
+        it("investStartup propaga StartupNotFound per ID inesistente", async function () {
+            await expect(
+                asTimelock(timelock, deployer,
+                    s => treasury.connect(s).investStartup(99, ethers.parseEther("1")))
+            ).to.be.revertedWithCustomError(registry, "StartupNotFound");
+        });
+
         it("investStartup esegue il trasferimento ETH alla startup e aggiorna investedIn", async function () {
             const amount = ethers.parseEther("10");
             const startupBefore = await ethers.provider.getBalance(startup.address);
@@ -332,6 +373,40 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
             const startupBalAfter = await ethers.provider.getBalance(startup.address);
             expect(startupBalAfter - startupBalBefore).to.equal(investAmount);
         });
+
+        it("se la startup viene disattivata prima dell'execute, l'investimento approvato non parte", async function () {
+            await asTimelock(timelock, deployer,
+                s => registry.connect(s).registerStartup("Startup Paused", startup.address, "paused before execute"));
+
+            const investAmount = ethers.parseEther("20");
+            const treasuryBefore = await treasury.getBalance();
+            const startupBefore = await ethers.provider.getBalance(startup.address);
+            const calldata = treasury.interface.encodeFunctionData("investStartup", [0, investAmount]);
+            const desc = "Investimento bloccato per startup disattivata";
+
+            const tx = await governor.proposeWithTopic(
+                [await treasury.getAddress()], [0n], [calldata], desc, 0
+            );
+            const pid = await getProposalId(governor, tx);
+
+            await mine(VOTING_DELAY + 1);
+            await governor.castVote(pid, 1);
+            await mine(VOTING_PERIOD + 1);
+            await governor.queue(
+                [await treasury.getAddress()], [0n], [calldata], ethers.id(desc)
+            );
+
+            await asTimelock(timelock, deployer,
+                s => registry.connect(s).deactivateStartup(0));
+            await time.increase(TIMELOCK_DELAY + 1);
+
+            await expect(
+                governor.execute([await treasury.getAddress()], [0n], [calldata], ethers.id(desc))
+            ).to.be.reverted;
+            expect(await treasury.getBalance()).to.equal(treasuryBefore);
+            expect(await ethers.provider.getBalance(startup.address)).to.equal(startupBefore);
+            expect(await governor.state(pid)).to.equal(5); // Queued
+        });
     });
 
     // ========================================================================
@@ -350,6 +425,28 @@ describe("Treasury & StartupRegistry — Investimenti e Access Control", functio
             await expect(
                 treasury.setStartupRegistry(await registry.getAddress())
             ).to.be.revertedWithCustomError(treasury, "RegistryAlreadySet");
+        });
+
+        it("revert ZeroAddress se il registry è zero address", async function () {
+            const TR2 = await ethers.getContractFactory("Treasury");
+            const tr2 = await TR2.deploy(await timelock.getAddress());
+            await tr2.waitForDeployment();
+
+            await expect(
+                tr2.setStartupRegistry(ethers.ZeroAddress)
+            ).to.be.revertedWithCustomError(tr2, "ZeroAddress");
+        });
+
+        it("il Timelock può sostituire il registry dopo il bootstrap", async function () {
+            const SR2 = await ethers.getContractFactory("StartupRegistry");
+            const registry2 = await SR2.deploy(await timelock.getAddress());
+            await registry2.waitForDeployment();
+
+            const registry2Address = await registry2.getAddress();
+            await asTimelock(timelock, deployer,
+                s => treasury.connect(s).setStartupRegistry(registry2Address));
+
+            expect(await treasury.startupRegistry()).to.equal(registry2Address);
         });
     });
 });

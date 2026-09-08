@@ -38,8 +38,11 @@ async function asTimelock(
     await network.provider.request({ method: "hardhat_impersonateAccount", params: [addr] });
     await funder.sendTransaction({ to: addr, value: ethers.parseEther("1") });
     const signer = await ethers.getSigner(addr);
-    await fn(signer);
-    await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [addr] });
+    try {
+        await fn(signer);
+    } finally {
+        await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [addr] });
+    }
 }
 
 // Helper: estrae il proposalId dai log di una transazione di proposta
@@ -309,6 +312,44 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             const { forVotes } = await governor.proposalVotes(pid);
             // Stake 20e18 + cyberSecurity score 35 × weightSkill 50% = 17.5 COMP
             expect(forVotes).to.equal(ethers.parseEther("37.5"));
+        });
+
+        it("skill aggiunte dopo lo snapshot della proposta non aumentano il voto su quella proposta", async function () {
+            await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
+            await token.connect(alice).delegate(alice.address);
+            await mine(1);
+
+            const tx = await governor.connect(alice).proposeWithTopic(
+                [ethers.ZeroAddress], [0n], ["0x"], "Snapshot freezes VP", 0
+            );
+            const pid = await getProposalId(governor, tx);
+
+            await asTimelock(timelock, deployer,
+                s => skillModule.connect(s).upgradeSkill(alice.address, ["machineLearning", "dataEngineering"], ethers.ZeroHash));
+            await mine(VOTING_DELAY + 1);
+            await governor.connect(alice).castVote(pid, 1);
+
+            const { forVotes } = await governor.proposalVotes(pid);
+            expect(forVotes).to.equal(ethers.parseEther("20"));
+        });
+
+        it("stake aggiunto dopo lo snapshot della proposta non aumenta il voto su quella proposta", async function () {
+            await token.connect(alice).joinDAO({ value: ethers.parseEther("40") });
+            await token.connect(alice).delegate(alice.address);
+            await mine(1);
+
+            const tx = await governor.connect(alice).proposeWithTopic(
+                [ethers.ZeroAddress], [0n], ["0x"], "Snapshot freezes stake", 0
+            );
+            const pid = await getProposalId(governor, tx);
+
+            await mine(VOTING_DELAY + 1);
+            await token.connect(alice).increaseStake({ value: ethers.parseEther("40") });
+            await mine(1);
+            await governor.connect(alice).castVote(pid, 1);
+
+            const { forVotes } = await governor.proposalVotes(pid);
+            expect(forVotes).to.equal(ethers.parseEther("20"));
         });
 
         it("il VP stake trasferito non è votabile da un destinatario non membro", async function () {

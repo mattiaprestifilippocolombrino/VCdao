@@ -243,6 +243,36 @@ describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
         ).to.be.revertedWithCustomError(skillModule, "NotAContract");
     });
 
+    it("constructor rifiuta governance token zero, timelock zero e weightSkill fuori range", async function () {
+        const Skill = await ethers.getContractFactory("GovernanceSkill");
+
+        await expect(
+            Skill.deploy(ethers.ZeroAddress, await timelock.getAddress(), 5000n, await calculator.getAddress())
+        ).to.be.revertedWithCustomError(skillModule, "ZeroAddress");
+
+        await expect(
+            Skill.deploy(await token.getAddress(), ethers.ZeroAddress, 5000n, await calculator.getAddress())
+        ).to.be.revertedWithCustomError(skillModule, "ZeroAddress");
+
+        await expect(
+            Skill.deploy(await token.getAddress(), await timelock.getAddress(), 10001n, await calculator.getAddress())
+        ).to.be.revertedWithCustomError(skillModule, "InvalidWeights");
+    });
+
+    it("setTrustedIssuer rifiuta zero address, duplicati e chiamanti non autorizzati dopo il bootstrap", async function () {
+        await expect(
+            skillModule.setTrustedIssuer(ethers.ZeroAddress)
+        ).to.be.revertedWithCustomError(skillModule, "ZeroAddress");
+
+        await expect(
+            skillModule.setTrustedIssuer(issuer.address)
+        ).to.be.revertedWithCustomError(skillModule, "TrustedIssuerAlreadySet");
+
+        await expect(
+            skillModule.connect(member).setTrustedIssuer(secondIssuer.address)
+        ).to.be.revertedWithCustomError(skillModule, "OnlyTimelock");
+    });
+
     it("supporta un insieme di trusted issuer", async function () {
         await addTrustedIssuerThroughTimelock(secondIssuer.address);
 
@@ -400,6 +430,18 @@ describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
         expect(await skillModule.didToAddress(holderDidHash)).to.equal(member.address);
     });
 
+    it("registerDID richiede membership e DID non vuoto", async function () {
+        const outsider = secondIssuer;
+
+        await expect(
+            skillModule.connect(outsider).registerDID("did:example:outsider")
+        ).to.be.revertedWithCustomError(skillModule, "NotMember");
+
+        await expect(
+            skillModule.connect(member).registerDID("")
+        ).to.be.revertedWithCustomError(skillModule, "EmptyDID");
+    });
+
     it("registerDID impedisce di cambiare DID dopo la prima registrazione", async function () {
         const holderDid = memberCredential.vcData.credentialSubject.id;
 
@@ -532,6 +574,14 @@ describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
         ).to.be.revertedWithCustomError(skillModule, "NoDIDRegistered");
     });
 
+    it("upgradeSkillWithVC richiede che il chiamante sia membro", async function () {
+        const outsider = secondIssuer;
+
+        await expect(
+            skillModule.connect(outsider).upgradeSkillWithVC(memberCredential.vcData, memberCredential.signature)
+        ).to.be.revertedWithCustomError(skillModule, "NotMember");
+    });
+
     it("constructor rifiuta SkillCalculator zero address", async function () {
         const Timelock2 = await ethers.getContractFactory("TimelockController");
         const tl2 = await Timelock2.deploy(3600, [], [], deployer.address);
@@ -582,5 +632,26 @@ describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
 
         const pastVP = await skillModule.getPastSkillVotes(member.address, 1, snapshot);
         expect(pastVP).to.equal(ethers.parseEther("37.5"));
+    });
+
+    it("getter topic-aware revertono per topic invalidi e lookup futuri", async function () {
+        await upgradeWithSharedCredential(member, memberCredential);
+        const currentBlock = await ethers.provider.getBlockNumber();
+
+        await expect(
+            skillModule.getSkillVotes(member.address, 4)
+        ).to.be.revertedWithCustomError(skillModule, "InvalidTopicId").withArgs(4);
+
+        await expect(
+            skillModule.getTotalSkillSupply(4)
+        ).to.be.revertedWithCustomError(skillModule, "InvalidTopicId").withArgs(4);
+
+        await expect(
+            skillModule.getPastSkillVotes(member.address, 1, currentBlock + 1)
+        ).to.be.revertedWithCustomError(skillModule, "ERC5805FutureLookup");
+
+        await expect(
+            skillModule.getPastTotalSkillSupply(1, currentBlock + 1)
+        ).to.be.revertedWithCustomError(skillModule, "ERC5805FutureLookup");
     });
 });

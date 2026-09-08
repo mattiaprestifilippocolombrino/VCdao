@@ -51,7 +51,49 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await token.setTreasury(await treasury.getAddress());
     });
 
+    // ── Costruttore e setup ──
+    it("constructor rifiuta timelock zero e pesi non normalizzati", async function () {
+        const Token = await ethers.getContractFactory("GovernanceToken");
+
+        await expect(
+            Token.deploy(ethers.ZeroAddress, 5000n, 5000n)
+        ).to.be.revertedWithCustomError(token, "ZeroAddress");
+
+        await expect(
+            Token.deploy(await timelock.getAddress(), 4000n, 5000n)
+        ).to.be.revertedWithCustomError(token, "InvalidWeights");
+    });
+
+    it("setTreasury è one-shot, solo deployer e rifiuta zero address", async function () {
+        const Token = await ethers.getContractFactory("GovernanceToken");
+        const token2 = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
+        await token2.waitForDeployment();
+
+        await expect(
+            token2.connect(alice).setTreasury(await treasury.getAddress())
+        ).to.be.revertedWithCustomError(token2, "OnlyDeployer");
+
+        await expect(
+            token2.setTreasury(ethers.ZeroAddress)
+        ).to.be.revertedWithCustomError(token2, "ZeroAddress");
+
+        await token2.setTreasury(await treasury.getAddress());
+        await expect(
+            token2.setTreasury(await treasury.getAddress())
+        ).to.be.revertedWithCustomError(token2, "TreasuryAlreadySet");
+    });
+
     // ── joinDAO() ──
+    it("joinDAO() reverta se il Treasury non è configurato", async function () {
+        const Token = await ethers.getContractFactory("GovernanceToken");
+        const token2 = await Token.deploy(await timelock.getAddress(), 5000n, 5000n);
+        await token2.waitForDeployment();
+
+        await expect(
+            token2.connect(alice).joinDAO({ value: ethers.parseEther("1") })
+        ).to.be.revertedWithCustomError(token2, "TreasuryNotSet");
+    });
+
     it("joinDAO() minta i token VPC corretti per 1 ETH", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("0.5"));
@@ -60,6 +102,14 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
     it("joinDAO() minta i token VPC corretti per 50 ETH", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("50") });
         expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("25"));
+    });
+
+    it("joinDAO() accetta esattamente MAX_DEPOSIT e minta il massimo VP stake", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("100") });
+
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("50"));
+        expect(await token.stakeDeposited(alice.address)).to.equal(ethers.parseEther("100"));
+        expect(await token.getStakeScore(alice.address)).to.equal(100n);
     });
 
     it("joinDAO() registra il membro come Student", async function () {
@@ -85,6 +135,12 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await expect(
             token.connect(alice).joinDAO({ value: ethers.parseEther("101") })
         ).to.be.revertedWithCustomError(token, "ExceedsMaxDeposit");
+    });
+
+    it("joinDAO() reverta se il deposito è troppo piccolo per mintare VP", async function () {
+        await expect(
+            token.connect(alice).joinDAO({ value: 1n })
+        ).to.be.revertedWithCustomError(token, "DepositTooSmall");
     });
 
     it("joinDAO() reverta se già membro", async function () {
@@ -148,6 +204,18 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(await token.stakeDeposited(alice.address)).to.equal(ethers.parseEther("3"));
     });
 
+    it("increaseStake() consente di arrivare esattamente a MAX_DEPOSIT e poi blocca altro minting", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("60") });
+        await token.connect(alice).increaseStake({ value: ethers.parseEther("40") });
+
+        expect(await token.balanceOf(alice.address)).to.equal(ethers.parseEther("50"));
+        expect(await token.stakeDeposited(alice.address)).to.equal(ethers.parseEther("100"));
+
+        await expect(
+            token.connect(alice).increaseStake({ value: ethers.parseEther("1") })
+        ).to.be.revertedWithCustomError(token, "MaxDepositReached");
+    });
+
     it("increaseStake() reverta se non membro", async function () {
         await expect(
             token.connect(alice).increaseStake({ value: ethers.parseEther("1") })
@@ -159,6 +227,14 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await expect(
             token.connect(alice).increaseStake({ value: 0 })
         ).to.be.revertedWithCustomError(token, "ZeroDeposit");
+    });
+
+    it("increaseStake() reverta se l'incremento è troppo piccolo per mintare VP", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
+
+        await expect(
+            token.connect(alice).increaseStake({ value: 1n })
+        ).to.be.revertedWithCustomError(token, "DepositTooSmall");
     });
 
     it("increaseStake() invia ETH al Treasury", async function () {
