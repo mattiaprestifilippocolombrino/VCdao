@@ -4,24 +4,26 @@
   ],
   "type": [
     "VerifiableCredential",
-    "UniversityDegreeCredential"
+    "SkillCredential"
   ],
   "issuer": {
     "id": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
   },
-  "issuanceDate": "2026-05-13T15:36:43Z",
+  "issuanceDate": "2026-09-07T08:54:30Z",
   "credentialSubject": {
     "id": "did:ethr:sepolia:0x71bE63f3384f5fb98995898A86B02Fb2426c5788",
-    "university": "University of Pisa",
-    "faculty": "Computer Science",
-    "degreeTitle": "BachelorCS",
-    "grade": "104/110"
+    "organization": "University of Pisa",
+    "unit": "Cybersecurity",
+    "skills": [
+      "cyberSecurity",
+      "cloudArchitecture"
+    ]
   },
   "proof": {
     "type": "EthereumEip712Signature2021",
-    "created": "2026-05-13T15:36:43Z",
+    "created": "2026-09-07T08:54:30Z",
     "proofPurpose": "assertionMethod",
     "verificationMethod": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC#controller",
-    "proofValue": "0xc2179296b3a779dd98aee39bd59475b78b92aec4d9dc7fa43c9a348f1b098eb77cb06d50cd7198b7fc19e22c59893af28fd2935815f48f6cd26a9245a98bf2781c"
+    "proofValue": "0xbd214fad78e6a8d7685d135047fd7a06d5a8d47956d6461bfd7698ebb85fc74929f224dad44dcd033eae4686c883bdb068f9dce892fb0789752de89fbaa6886e1b"
   }
 }

@@ -4,24 +4,26 @@
   ],
   "type": [
     "VerifiableCredential",
-    "UniversityDegreeCredential"
+    "SkillCredential"
   ],
   "issuer": {
     "id": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
   },
-  "issuanceDate": "2026-05-13T15:36:43Z",
+  "issuanceDate": "2026-09-07T08:54:30Z",
   "credentialSubject": {
     "id": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-    "university": "University of Pisa",
-    "faculty": "Computer Science",
-    "degreeTitle": "ProfessorCS",
-    "grade": "N/A"
+    "organization": "University of Pisa",
+    "unit": "Digital Economy",
+    "skills": [
+      "blockchain",
+      "startupFinance"
+    ]
   },
   "proof": {
     "type": "EthereumEip712Signature2021",
-    "created": "2026-05-13T15:36:43Z",
+    "created": "2026-09-07T08:54:30Z",
     "proofPurpose": "assertionMethod",
     "verificationMethod": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC#controller",
-    "proofValue": "0x5090146afd27c93764f60cff1d1bb76cbc477c55b8502db4c0face9e694c356b15c2d2d57a060b17630a6d1a815eff472c261b31ca9643ef7ef0b51e55de05ee1c"
+    "proofValue": "0x8a6967f9d042c921de531a72640569cfc16868acc42a26626a60008b3c9e6c486ea63728d4b52f7b75140a8134fe88fbbe4d43f5e170e34b486b2ed37dc8e0991b"
   }
 }

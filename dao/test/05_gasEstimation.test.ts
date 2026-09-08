@@ -13,7 +13,11 @@ import { GovernanceSkill, GovernanceToken, TimelockController } from "../typecha
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { LoadedCredential, loadCredentialForAddress } from "./helpers/sharedCredentials";
 
-const ETH_PRICE_USD = 2500; // Valore di riferimento ETH in USD per la tesi
+// -- Costanti di riferimento annuali per la tesi (medie 2024) --
+// Gas price: media annuale Mainnet Ethereum 2024
+const GAS_PRICE_WEI: bigint = 1_032_440_000n; // 1.03244 Gwei in wei
+// ETH/USD: media annuale 2024
+const ETH_PRICE_USD = 2638.48;
 
 // Funzione helper per simulare una prova "legacy" senza EIP-712
 function hashLegacyProof(proof: string): string {
@@ -38,12 +42,8 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
     let issuer: HardhatEthersSigner;
     let memberCredential: LoadedCredential;
 
-    let currentGasPrice: bigint;
 
     beforeEach(async function () {
-        // Estrazione dinamica del gas price dalla rete locale Hardhat
-        const feeData = await ethers.provider.getFeeData();
-        currentGasPrice = feeData.gasPrice ?? feeData.maxFeePerGas ?? ethers.parseUnits("1", "gwei");
 
         [deployer, member1, issuer, member2] = await ethers.getSigners();
         memberCredential = loadCredentialForAddress(member1.address);
@@ -135,7 +135,7 @@ describe("Gas Estimation — Metriche per la Tesi", function () {
         const overhead = gasTotal - gasLegacy;
 
         // Conversioni in ETH e USD
-        const gasCostInEth = (gas: bigint) => ethers.formatEther(gas * currentGasPrice);
+        const gasCostInEth = (gas: bigint) => ethers.formatEther(gas * GAS_PRICE_WEI);
         const gasCostInUsd = (gas: bigint) => parseFloat(gasCostInEth(gas)) * ETH_PRICE_USD;
 
         console.log(`\n   ╔════════════════════════════════════════════════════════════════════════╗`);

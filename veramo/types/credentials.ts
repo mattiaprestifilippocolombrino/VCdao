@@ -1,60 +1,45 @@
 /**
  * Single source of truth per il modello VC usato da tutto il progetto:
  * - Veramo emette credenziali EIP-712 con `skills: string[]`
- * - GovernanceSkill verifica la VC e salva solo hash di skill
+ * - GovernanceSkill verifica la VC e salva le skill in una bitmap
  * - SkillCalculator assegna punteggi e boost per topic
  */
 
-export const TOPIC_WEB3 = 0;
-export const TOPIC_AI = 1;
-export const TOPIC_HEALTH = 2;
-export const TOPIC_ENTERPRISE = 3;
+export const TOPIC_AI_DATA = 0;
+export const TOPIC_CLOUD_CYBERSECURITY = 1;
+export const TOPIC_FINTECH_BLOCKCHAIN = 2;
+export const TOPIC_ENTERPRISE_SOFTWARE = 3;
 export const NUM_TOPICS = 4;
 
-export const TOPIC_LABELS: Record<number, string> = {
-  [TOPIC_WEB3]: "Web3 Infrastructure",
-  [TOPIC_AI]: "AI Products",
-  [TOPIC_HEALTH]: "Digital Health",
-  [TOPIC_ENTERPRISE]: "Enterprise Software",
-};
+export const TOPIC_LABELS = [
+  "AI & Data",
+  "Cloud & Cybersecurity",
+  "FinTech & Blockchain",
+  "Enterprise Software",
+] as const;
 
-export type SkillName =
-  | "smart-contracts"
-  | "machine-learning"
-  | "tokenomics"
-  | "digital-health"
-  | "data-analysis"
-  | "backend-java";
+export const RECOGNIZED_SKILLS = [
+  "machineLearning",
+  "dataEngineering",
+  "cyberSecurity",
+  "cloudArchitecture",
+  "distributedSystems",
+  "blockchain",
+  "softwareArchitecture",
+  "startupFinance",
+] as const;
 
-export const RECOGNIZED_SKILLS: SkillName[] = [
-  "smart-contracts",
-  "machine-learning",
-  "tokenomics",
-  "digital-health",
-  "data-analysis",
-  "backend-java",
-];
+export type SkillName = typeof RECOGNIZED_SKILLS[number];
 
-export const SKILL_LABELS: Record<SkillName, string> = {
-  "smart-contracts": "Smart contracts",
-  "machine-learning": "Machine learning",
-  tokenomics: "Tokenomics",
-  "digital-health": "Digital health",
-  "data-analysis": "Data analysis",
-  "backend-java": "Backend Java",
-};
-
-export const UNIVERSITY_INFO = {
+export const DEFAULT_ORGANIZATION = {
   name: "University of Pisa",
-  alias: "university-of-pisa",
-  country: "IT",
 } as const;
 
 export interface HolderPlan {
   alias: string;
   displayName: string;
   signerIndex: number;
-  faculty: string;
+  unit: string;
   skills: SkillName[];
 }
 
@@ -64,112 +49,113 @@ export interface HolderPlan {
  */
 export const HOLDERS: HolderPlan[] = [
   {
-    alias: "web3-lead-1",
-    displayName: "Web3 Lead 1",
+    alias: "ai-data-lead",
+    displayName: "AI & Data Lead",
     signerIndex: 0,
-    faculty: "Blockchain Engineering",
-    skills: ["smart-contracts", "tokenomics"],
+    unit: "Artificial Intelligence",
+    skills: ["machineLearning", "dataEngineering"],
   },
   {
-    alias: "web3-lead-2",
-    displayName: "Web3 Lead 2",
+    alias: "cloud-security-lead",
+    displayName: "Cloud Security Lead",
     signerIndex: 1,
-    faculty: "Blockchain Engineering",
-    skills: ["smart-contracts", "tokenomics", "data-analysis"],
+    unit: "Cybersecurity",
+    skills: ["cyberSecurity", "cloudArchitecture"],
   },
   {
-    alias: "protocol-analyst",
-    displayName: "Protocol Analyst",
+    alias: "fintech-lead",
+    displayName: "FinTech Lead",
     signerIndex: 2,
-    faculty: "Digital Economy",
-    skills: ["tokenomics", "smart-contracts"],
-  },
-  {
-    alias: "ai-product-lead",
-    displayName: "AI Product Lead",
-    signerIndex: 3,
-    faculty: "Artificial Intelligence",
-    skills: ["machine-learning", "data-analysis"],
-  },
-  {
-    alias: "health-tech-lead",
-    displayName: "Health Tech Lead",
-    signerIndex: 4,
-    faculty: "Digital Health",
-    skills: ["digital-health", "data-analysis"],
+    unit: "Digital Economy",
+    skills: ["blockchain", "startupFinance"],
   },
   {
     alias: "enterprise-architect",
     displayName: "Enterprise Architect",
+    signerIndex: 3,
+    unit: "Software Engineering",
+    skills: ["softwareArchitecture", "cloudArchitecture"],
+  },
+  {
+    alias: "cybersecurity-engineer",
+    displayName: "Cybersecurity Engineer",
+    signerIndex: 4,
+    unit: "Cybersecurity",
+    skills: ["cyberSecurity", "distributedSystems"],
+  },
+  {
+    alias: "cloud-platform-architect",
+    displayName: "Cloud Platform Architect",
     signerIndex: 5,
-    faculty: "Software Engineering",
-    skills: ["backend-java", "data-analysis"],
+    unit: "Software Engineering",
+    skills: ["cloudArchitecture", "distributedSystems"],
   },
   {
     alias: "ml-engineer",
     displayName: "Machine Learning Engineer",
     signerIndex: 6,
-    faculty: "Artificial Intelligence",
-    skills: ["machine-learning"],
+    unit: "Artificial Intelligence",
+    skills: ["machineLearning"],
   },
   {
-    alias: "health-analyst",
-    displayName: "Health Analyst",
+    alias: "blockchain-engineer",
+    displayName: "Blockchain Engineer",
     signerIndex: 7,
-    faculty: "Digital Health",
-    skills: ["digital-health"],
+    unit: "Blockchain Engineering",
+    skills: ["blockchain"],
   },
   {
-    alias: "data-analyst",
-    displayName: "Data Analyst",
+    alias: "data-engineer",
+    displayName: "Data Engineer",
     signerIndex: 8,
-    faculty: "Data Science",
-    skills: ["data-analysis"],
+    unit: "Data Science",
+    skills: ["dataEngineering"],
   },
   {
-    alias: "backend-engineer",
-    displayName: "Backend Engineer",
+    alias: "software-architect",
+    displayName: "Software Architect",
     signerIndex: 9,
-    faculty: "Software Engineering",
-    skills: ["backend-java"],
+    unit: "Software Engineering",
+    skills: ["softwareArchitecture"],
   },
   {
-    alias: "tokenomics-analyst",
-    displayName: "Tokenomics Analyst",
+    alias: "startup-finance-analyst",
+    displayName: "Startup Finance Analyst",
     signerIndex: 10,
-    faculty: "Digital Economy",
-    skills: ["tokenomics"],
+    unit: "Digital Economy",
+    skills: ["startupFinance"],
   },
   {
-    alias: "smart-contract-auditor",
-    displayName: "Smart Contract Auditor",
+    alias: "security-architect",
+    displayName: "Security Architect",
     signerIndex: 11,
-    faculty: "Cybersecurity",
-    skills: ["smart-contracts"],
+    unit: "Cybersecurity",
+    skills: ["cyberSecurity", "cloudArchitecture"],
   },
   {
-    alias: "junior-data-analyst",
-    displayName: "Junior Data Analyst",
+    alias: "distributed-systems-engineer",
+    displayName: "Distributed Systems Engineer",
     signerIndex: 12,
-    faculty: "Data Science",
-    skills: ["data-analysis"],
+    unit: "Data Science",
+    skills: ["distributedSystems"],
   },
 ];
 
-export const ACTORS = {
-  ISSUER: UNIVERSITY_INFO.alias,
-  VERIFIER: "verifier-platform",
-} as const;
-
 export const CREDENTIAL_CONTEXT = ["https://www.w3.org/2018/credentials/v1"] as const;
 export const CREDENTIAL_TYPE = ["VerifiableCredential", "SkillCredential"] as const;
+
+// Deve coincidere con VPVerifier.UNIVERSAL_DOMAIN_SEPARATOR.
+export const EIP712_DOMAIN = {
+  name: "Universal VC Protocol",
+  version: "1",
+} as const;
 
 export const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
   Issuer: [{ name: "id", type: "string" }],
   CredentialSubject: [
     { name: "id", type: "string" },
-    { name: "university", type: "string" },
-    { name: "faculty", type: "string" },
+    { name: "organization", type: "string" },
+    { name: "unit", type: "string" },
     { name: "skills", type: "string[]" },
   ],
   VerifiableCredential: [
@@ -181,8 +167,8 @@ export const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
 
 export interface CredentialSubject {
   id: string;
-  university: string;
-  faculty: string;
+  organization: string;
+  unit: string;
   skills: SkillName[];
 }
 
@@ -201,19 +187,9 @@ export interface DaoCompatibleVc {
   };
 }
 
-export const DISCLOSED_FIELD = "skills" as const;
-export const ALL_CREDENTIAL_FIELDS = ["skills", "university", "faculty"] as const;
 export const CREDENTIALS_DIR = "./credentials";
 export const DAO_SHARED_CREDENTIALS_DIR = "shared-credentials";
 
-export function getCredentialPath(holderAlias: string, baseDir: string = CREDENTIALS_DIR): string {
-  return `${baseDir}/${holderAlias}.json`;
-}
-
 export function toDid(address: string): string {
   return `did:ethr:sepolia:0x${address.slice(2)}`;
-}
-
-export function toIsoSecondPrecision(date: Date): string {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }

@@ -1,9 +1,10 @@
-# Veramo Module — VC PoC for DAO
+# VC EIP-712 per CompetenceDAO
 
-Questo modulo emette VC con un **modello unico** condiviso con il modulo DAO.
-Le VC vengono generate in Veramo e salvate in due cartelle:
+Questo modulo contiene un solo flusso: genera le VC EIP-712 consumate dalla DAO.
+Le definizioni condivise sono in `types/credentials.ts`; lo script
+`scripts/issue-for-dao.ts` produce le credenziali in due cartelle:
 
-- `veramo/credentials` (wallet locale SSI)
+- `veramo/credentials` (copia locale)
 - `shared-credentials` (input diretto per la governance DAO)
 
 ## Modello VC (unico)
@@ -20,8 +21,8 @@ Top-level:
 `credentialSubject`:
 
 - `id`
-- `university`
-- `faculty`
+- `organization` (universita', azienda, DAO o training provider)
+- `unit` (facolta', dipartimento, team o sezione)
 - `skills` (array di skill supportate dalla DAO)
 
 Note:
@@ -32,12 +33,8 @@ Note:
 
 ## Script
 
-- `1-create-dids.ts`: crea DID per issuer/verifier e alias holder (didattica SSI).
-- `2-issue-credential.ts`: script principale consigliato per emettere VC PoC.
-- `issue-for-dao.ts`: stessa logica di emissione, usata anche da altri script.
-- `3-selective-disclosure.ts`: disclosure policy-driven del solo array `skills`.
-- `4-verify-credential.ts`: verifica locale EIP-712 delle VC emesse.
-- `5-full-flow.ts`: esecuzione end-to-end (setup DID + issue + verify + disclosure).
+- `issue-for-dao.ts`: genera e firma tutte le VC compatibili con
+  `GovernanceSkill.sol` e `VPVerifier.sol`.
 
 ## Installazione
 
@@ -47,31 +44,23 @@ npm install
 
 ## Configurazione
 
-Oltre alle variabili Veramo (`INFURA_PROJECT_ID`, `KMS_SECRET_KEY`), per il flusso DAO servono:
+Servono esclusivamente:
 
 - `DAO_ISSUER_PRIVATE_KEY`
 - `DAO_HARDHAT_MNEMONIC`
 
 e il file `dao/deployedAddresses.json` già popolato dal deploy DAO.
 
-## Esecuzione consigliata (PoC tesi)
+## Esecuzione
 
 ```bash
-# 1) DID setup didattico
-npm run create-dids
-
-# 2) Emissione VC unificata Veramo -> DAO
-npm run issue-credential
-
-# 3) Verifica crittografica locale EIP-712
-npm run verify-credential
-
-# 4) Disclosure del solo array skills (policy-driven)
-npm run selective-disclosure
+npm run issue-for-dao
 ```
 
-Oppure full flow:
+Lo script sostituisce i file JSON precedenti. Dopo una modifica a topic, skill o
+schema EIP-712, le credenziali devono sempre essere rigenerate prima dei test DAO:
 
 ```bash
-npm run full-flow
+cd ../dao
+npx hardhat test
 ```

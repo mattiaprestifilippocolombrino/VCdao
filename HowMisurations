@@ -1,3 +1,18 @@
+Quindi ora per le tue sperimentazioni Mainnet hai:
+
+$$ \boxed{\text{Average Gas Price} = 1.03244\ \text{Gwei}} $$ $$ \boxed{\text{Average ETH/USD} = 2638.48\ \text{USD/ETH}} $$
+
+e il costo di una transazione diventa:
+
+$$ \boxed{ Cost_{USD} = GasUsed \times 1.03244 \times 10^{-9} \times 2638.48 } $$
+
+ossia, semplificando:
+
+$$ \boxed{Cost_{USD} \approx GasUsed \times 0.000002724} $$
+
+Per esempio 256.000 gas ≈ $0.697 sulla base delle due medie annuali.
+
+
 Sì. Con la quarta versione iniziale off-chain, il benchmark diventa molto più interessante perché puoi mostrare l’evoluzione del progetto e attribuire l’overhead a tre scelte architetturali successive, invece di confrontare soltanto “vecchio vs nuovo”.
 
 La imposterei così: quattro implementazioni, stesso scenario, stesso flusso utente e stessa operazione finale di governance. Il PDF attuale descrive già chiaramente joinDAO(), increaseStake(), registerDID(), l’upgrade tramite VC, proposeWithTopic(), castVote(), queue() ed execute(), quindi userei proprio queste operazioni come riferimento semantico del benchmark.
@@ -239,8 +254,8 @@ Quorum	20%
 Superquorum	70%
 VC	identica semanticamente
 Skill	2 skill
-Voti	3 For
-Proposal	investimento 1 ETH
+Voti	3 For 2 Against
+Proposal	investimento 10 ETH
 Topic V3	WEB3
 
 I 3 membri su 5 danno un flusso semplice e, a parità di voting power, il 60% non raggiunge il 70% di superquorum. Quindi puoi far terminare normalmente il voting period e poi procedere con:
@@ -249,9 +264,9 @@ Succeeded → Queue → Execute.
 
 10. Due costi aggregati
 
-Non farei un enorme “total gas” che include deployment, join, cambio delega, 10 checkpoint artificiali ecc., come nel vecchio test.
+farei un enorme “total gas” che include deployment, join, cambio delega, 10 checkpoint artificiali ecc., come nel vecchio test.
 
-Definirei invece due metriche leggibili.
+Definirei anche due metriche leggibili.
 
 A. Member Activation Cost
 $$ G_{member} = G_{join} + G_{delegate} + G_{DID} + G_{upgrade} $$
@@ -709,3 +724,110 @@ costo totale member activation;
 costo totale governance lifecycle.
 
 Questa impostazione rimane valida anche se il nuovo modello VC è completamente diverso dal precedente, perché il benchmark confronta il comportamento del sistema e non dipende da uno schema VC hardcoded comune.
+
+
+
+  V3 — Topic-Based DAO │ Gas Benchmark
+
+  [GasBench] Gas Price rete (solo info):  1.8750 Gwei
+  [GasBench] Gas Price benchmark (fisso): 1.03244 Gwei  |  ETH: $2638.48
+    Main User Flow
+      ✔ 1. joinDAO — 10 members, 5 ETH each (96ms)
+      ✔ 2. delegate — self-delegation, all 10 members (97ms)
+      ✔ 3. registerDID — all 10 members anchor their DID (116ms)
+      ✔ 4. upgradeSkillWithVC — all 10 members get competence VP (187ms)
+      ✔ 5. proposeWithTopic — invest 10 ETH in MockStartup WEB3 (134ms)
+      ✔ 6. castVote — 6 For + 4 Against (all 10 members vote) (111ms)
+      ✔ 7. queue — proposal queued in TimelockController
+      ✔ 8. execute — Treasury.investStartup(10 ETH) via TimelockController
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  V3 — Topic-Based DAO │ 1.03244 Gwei · ETH $2638.48 │ 10 members: 6 For + 4 Against
+  Gas Price: 1.03244 Gwei  |  ETH: $2638.48
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Operation                                          │     Gas Used │           Cost (ETH) │          USD
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  joinDAO  (member 1)                                │       178286 │     0.00018406959784 │      $0.4857
+  joinDAO  (member 2)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 3)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 4)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 5)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 6)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 7)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 8)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 9)                                │       146771 │     0.00015153225124 │      $0.3998
+  joinDAO  (member 10)                               │       146771 │     0.00015153225124 │      $0.3998
+  delegate (member 1)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 2)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 3)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 4)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 5)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 6)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 7)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 8)                                │        95623 │     0.00009872501012 │      $0.2605
+  delegate (member 9)                                │        95611 │     0.00009871262084 │      $0.2605
+  delegate (member 10)                               │        95623 │     0.00009872501012 │      $0.2605
+  registerDID (member 1)                             │        74713 │     0.00007713668972 │      $0.2035
+  registerDID (member 2)                             │        74713 │     0.00007713668972 │      $0.2035
+  registerDID (member 3)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 4)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 5)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 6)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 7)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 8)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 9)                             │        74617 │     0.00007703757548 │      $0.2033
+  registerDID (member 10)                            │        74617 │     0.00007703757548 │      $0.2033
+  upgradeSkillWithVC  (member 1)                     │       455549 │     0.00047032700956 │        $1.24
+  upgradeSkillWithVC  (member 2)                     │       398492 │     0.00041141908048 │        $1.09
+  upgradeSkillWithVC  (member 3)                     │       397881 │     0.00041078825964 │        $1.08
+  upgradeSkillWithVC  (member 4)                     │       397585 │      0.0004104826574 │        $1.08
+  upgradeSkillWithVC  (member 5)                     │       397739 │     0.00041064165316 │        $1.08
+  upgradeSkillWithVC  (member 6)                     │       398294 │     0.00041121465736 │        $1.08
+  upgradeSkillWithVC  (member 7)                     │       397144 │     0.00041002735136 │        $1.08
+  upgradeSkillWithVC  (member 8)                     │       398108 │     0.00041102262352 │        $1.08
+  upgradeSkillWithVC  (member 9)                     │       397595 │      0.0004104929818 │        $1.08
+  upgradeSkillWithVC  (member 10)                    │       398133 │     0.00041104843452 │        $1.08
+  proposeWithTopic   (topicId stored + ProposalCreated) │        96590 │      0.0000997233796 │      $0.2631
+  castVote For     (member 1)                        │       129301 │     0.00013349552444 │      $0.3522
+  castVote For     (member 2)                        │       112201 │     0.00011584080044 │      $0.3056
+  castVote For     (member 3)                        │       112201 │     0.00011584080044 │      $0.3056
+  castVote For     (member 4)                        │       112201 │     0.00011584080044 │      $0.3056
+  castVote For     (member 5)                        │       112201 │     0.00011584080044 │      $0.3056
+  castVote For     (member 6)                        │       112201 │     0.00011584080044 │      $0.3056
+  castVote Against (member 7)                        │       129257 │     0.00013345009708 │      $0.3521
+  castVote Against (member 8)                        │       112157 │     0.00011579537308 │      $0.3055
+  castVote Against (member 9)                        │       112157 │     0.00011579537308 │      $0.3055
+  castVote Against (member 10)                       │       112157 │     0.00011579537308 │      $0.3055
+  queue                                              │       174653 │     0.00018031874332 │      $0.4758
+  execute            (Timelock → Treasury.investStartup) │       217515 │      0.0002245711866 │      $0.5925
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  AGGREGATED COSTS
+─────────────────────────────────────────────────────────────────────────────────────────────────────
+  10 Member Activation Cost (join + delegate + registerDID + upgrade)      │      7238325 gas │     $19.72
+  Governance Cycle Cost    (propose + 10×vote + queue + execute)           │      1644792 gas │      $4.48
+  Per-Member Activation Estimate                                           │       723832 gas │      $1.97
+  Per-Member Cycle Share Estimate                                          │       164479 gas │    $0.4481
+  Per-Member Total Estimate                                                │       888311 gas │      $2.42
+─────────────────────────────────────────────────────────────────────────────────────────────────────
+  TOTAL GAS (activation + cycle)                                           │      8883117 gas │     $24.20
+─────────────────────────────────────────────────────────────────────────────────────────────────────
+      ✔ REPORT — Main Flow
+    Topic Scalability — upgradeSkillWithVC vs. #skills in VC
+      ✔ 1 skill  — cyberSecurity (46ms)
+      ✔ 2 skills — cyberSecurity + cloudArchitecture (71ms)
+      ✔ 4 skills — blockchain + cloudArchitecture + cyberSecurity + distributedSystems (45ms)
+      ✔ 8 skills — full bitmap (all skills — worst case)
+
+  TOPIC SCALABILITY — upgradeSkillWithVC gas cost vs. #skills in VC
+────────────────────────────────────────────────────────────────────────
+  #Skills    │ Skills                                 │   Gas Used │      USD
+────────────────────────────────────────────────────────────────────────
+  1          │ cyberSecurity                          │     451593 │    $1.23
+  2          │ cyberSecurity, cloudArchitecture       │     455249 │    $1.24
+  4          │ blockchain, cloudArchitecture, cyberSecurity, distributedSystems │     462709 │    $1.26
+  8          │ machineLearning, dataEngineering, cyberSecurity, cloudArchitecture, distributedSystems, blockchain, softwareArchitecture, startupFinance │     477599 │    $1.30
+────────────────────────────────────────────────────────────────────────
+      ✔ REPORT — Scalability
+
+  ✓ JSON written to: /home/matti/solidity/VCdao/dao/benchmark-v3.json

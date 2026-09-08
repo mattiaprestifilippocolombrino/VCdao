@@ -16,13 +16,13 @@ import * as path from "path";
 import {
   CREDENTIAL_CONTEXT,
   CREDENTIAL_TYPE,
+  EIP712_DOMAIN,
   VC_TYPES,
   CREDENTIALS_DIR,
   DAO_SHARED_CREDENTIALS_DIR,
   HOLDERS,
-  UNIVERSITY_INFO,
+  DEFAULT_ORGANIZATION,
   toDid,
-  toIsoSecondPrecision,
 } from "../types/credentials";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
   if (!ethers.isHexString(issuerPrivateKey, 32)) {
     throw new Error("DAO_ISSUER_PRIVATE_KEY deve essere una stringa hex da 32 byte.");
   }
+  const hardhatMnemonic = requireEnv("DAO_HARDHAT_MNEMONIC");
   const issuerWallet = new ethers.Wallet(issuerPrivateKey);
   const issuerDid = toDid(issuerWallet.address);
 
@@ -93,15 +94,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
   prepareDir(localDir);
   prepareDir(sharedDir);
 
-  // 4. Dominio EIP-712 universale (allineato con GovernanceSkill.sol)
-  const domain = {
-    name: "Universal VC Protocol",
-    version: "1",
-  };
-
-  const hardhatMnemonic = requireEnv("DAO_HARDHAT_MNEMONIC");
-
-  // 5. Generazione firme e file JSON per tutti gli holder
+  // 4. Generazione firme e file JSON per tutti gli holder
   console.log("📝 Generazione firme crittografiche EIP-712 in corso...\n");
 
   for (const [i, holder] of HOLDERS.entries()) {
@@ -111,7 +104,7 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
       `m/44'/60'/0'/0/${holder.signerIndex}`
     );
     const holderDid = toDid(holderWallet.address);
-    const issuanceDate = toIsoSecondPrecision(new Date());
+    const issuanceDate = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
     // Payload EIP-712 perfettamente mappato alla struct VerifiableCredential di VPVerifier.sol
     const vcForSigning = {
@@ -119,14 +112,14 @@ export async function issueDaoCompatibleCredentials(): Promise<void> {
       issuanceDate,
       credentialSubject: {
         id: holderDid,
-        university: UNIVERSITY_INFO.name,
-        faculty: holder.faculty,
+        organization: DEFAULT_ORGANIZATION.name,
+        unit: holder.unit,
         skills: holder.skills,
       },
     };
 
     // La firma tramite ethers genererà un signTypedData che VPVerifier.recoverIssuer decodificherà
-    const proofValue = await issuerWallet.signTypedData(domain, VC_TYPES, vcForSigning);
+    const proofValue = await issuerWallet.signTypedData(EIP712_DOMAIN, VC_TYPES, vcForSigning);
 
     // Costruzione oggetto JSON W3C standard
     const credentialJson = {

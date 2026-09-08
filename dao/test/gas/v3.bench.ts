@@ -3,15 +3,15 @@
 //
 //  Flusso utente misurato:
 //    (1) joinDAO  →  (2) delegate  →  (3) registerDID  →  (4) upgradeSkillWithVC
-//    →  (5) proposeWithTopic  →  (6) 5× castVote  →  (7) queue  →  (8) execute
+//    →  (5) proposeWithTopic  →  (6) 10× castVote  →  (7) queue  →  (8) execute
 //
 //  Scenario fisso (comune a V0–V3):
-//    Membri : 5  (3 For + 2 Against)
+//    Membri : 10  (6 For + 4 Against)
 //    Stake  : 5 ETH · weightStake/weightSkill: 50/50
 //    Quorum : 20%  |  Superquorum: 70%
 //    VC     : 2 skill (cyberSecurity + cloudArchitecture)
 //    Proposta: 10 ETH → MockStartup (topic FINTECH_BLOCKCHAIN)
-//    Esito  : 3 For < 70% → Succeeded → Queue → Execute
+//    Esito  : 6 For < 70% → Succeeded → Queue → Execute
 //
 //  Micro-benchmark scalabilità (solo V3):
 //    upgradeSkillWithVC con 1, 2, 4 e 8 skill (8 = full bitmap, worst case).
@@ -51,16 +51,19 @@ const WEIGHT = 5000n;  // 50% in basis points
 const QUORUM = 20;
 const SUPERQUORUM = 70;
 const STAKE_ETH = '5';
+const MEMBER_COUNT = 10;
+const FOR_VOTERS = 6;
+const AGAINST_VOTERS = MEMBER_COUNT - FOR_VOTERS;
 
 // Topic 2 = FINTECH_BLOCKCHAIN (alias WEB3 nello scenario della tesi)
 const TOPIC_WEB3 = 2;
 
-// ETH_PRICE_USD: scenario reference price (USD per ETH).
-// GAS_PRICE_WEI: read dynamically via ethers.provider.getFeeData() in before().
-//   Fallback = 1 Gwei if the connected provider does not expose fee data.
-const ETH_PRICE_USD = 2500;
-let GAS_PRICE_WEI: bigint = 1n * 10n ** 9n;  // fallback: 1 Gwei
-let GAS_PRICE_GWEI_STR: string = '<pending>'; // resolved in before()
+// ETH_PRICE_USD: media annuale Mainnet 2024 (fonte: CoinGecko).
+// GAS_PRICE_WEI: media annuale Mainnet 2024 (fonte: Etherscan Gas Tracker).
+//   Valori fissi per garantire misure riproducibili e confrontabili nella tesi.
+const ETH_PRICE_USD = 2638.48;
+const GAS_PRICE_WEI: bigint = 1_032_440_000n; // 1.03244 Gwei
+const GAS_PRICE_GWEI_STR: string = "1.03244"; // media annuale Mainnet 2024
 
 // VC_TYPES — schema EIP-712 identico a quello di VPVerifier.sol
 const VC_TYPES = {
@@ -104,6 +107,9 @@ function toUsd(gas: bigint): string {
     if (v < 1) return '$' + v.toFixed(4);
     return '$' + v.toFixed(2);
 }
+function perMember(gas: bigint): bigint {
+    return gas / BigInt(MEMBER_COUNT);
+}
 function rec(label: string, r: ContractTransactionReceipt): GasMeasurement {
     const gas = r.gasUsed;
     return { operation: label, gasUsed: gas, costEth: toEth(gas), costUsd: toUsd(gas) };
@@ -135,20 +141,24 @@ function printTable(rows: GasMeasurement[], title: string) {
 
 // ── Stampa aggregati e totalGas ──────────────────────────────────────────────
 function printAggregates(activation: bigint, cycle: bigint, totalGas: bigint) {
-    const LN = 87;
+    const LN = 101;
     const hr = '─'.repeat(LN);
+    const LABEL_W = 72;
     console.log('\n  AGGREGATED COSTS');
     console.log(hr);
     const rows = [
-        { label: 'Member Activation Cost   (join + delegate + registerDID + upgrade)', gas: activation },
-        { label: 'Governance Cycle Cost    (propose + 5×vote + queue + execute)', gas: cycle },
+        { label: `${MEMBER_COUNT} Member Activation Cost (join + delegate + registerDID + upgrade)`, gas: activation },
+        { label: `Governance Cycle Cost    (propose + ${MEMBER_COUNT}×vote + queue + execute)`, gas: cycle },
+        { label: 'Per-Member Activation Estimate', gas: perMember(activation) },
+        { label: 'Per-Member Cycle Share Estimate', gas: perMember(cycle) },
+        { label: 'Per-Member Total Estimate', gas: perMember(totalGas) },
     ];
     for (const r of rows) {
-        console.log('  ' + r.label.padEnd(58) + ' │ ' + r.gas.toString().padStart(12) + ' gas │ ' + toUsd(r.gas).padStart(10));
+        console.log('  ' + r.label.padEnd(LABEL_W) + ' │ ' + r.gas.toString().padStart(12) + ' gas │ ' + toUsd(r.gas).padStart(10));
     }
     console.log(hr);
     // Total Gas — riga in evidenza
-    console.log('  ' + 'TOTAL GAS (activation + cycle)'.padEnd(58) + ' │ ' + totalGas.toString().padStart(12) + ' gas │ ' + toUsd(totalGas).padStart(10));
+    console.log('  ' + 'TOTAL GAS (activation + cycle)'.padEnd(LABEL_W) + ' │ ' + totalGas.toString().padStart(12) + ' gas │ ' + toUsd(totalGas).padStart(10));
     console.log(hr);
 }
 
@@ -169,18 +179,15 @@ function printScalability(rows: ScalabilityRow[]) {
 // ── Fixture di deploy ────────────────────────────────────────────────────────
 async function deployFixture() {
     const signers = await ethers.getSigners();
-    // signer[0]=deployer  [1]=member1  [2]=issuer  [3]=member2  [4]=member3
-    // [5]=member4  [6]=member5
     const deployer = signers[0];
-    const member1 = signers[1];
     const issuer = signers[2];
-    const member2 = signers[3];
-    const member3 = signers[4];
-    const member4 = signers[5];
-    const member5 = signers[6];
+    const members = [signers[1], ...signers.slice(3, 3 + MEMBER_COUNT - 1)];
 
-    const cred1 = loadCredentialForAddress(member1.address);
-    const cred2 = loadCredentialForAddress(member2.address);
+    if (members.length !== MEMBER_COUNT)
+        throw new Error(`not enough signers for ${MEMBER_COUNT} benchmark members`);
+
+    const cred1 = loadCredentialForAddress(members[0].address);
+    const cred2 = loadCredentialForAddress(members[1].address);
 
     if (cred1.issuerAddress !== issuer.address)
         throw new Error('issuer address mismatch: VC issuer != signer[2]');
@@ -244,7 +251,7 @@ async function deployFixture() {
     await timelock.revokeRole(await timelock.DEFAULT_ADMIN_ROLE(), deployer.address);
 
     return {
-        deployer, member1, member2, member3, member4, member5, issuer,
+        deployer, members, issuer,
         token, skillModule, governor, treasury, timelock, registry, mockStartup,
         cred1, cred2
     };
@@ -280,19 +287,18 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
     const flowMeasurements: GasMeasurement[] = [];
     const scalabilityRows: ScalabilityRow[] = [];
 
-    // Legge il gas price direttamente dalla rete Hardhat all'avvio della suite.
-    // Con hardhat-network arriva dal provider locale; su altre reti dal provider configurato.
+    // Il benchmark usa costanti fisse annuali per garantire misure riproducibili.
+    // Il gas price di rete viene letto e loggato solo come riferimento informativo.
     before(async function () {
         const rawGasPrice = await resolveNetworkGasPrice();
-        GAS_PRICE_WEI = rawGasPrice;
-        const gweiFloat = Number(rawGasPrice) / 1e9;
-        GAS_PRICE_GWEI_STR = gweiFloat.toFixed(4);
-        console.log('\n  [GasBench] Gas Price letto dalla rete: ' + GAS_PRICE_GWEI_STR + ' Gwei  |  ETH: $' + ETH_PRICE_USD);
+        const networkGweiStr = (Number(rawGasPrice) / 1e9).toFixed(4);
+        console.log('\n  [GasBench] Gas Price rete (solo info):  ' + networkGweiStr + ' Gwei');
+        console.log('  [GasBench] Gas Price benchmark (fisso): ' + GAS_PRICE_GWEI_STR + ' Gwei  |  ETH: $' + ETH_PRICE_USD);
     });
 
     // ── Flusso utente principale ─────────────────────────────────────────────
     //  Flusso lineare: ogni it() esegue una fase, condivide lo stesso stato EVM.
-    //  Tutti e 5 i membri partecipano a ogni fase.
+    //  Tutti e 10 i membri partecipano a ogni fase.
     // ─────────────────────────────────────────────────────────────────────────
     describe('Main User Flow', function () {
         let ctx: Awaited<ReturnType<typeof deployFixture>>;
@@ -305,97 +311,95 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
         });
 
         // ── 1. JOIN DAO ───────────────────────────────────────────────────────
-        //  Tutti e 5 i membri depositano 5 ETH e ricevono i governance token.
-        //  Si misura il primo joinDAO (cold SSTORE, costo massimo).
-        it('1. joinDAO — 5 members, 5 ETH each', async function () {
-            const { token, member1, member2, member3, member4, member5 } = ctx;
+        //  Tutti e 10 i membri depositano 5 ETH e ricevono i governance token.
+        it('1. joinDAO — 10 members, 5 ETH each', async function () {
+            const { token, members } = ctx;
             const v = ethers.parseEther(STAKE_ETH);
 
-            // Misurato: primo membro (cold SSTORE — costo più alto)
-            const r1 = await (await token.connect(member1).joinDAO({ value: v })).wait();
-            flowMeasurements.push(rec('joinDAO  (first member — cold SSTORE)', r1!));
-
-            // Non misurati: gli altri 4 membri (warm SSTORE, costo inferiore)
-            for (const m of [member2, member3, member4, member5])
-                await token.connect(m).joinDAO({ value: v });
+            for (let i = 0; i < members.length; i++) {
+                const r = await (await token.connect(members[i]).joinDAO({ value: v })).wait();
+                flowMeasurements.push(rec(`joinDAO  (member ${i + 1})`, r!));
+            }
         });
 
         // ── 2. DELEGATE ───────────────────────────────────────────────────────
         //  Ogni membro si auto-delega per attivare il proprio voting power
         //  sul token ERC20Votes (crea il primo checkpoint).
-        it('2. delegate — self-delegation, all 5 members', async function () {
-            const { token, member1, member2, member3, member4, member5 } = ctx;
+        it('2. delegate — self-delegation, all 10 members', async function () {
+            const { token, members } = ctx;
 
-            // Misurato: primo membro (crea il primo checkpoint — costo più alto)
-            const r1 = await (await token.connect(member1).delegate(member1.address)).wait();
-            flowMeasurements.push(rec('delegate (first — creates checkpoint)', r1!));
-
-            // Non misurati: gli altri 4 (stesso comportamento)
-            for (const m of [member2, member3, member4, member5])
-                await token.connect(m).delegate(m.address);
+            for (let i = 0; i < members.length; i++) {
+                const m = members[i];
+                const r = await (await token.connect(m).delegate(m.address)).wait();
+                flowMeasurements.push(rec(`delegate (member ${i + 1})`, r!));
+            }
         });
 
         // ── 3. REGISTER DID ───────────────────────────────────────────────────
-        //  Tutti e 5 i membri registrano il proprio DID on-chain.
+        //  Tutti e 10 i membri registrano il proprio DID on-chain.
         //  Il DID serve come anchor di identità per la verifica della VC.
-        //  Si misura il primo registerDID (cold SSTORE).
-        it('3. registerDID — all 5 members anchor their DID', async function () {
-            const { skillModule, member1, member2, member3, member4, member5,
-                issuer, cred1, cred2 } = ctx;
+        it('3. registerDID — all 10 members anchor their DID', async function () {
+            const { skillModule, members, issuer, cred1, cred2 } = ctx;
 
-            // Misurato: primo membro con VC reale
-            const r1 = await (await skillModule.connect(member1)
+            // Primi due membri con VC reali condivise.
+            const r1 = await (await skillModule.connect(members[0])
                 .registerDID(cred1.vcData.credentialSubject.id)).wait();
-            flowMeasurements.push(rec('registerDID (first member — cold SSTORE)', r1!));
+            flowMeasurements.push(rec('registerDID (member 1)', r1!));
 
-            // Non misurati: gli altri 4
-            await skillModule.connect(member2).registerDID(cred2.vcData.credentialSubject.id);
+            const r2 = await (await skillModule.connect(members[1])
+                .registerDID(cred2.vcData.credentialSubject.id)).wait();
+            flowMeasurements.push(rec('registerDID (member 2)', r2!));
 
-            // member3, member4, member5: DID sintetico (stesso costo strutturale)
-            const others = [member3, member4, member5];
-            for (const m of others) {
-                const { vcData } = await buildSyntheticVC(issuer, m.address, ['cyberSecurity']);
-                await skillModule.connect(m).registerDID(vcData.credentialSubject.id);
+            // Gli altri membri usano DID sintetici firmati dallo stesso issuer.
+            for (let i = 2; i < members.length; i++) {
+                const { vcData } = await buildSyntheticVC(issuer, members[i].address, ['cyberSecurity']);
+                const r = await (await skillModule.connect(members[i])
+                    .registerDID(vcData.credentialSubject.id)).wait();
+                flowMeasurements.push(rec(`registerDID (member ${i + 1})`, r!));
             }
         });
 
         // ── 4. UPGRADE SKILL WITH VC ──────────────────────────────────────────
-        //  Tutti e 5 i membri presentano la loro VC e ottengono il VP skill.
-        //  Si misura il primo upgrade (member1, VC reale EIP-712).
+        //  Tutti e 10 i membri presentano la loro VC e ottengono il VP skill.
         //  Questo passaggio esegue: verifica EIP-712 + aggiornamento bitmap
         //  + aggiornamento dei checkpoint per tutti e 4 i topic.
-        it('4. upgradeSkillWithVC — all 5 members get competence VP', async function () {
-            const { skillModule, member1, member2, member3, member4, member5,
-                issuer, cred1, cred2 } = ctx;
+        it('4. upgradeSkillWithVC — all 10 members get competence VP', async function () {
+            const { skillModule, members, issuer, cred1, cred2 } = ctx;
 
-            // Misurato: member1 con VC reale (cyberSecurity + cloudArchitecture)
-            const r = await (await skillModule.connect(member1)
+            // Primi due membri con VC reali.
+            const r1 = await (await skillModule.connect(members[0])
                 .upgradeSkillWithVC(cred1.vcData, cred1.signature)).wait();
-            flowMeasurements.push(rec('upgradeSkillWithVC  (EIP-712 + bitmap + 4-topic checkpoints)', r!));
+            flowMeasurements.push(rec('upgradeSkillWithVC  (member 1)', r1!));
 
-            // Non misurati: member2 con VC reale
-            await skillModule.connect(member2).upgradeSkillWithVC(cred2.vcData, cred2.signature);
+            const r2 = await (await skillModule.connect(members[1])
+                .upgradeSkillWithVC(cred2.vcData, cred2.signature)).wait();
+            flowMeasurements.push(rec('upgradeSkillWithVC  (member 2)', r2!));
 
-            // Non misurati: member3/4/5 con skill sintetiche
-            // (distribuite per garantire che 3 voti For non raggiungano il superquorum 70%)
-            const extras = [member3, member4, member5];
+            // Skill sintetiche distribuite per garantire che 6 voti For non
+            // raggiungano il superquorum 70%, pur superando il quorum ordinario.
             const extraSkills = [
                 ['distributedSystems', 'blockchain'],
                 ['cyberSecurity', 'cloudArchitecture'],
                 ['softwareArchitecture', 'dataEngineering'],
+                ['blockchain', 'startupFinance'],
+                ['machineLearning', 'dataEngineering'],
+                ['cloudArchitecture', 'softwareArchitecture'],
+                ['cyberSecurity', 'blockchain'],
+                ['distributedSystems', 'startupFinance'],
             ];
-            for (let i = 0; i < extras.length; i++) {
-                const { vcData, sig } = await buildSyntheticVC(issuer, extras[i].address, extraSkills[i]);
-                await skillModule.connect(extras[i]).upgradeSkillWithVC(vcData, sig);
+            for (let i = 2; i < members.length; i++) {
+                const { vcData, sig } = await buildSyntheticVC(issuer, members[i].address, extraSkills[i - 2]);
+                const r = await (await skillModule.connect(members[i]).upgradeSkillWithVC(vcData, sig)).wait();
+                flowMeasurements.push(rec(`upgradeSkillWithVC  (member ${i + 1})`, r!));
             }
         });
 
         // ── 5. PROPOSE WITH TOPIC ─────────────────────────────────────────────
-        //  member1 crea la proposta: investimento di 10 ETH in MockStartup WEB3.
+        //  Il primo membro crea la proposta: investimento di 10 ETH in MockStartup WEB3.
         //  Topic = FINTECH_BLOCKCHAIN (alias WEB3 nello scenario della tesi).
         //  Il topicId viene salvato in proposalTopic[proposalId] on-chain.
         it('5. proposeWithTopic — invest 10 ETH in MockStartup WEB3', async function () {
-            const { governor, treasury, mockStartup, timelock, registry, deployer, member1 } = ctx;
+            const { governor, treasury, mockStartup, timelock, registry, deployer, members } = ctx;
 
             // Setup infrastrutturale (non misurato):
             //   - fondi il treasury con 15 ETH (10 per l'investimento + margine)
@@ -432,7 +436,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
             await mine(1); // assicura che lo snapshot VP includa gli upgrade
 
             // Misurato
-            const r = await (await governor.connect(member1).proposeWithTopic(
+            const r = await (await governor.connect(members[0]).proposeWithTopic(
                 [await treasury.getAddress()],
                 [0n],
                 [proposalCalldata],
@@ -448,34 +452,24 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
             proposalId = log!.args!.proposalId;
         });
 
-        // ── 6. CAST VOTE — tutti e 5 i membri votano ─────────────────────────
-        //  3 For (member1, member2, member3) + 2 Against (member4, member5).
+        // ── 6. CAST VOTE — tutti e 10 i membri votano ────────────────────────
+        //  6 For + 4 Against.
         //  Il VP di ogni votante è calcolato on-chain come:
         //    stakeVP (ERC20Votes) + skillVP (checkpoint del topic WEB3)
-        //  Con 5 membri dal VP simile, 3 For != 70% del totale → no superquorum.
+        //  Con 10 membri dal VP simile, 6 For != 70% del totale → no superquorum.
         //  Il voting period si conclude naturalmente → Succeeded → Queue → Execute.
-        it('6. castVote — 3 For + 2 Against (all 5 members vote)', async function () {
-            const { governor, member1, member2, member3, member4, member5 } = ctx;
+        it('6. castVote — 6 For + 4 Against (all 10 members vote)', async function () {
+            const { governor, members } = ctx;
 
             // Salta il voting delay
             await mine(VOTING_DELAY + 1);
 
-            // For
-            const r1 = await (await governor.connect(member1).castVote(proposalId, 1)).wait();
-            flowMeasurements.push(rec('castVote For       (1st — topic-aware VP calc)', r1!));
-
-            const r2 = await (await governor.connect(member2).castVote(proposalId, 1)).wait();
-            flowMeasurements.push(rec('castVote For       (2nd voter)', r2!));
-
-            const r3 = await (await governor.connect(member3).castVote(proposalId, 1)).wait();
-            flowMeasurements.push(rec('castVote For       (3rd voter)', r3!));
-
-            // Against
-            const r4 = await (await governor.connect(member4).castVote(proposalId, 0)).wait();
-            flowMeasurements.push(rec('castVote Against   (4th voter)', r4!));
-
-            const r5 = await (await governor.connect(member5).castVote(proposalId, 0)).wait();
-            flowMeasurements.push(rec('castVote Against   (5th voter)', r5!));
+            for (let i = 0; i < members.length; i++) {
+                const support = i < FOR_VOTERS ? 1 : 0;
+                const label = support === 1 ? 'For' : 'Against';
+                const r = await (await governor.connect(members[i]).castVote(proposalId, support)).wait();
+                flowMeasurements.push(rec(`castVote ${label.padEnd(7)} (member ${i + 1})`, r!));
+            }
         });
 
         // ── 7. QUEUE ──────────────────────────────────────────────────────────
@@ -521,7 +515,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
             printTable(
                 flowMeasurements,
                 'V3 — Topic-Based DAO │ ' + GAS_PRICE_GWEI_STR + ' Gwei · ETH $' + ETH_PRICE_USD
-                + ' │ 5 members: 3 For + 2 Against',
+                + ` │ ${MEMBER_COUNT} members: ${FOR_VOTERS} For + ${AGAINST_VOTERS} Against`,
             );
 
             const find = (prefix: string) =>
@@ -529,7 +523,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
             const sum = (prefix: string) =>
                 flowMeasurements.filter(m => m.operation.startsWith(prefix)).reduce((s, m) => s + m.gasUsed, 0n);
 
-            const activation = find('joinDAO') + find('delegate') + find('registerDID') + find('upgradeSkillWithVC');
+            const activation = sum('joinDAO') + sum('delegate') + sum('registerDID') + sum('upgradeSkillWithVC');
             const cycle = find('proposeWithTopic') + sum('castVote') + find('queue') + find('execute');
             const totalGas = activation + cycle;
 
@@ -553,16 +547,17 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
         // Deploya una fixture pulita, registra il DID e misura solo l'upgrade.
         async function runScalabilityUpgrade(skillNames: string[]): Promise<bigint> {
             const ctx = await loadFixture(deployFixture);
-            const { token, skillModule, issuer, member3 } = ctx;
+            const { token, skillModule, issuer, members } = ctx;
+            const member = members[2];
 
             // Infrastruttura minima (non misurata)
-            await token.connect(member3).joinDAO({ value: ethers.parseEther(STAKE_ETH) });
-            await token.connect(member3).delegate(member3.address);
-            const { vcData, sig } = await buildSyntheticVC(issuer, member3.address, skillNames);
-            await skillModule.connect(member3).registerDID(vcData.credentialSubject.id);
+            await token.connect(member).joinDAO({ value: ethers.parseEther(STAKE_ETH) });
+            await token.connect(member).delegate(member.address);
+            const { vcData, sig } = await buildSyntheticVC(issuer, member.address, skillNames);
+            await skillModule.connect(member).registerDID(vcData.credentialSubject.id);
 
             // Misurato: solo upgradeSkillWithVC
-            const r = await (await skillModule.connect(member3).upgradeSkillWithVC(vcData, sig)).wait();
+            const r = await (await skillModule.connect(member).upgradeSkillWithVC(vcData, sig)).wait();
             return r!.gasUsed;
         }
 
@@ -619,7 +614,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
         const sum = (prefix: string) =>
             flowMeasurements.filter(m => m.operation.startsWith(prefix)).reduce((s, m) => s + m.gasUsed, 0n);
 
-        const activation = find('joinDAO') + find('delegate') + find('registerDID') + find('upgradeSkillWithVC');
+        const activation = sum('joinDAO') + sum('delegate') + sum('registerDID') + sum('upgradeSkillWithVC');
         const cycle = find('proposeWithTopic') + sum('castVote') + find('queue') + find('execute');
         const totalGas = activation + cycle;
 
@@ -629,7 +624,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
             gasPriceGwei: Number(GAS_PRICE_WEI) / 1e9,
             ethPriceUsd: ETH_PRICE_USD,
             scenario: {
-                members: 5,
+                members: MEMBER_COUNT,
                 stakeEth: Number(STAKE_ETH),
                 weightStakeBp: Number(WEIGHT),
                 weightSkillBp: Number(WEIGHT),
@@ -639,8 +634,8 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
                 proposalAmountEth: 10,
                 proposalTopic: 'FINTECH_BLOCKCHAIN (WEB3)',
                 proposalTopicId: TOPIC_WEB3,
-                votersFor: 3,
-                votersAgainst: 2,
+                votersFor: FOR_VOTERS,
+                votersAgainst: AGAINST_VOTERS,
             },
             flow: flowMeasurements.map(m => ({
                 operation: m.operation,
@@ -652,6 +647,20 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
                 memberActivationCost: { gas: activation.toString(), usd: toUsd(activation) },
                 governanceCycleCost: { gas: cycle.toString(), usd: toUsd(cycle) },
                 totalGas: { gas: totalGas.toString(), usd: toUsd(totalGas) },
+                perMemberEstimates: {
+                    activation: {
+                        gas: perMember(activation).toString(),
+                        usd: toUsd(perMember(activation)),
+                    },
+                    cycleShare: {
+                        gas: perMember(cycle).toString(),
+                        usd: toUsd(perMember(cycle)),
+                    },
+                    total: {
+                        gas: perMember(totalGas).toString(),
+                        usd: toUsd(perMember(totalGas)),
+                    },
+                },
             },
             scalability: scalabilityRows.map(r => ({
                 skillCount: r.skillCount,

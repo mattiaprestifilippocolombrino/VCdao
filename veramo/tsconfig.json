@@ -13,5 +13,5 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["agent/**/*.ts", "scripts/**/*.ts", "types/**/*.ts"]
+  "include": ["scripts/**/*.ts", "types/**/*.ts"]
 }

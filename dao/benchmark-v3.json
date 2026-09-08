@@ -1,10 +1,10 @@
 {
   "version": "V3-TopicBased",
-  "timestamp": "2026-09-07T21:48:50.168Z",
-  "gasPriceGwei": 1.000000007,
-  "ethPriceUsd": 2500,
+  "timestamp": "2026-09-08T07:34:30.156Z",
+  "gasPriceGwei": 1.03244,
+  "ethPriceUsd": 2638.48,
   "scenario": {
-    "members": 5,
+    "members": 10,
     "stakeEth": 5,
     "weightStakeBp": 5000,
     "weightSkillBp": 5000,
@@ -17,95 +17,355 @@
     "proposalAmountEth": 10,
     "proposalTopic": "FINTECH_BLOCKCHAIN (WEB3)",
     "proposalTopicId": 2,
-    "votersFor": 3,
-    "votersAgainst": 2
+    "votersFor": 6,
+    "votersAgainst": 4
   },
   "flow": [
     {
-      "operation": "joinDAO  (first member — cold SSTORE)",
+      "operation": "joinDAO  (member 1)",
       "gasUsed": "178286",
-      "costEth": "0.000178286001248002",
-      "costUsd": "$0.4457"
+      "costEth": "0.00018406959784",
+      "costUsd": "$0.4857"
     },
     {
-      "operation": "delegate (first — creates checkpoint)",
+      "operation": "joinDAO  (member 2)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 3)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 4)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 5)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 6)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 7)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 8)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 9)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "joinDAO  (member 10)",
+      "gasUsed": "146771",
+      "costEth": "0.00015153225124",
+      "costUsd": "$0.3998"
+    },
+    {
+      "operation": "delegate (member 1)",
       "gasUsed": "95623",
-      "costEth": "0.000095623000669361",
-      "costUsd": "$0.2391"
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
     },
     {
-      "operation": "registerDID (first member — cold SSTORE)",
+      "operation": "delegate (member 2)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 3)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 4)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 5)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 6)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 7)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 8)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 9)",
+      "gasUsed": "95611",
+      "costEth": "0.00009871262084",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "delegate (member 10)",
+      "gasUsed": "95623",
+      "costEth": "0.00009872501012",
+      "costUsd": "$0.2605"
+    },
+    {
+      "operation": "registerDID (member 1)",
       "gasUsed": "74713",
-      "costEth": "0.000074713000522991",
-      "costUsd": "$0.1868"
+      "costEth": "0.00007713668972",
+      "costUsd": "$0.2035"
     },
     {
-      "operation": "upgradeSkillWithVC  (EIP-712 + bitmap + 4-topic checkpoints)",
+      "operation": "registerDID (member 2)",
+      "gasUsed": "74713",
+      "costEth": "0.00007713668972",
+      "costUsd": "$0.2035"
+    },
+    {
+      "operation": "registerDID (member 3)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 4)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 5)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 6)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 7)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 8)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 9)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "registerDID (member 10)",
+      "gasUsed": "74617",
+      "costEth": "0.00007703757548",
+      "costUsd": "$0.2033"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 1)",
       "gasUsed": "455549",
-      "costEth": "0.000455549003188843",
-      "costUsd": "$1.14"
+      "costEth": "0.00047032700956",
+      "costUsd": "$1.24"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 2)",
+      "gasUsed": "398492",
+      "costEth": "0.00041141908048",
+      "costUsd": "$1.09"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 3)",
+      "gasUsed": "397881",
+      "costEth": "0.00041078825964",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 4)",
+      "gasUsed": "397585",
+      "costEth": "0.0004104826574",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 5)",
+      "gasUsed": "397739",
+      "costEth": "0.00041064165316",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 6)",
+      "gasUsed": "398294",
+      "costEth": "0.00041121465736",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 7)",
+      "gasUsed": "397144",
+      "costEth": "0.00041002735136",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 8)",
+      "gasUsed": "398108",
+      "costEth": "0.00041102262352",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 9)",
+      "gasUsed": "397595",
+      "costEth": "0.0004104929818",
+      "costUsd": "$1.08"
+    },
+    {
+      "operation": "upgradeSkillWithVC  (member 10)",
+      "gasUsed": "398133",
+      "costEth": "0.00041104843452",
+      "costUsd": "$1.08"
     },
     {
       "operation": "proposeWithTopic   (topicId stored + ProposalCreated)",
       "gasUsed": "96590",
-      "costEth": "0.00009659000067613",
-      "costUsd": "$0.2415"
+      "costEth": "0.0000997233796",
+      "costUsd": "$0.2631"
     },
     {
-      "operation": "castVote For       (1st — topic-aware VP calc)",
-      "gasUsed": "128375",
-      "costEth": "0.000128375000898625",
-      "costUsd": "$0.3209"
+      "operation": "castVote For     (member 1)",
+      "gasUsed": "129301",
+      "costEth": "0.00013349552444",
+      "costUsd": "$0.3522"
     },
     {
-      "operation": "castVote For       (2nd voter)",
-      "gasUsed": "111275",
-      "costEth": "0.000111275000778925",
-      "costUsd": "$0.2782"
+      "operation": "castVote For     (member 2)",
+      "gasUsed": "112201",
+      "costEth": "0.00011584080044",
+      "costUsd": "$0.3056"
     },
     {
-      "operation": "castVote For       (3rd voter)",
-      "gasUsed": "111275",
-      "costEth": "0.000111275000778925",
-      "costUsd": "$0.2782"
+      "operation": "castVote For     (member 3)",
+      "gasUsed": "112201",
+      "costEth": "0.00011584080044",
+      "costUsd": "$0.3056"
     },
     {
-      "operation": "castVote Against   (4th voter)",
-      "gasUsed": "128331",
-      "costEth": "0.000128331000898317",
-      "costUsd": "$0.3208"
+      "operation": "castVote For     (member 4)",
+      "gasUsed": "112201",
+      "costEth": "0.00011584080044",
+      "costUsd": "$0.3056"
     },
     {
-      "operation": "castVote Against   (5th voter)",
-      "gasUsed": "111231",
-      "costEth": "0.000111231000778617",
-      "costUsd": "$0.2781"
+      "operation": "castVote For     (member 5)",
+      "gasUsed": "112201",
+      "costEth": "0.00011584080044",
+      "costUsd": "$0.3056"
+    },
+    {
+      "operation": "castVote For     (member 6)",
+      "gasUsed": "112201",
+      "costEth": "0.00011584080044",
+      "costUsd": "$0.3056"
+    },
+    {
+      "operation": "castVote Against (member 7)",
+      "gasUsed": "129257",
+      "costEth": "0.00013345009708",
+      "costUsd": "$0.3521"
+    },
+    {
+      "operation": "castVote Against (member 8)",
+      "gasUsed": "112157",
+      "costEth": "0.00011579537308",
+      "costUsd": "$0.3055"
+    },
+    {
+      "operation": "castVote Against (member 9)",
+      "gasUsed": "112157",
+      "costEth": "0.00011579537308",
+      "costUsd": "$0.3055"
+    },
+    {
+      "operation": "castVote Against (member 10)",
+      "gasUsed": "112157",
+      "costEth": "0.00011579537308",
+      "costUsd": "$0.3055"
     },
     {
       "operation": "queue",
-      "gasUsed": "172825",
-      "costEth": "0.000172825001209775",
-      "costUsd": "$0.4321"
+      "gasUsed": "174653",
+      "costEth": "0.00018031874332",
+      "costUsd": "$0.4758"
     },
     {
       "operation": "execute            (Timelock → Treasury.investStartup)",
-      "gasUsed": "215687",
-      "costEth": "0.000215687001509809",
-      "costUsd": "$0.5392"
+      "gasUsed": "217515",
+      "costEth": "0.0002245711866",
+      "costUsd": "$0.5925"
     }
   ],
   "aggregates": {
     "memberActivationCost": {
-      "gas": "804171",
-      "usd": "$2.01"
+      "gas": "7238325",
+      "usd": "$19.72"
     },
     "governanceCycleCost": {
-      "gas": "1075589",
-      "usd": "$2.69"
+      "gas": "1644792",
+      "usd": "$4.48"
     },
     "totalGas": {
-      "gas": "1879760",
-      "usd": "$4.70"
+      "gas": "8883117",
+      "usd": "$24.20"
+    },
+    "perMemberEstimates": {
+      "activation": {
+        "gas": "723832",
+        "usd": "$1.97"
+      },
+      "cycleShare": {
+        "gas": "164479",
+        "usd": "$0.4481"
+      },
+      "total": {
+        "gas": "888311",
+        "usd": "$2.42"
+      }
     }
   },
   "scalability": [
@@ -115,8 +375,8 @@
         "cyberSecurity"
       ],
       "upgradeGas": "451593",
-      "costEth": "0.000451593003161151",
-      "costUsd": "$1.13"
+      "costEth": "0.00046624267692",
+      "costUsd": "$1.23"
     },
     {
       "skillCount": 2,
@@ -125,8 +385,8 @@
         "cloudArchitecture"
       ],
       "upgradeGas": "455249",
-      "costEth": "0.000455249003186743",
-      "costUsd": "$1.14"
+      "costEth": "0.00047001727756",
+      "costUsd": "$1.24"
     },
     {
       "skillCount": 4,
@@ -137,8 +397,8 @@
         "distributedSystems"
       ],
       "upgradeGas": "462709",
-      "costEth": "0.000462709003238963",
-      "costUsd": "$1.16"
+      "costEth": "0.00047771927996",
+      "costUsd": "$1.26"
     },
     {
       "skillCount": 8,
@@ -153,8 +413,8 @@
         "startupFinance"
       ],
       "upgradeGas": "477599",
-      "costEth": "0.000477599003343193",
-      "costUsd": "$1.19"
+      "costEth": "0.00049309231156",
+      "costUsd": "$1.30"
     }
   ]
 }

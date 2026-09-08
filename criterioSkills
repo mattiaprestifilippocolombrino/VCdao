@@ -1,0 +1,24 @@
+Modifiche da fare:
+Al momento dell'upgrade VP le skill vengono inserite nella bitmap, che garantisce unicità su skill duplicate. Ad ogni upgrade, dopo aver fatto questo, viene ricalcolato in base al bitmap di un utente il suo VP da skill. Funziona cosi ora?
+
+
+Perfetto: allora non tratto i numeri iniziali come vincolanti. Li riequilibro con un criterio simmetrico: massimo 35 per una singola skill, coppia chiave da 65 punti, boost complementare +10, quindi 75 per uno specialista verticale. In questo modo il boost è sempre effettivo e per arrivare a 100 serve davvero un profilo multidisciplinare. L’esempio AI diventa esattamente 35 + 30 + 15 + 10 = 90.
+
+Implementazione completata con valori riequilibrati.
+Skill	AI & Data	Cloud & Cybersecurity	FinTech & Blockchain	Enterprise Software
+machineLearning	35	5	5	15
+dataEngineering	30	20	15	20
+cyberSecurity	15	35	25	20
+cloudArchitecture	15	30	20	30
+distributedSystems	20	30	25	30
+blockchain	5	15	35	15
+softwareArchitecture	15	25	20	35
+startupFinance	15	10	30	25
+
+
+Ogni boost vale +10:
+- AI: machineLearning + dataEngineering
+- Cloud: cyberSecurity + cloudArchitecture
+- FinTech: blockchain + startupFinance
+- Enterprise: softwareArchitecture + cloudArchitecture
+Le coppie principali producono sempre 35 + 30 + 10 = 75, evitando che il cap renda inutile il boost. L’esempio AI produce correttamente 35 + 30 + 15 + 10 = 90.

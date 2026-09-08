@@ -4,24 +4,25 @@
   ],
   "type": [
     "VerifiableCredential",
-    "UniversityDegreeCredential"
+    "SkillCredential"
   ],
   "issuer": {
     "id": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
   },
-  "issuanceDate": "2026-05-13T15:36:43Z",
+  "issuanceDate": "2026-09-07T08:54:30Z",
   "credentialSubject": {
     "id": "did:ethr:sepolia:0x976EA74026E726554dB657fA54763abd0C3a0aa9",
-    "university": "University of Pisa",
-    "faculty": "Computer Science",
-    "degreeTitle": "PhDCS",
-    "grade": "N/A"
+    "organization": "University of Pisa",
+    "unit": "Artificial Intelligence",
+    "skills": [
+      "machineLearning"
+    ]
   },
   "proof": {
     "type": "EthereumEip712Signature2021",
-    "created": "2026-05-13T15:36:43Z",
+    "created": "2026-09-07T08:54:30Z",
     "proofPurpose": "assertionMethod",
     "verificationMethod": "did:ethr:sepolia:0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC#controller",
-    "proofValue": "0x3bafe332d5aa8c4e65bc18332ff4054c06761d6593b472278c0394c196186ceb0a45d6cbf0e89a672b6c291d7fd0684d43966447863881047d13ba67123fad541c"
+    "proofValue": "0x38c7a9064436276b3775b034033e89079d85b5de3a615d1d4fda8e95866913b132fbefef09056d0bbfda7bbaf9ce02278f7725dce0c8b78f382b97a001955d7d1c"
   }
 }
