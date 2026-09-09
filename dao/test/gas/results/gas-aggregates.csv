@@ -1,7 +1,7 @@
 metric,gas,usd,note
-"10 Member Activation Cost","7238325","$19.72","joinDAO + delegate + registerDID + upgradeSkillWithVC"
+"10 Member Activation Cost","7238715","$19.72","joinDAO + delegate + registerDID + upgradeSkillWithVC"
 "Governance Cycle Cost","1644792","$4.48","proposeWithTopic + 10 castVote + queue + execute"
-"Total Gas","8883117","$24.20","activation + governance cycle"
-"Per-Member Activation Estimate","723832","$1.97","activation / 10 members"
+"Total Gas","8883507","$24.20","activation + governance cycle"
+"Per-Member Activation Estimate","723871","$1.97","activation / 10 members"
 "Per-Member Cycle Share Estimate","164479","$0.4481","governance cycle / 10 members"
-"Per-Member Total Estimate","888311","$2.42","total gas / 10 members"
+"Per-Member Total Estimate","888350","$2.42","total gas / 10 members"

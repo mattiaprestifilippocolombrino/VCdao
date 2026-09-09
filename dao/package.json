@@ -6,7 +6,7 @@
   "scripts": {
     "test": "hardhat test test/01_tokenVotes.test.ts test/03_governor.test.ts test/04_treasury.test.ts test/05_competenceUpgrade.test.ts",
     "test:all": "hardhat test",
-    "test:gas": "hardhat test test/gas/v3.bench.ts"
+    "test:gas": "hardhat test test/gas/gasMisuration.ts"
   },
   "keywords": [],
   "author": "",

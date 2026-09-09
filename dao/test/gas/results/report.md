@@ -15,7 +15,7 @@ Le misurazioni sono eseguite su Hardhat Network leggendo `gasUsed` dalle receipt
 
 | phase | calls | minGas | avgGas | maxGas | totalGas | totalUsd |
 | --- | --- | --- | --- | --- | --- | --- |
-| Join DAO | 10 | 146771 | 149922 | 178286 | 1499225 | $4.08 |
+| Join DAO | 10 | 146810 | 149961 | 178325 | 1499615 | $4.09 |
 | Delegate | 10 | 95611 | 95621 | 95623 | 956218 | $2.60 |
 | Register DID | 10 | 74617 | 74636 | 74713 | 746362 | $2.03 |
 | Upgrade skill with VC | 10 | 397144 | 403652 | 455549 | 4036520 | $11.00 |
@@ -28,12 +28,12 @@ Le misurazioni sono eseguite su Hardhat Network leggendo `gasUsed` dalle receipt
 
 | metric | gas | usd | note |
 | --- | --- | --- | --- |
-| 10 Member Activation Cost | 7238325 | $19.72 | joinDAO + delegate + registerDID + upgradeSkillWithVC |
+| 10 Member Activation Cost | 7238715 | $19.72 | joinDAO + delegate + registerDID + upgradeSkillWithVC |
 | Governance Cycle Cost | 1644792 | $4.48 | proposeWithTopic + 10 castVote + queue + execute |
-| Total Gas | 8883117 | $24.20 | activation + governance cycle |
-| Per-Member Activation Estimate | 723832 | $1.97 | activation / 10 members |
+| Total Gas | 8883507 | $24.20 | activation + governance cycle |
+| Per-Member Activation Estimate | 723871 | $1.97 | activation / 10 members |
 | Per-Member Cycle Share Estimate | 164479 | $0.4481 | governance cycle / 10 members |
-| Per-Member Total Estimate | 888311 | $2.42 | total gas / 10 members |
+| Per-Member Total Estimate | 888350 | $2.42 | total gas / 10 members |
 
 ## Scalabilita' upgradeSkillWithVC
 
