@@ -95,6 +95,51 @@ interface ScalabilityRow {
     skills: string[];
     upgradeGas: bigint;
 }
+interface ExportFlowRow {
+    operation: string;
+    gasUsed: string;
+    costEth: string;
+    costUsd: string;
+}
+interface ExportScalabilityRow {
+    skillCount: number;
+    skills: string[];
+    upgradeGas: string;
+    costEth: string;
+    costUsd: string;
+}
+interface BenchmarkExport {
+    version: string;
+    timestamp: string;
+    gasPriceGwei: number;
+    ethPriceUsd: number;
+    scenario: {
+        members: number;
+        stakeEth: number;
+        weightStakeBp: number;
+        weightSkillBp: number;
+        quorumPct: number;
+        superquorumPct: number;
+        vcSkills: string[];
+        proposalAmountEth: number;
+        proposalTopic: string;
+        proposalTopicId: number;
+        votersFor: number;
+        votersAgainst: number;
+    };
+    flow: ExportFlowRow[];
+    aggregates: {
+        memberActivationCost: { gas: string; usd: string };
+        governanceCycleCost: { gas: string; usd: string };
+        totalGas: { gas: string; usd: string };
+        perMemberEstimates: {
+            activation: { gas: string; usd: string };
+            cycleShare: { gas: string; usd: string };
+            total: { gas: string; usd: string };
+        };
+    };
+    scalability: ExportScalabilityRow[];
+}
 
 // ── Conversioni gas → ETH / USD ─────────────────────────────────────────────
 function toEth(gas: bigint): string {
@@ -174,6 +219,223 @@ function printScalability(rows: ScalabilityRow[]) {
         console.log('  ' + String(r.skillCount).padEnd(10) + ' │ ' + r.skills.join(', ').padEnd(38) + ' │ ' + r.upgradeGas.toString().padStart(10) + ' │ ' + toUsd(r.upgradeGas).padStart(8));
     }
     console.log(hr);
+}
+
+// ── Esportazione formati tesi ───────────────────────────────────────────────
+function csvEscape(value: unknown): string {
+    const text = String(value ?? '');
+    return `"${text.replace(/"/g, '""')}"`;
+}
+function toCsv<T extends Record<string, unknown>>(rows: T[], columns: (keyof T)[]): string {
+    const header = columns.map(String).join(',');
+    const body = rows.map(row => columns.map(column => csvEscape(row[column])).join(','));
+    return [header, ...body].join('\n') + '\n';
+}
+function markdownTable<T extends Record<string, unknown>>(rows: T[], columns: (keyof T)[]): string {
+    const header = `| ${columns.map(String).join(' | ')} |`;
+    const divider = `| ${columns.map(() => '---').join(' | ')} |`;
+    const body = rows.map(row => `| ${columns.map(column => String(row[column] ?? '')).join(' | ')} |`);
+    return [header, divider, ...body].join('\n');
+}
+function summarizeFlow(flow: ExportFlowRow[]) {
+    const groups = [
+        { phase: 'Join DAO', prefix: 'joinDAO' },
+        { phase: 'Delegate', prefix: 'delegate' },
+        { phase: 'Register DID', prefix: 'registerDID' },
+        { phase: 'Upgrade skill with VC', prefix: 'upgradeSkillWithVC' },
+        { phase: 'Propose with topic', prefix: 'proposeWithTopic' },
+        { phase: 'Cast vote', prefix: 'castVote' },
+        { phase: 'Queue', prefix: 'queue' },
+        { phase: 'Execute', prefix: 'execute' },
+    ];
+
+    return groups.map(group => {
+        const rows = flow.filter(row => row.operation.startsWith(group.prefix));
+        const values = rows.map(row => BigInt(row.gasUsed));
+        const total = values.reduce((sum, value) => sum + value, 0n);
+        const min = values.length > 0 ? values.reduce((a, b) => a < b ? a : b) : 0n;
+        const max = values.length > 0 ? values.reduce((a, b) => a > b ? a : b) : 0n;
+        const avg = values.length > 0 ? total / BigInt(values.length) : 0n;
+        return {
+            phase: group.phase,
+            calls: String(values.length),
+            minGas: min.toString(),
+            avgGas: avg.toString(),
+            maxGas: max.toString(),
+            totalGas: total.toString(),
+            totalUsd: toUsd(total),
+        };
+    }).filter(row => row.calls !== '0');
+}
+function exportThesisFiles(result: BenchmarkExport) {
+    const outDir = path.resolve(__dirname, 'results');
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const flowSummary = summarizeFlow(result.flow);
+    const aggregateRows = [
+        {
+            metric: '10 Member Activation Cost',
+            gas: result.aggregates.memberActivationCost.gas,
+            usd: result.aggregates.memberActivationCost.usd,
+            note: 'joinDAO + delegate + registerDID + upgradeSkillWithVC',
+        },
+        {
+            metric: 'Governance Cycle Cost',
+            gas: result.aggregates.governanceCycleCost.gas,
+            usd: result.aggregates.governanceCycleCost.usd,
+            note: 'proposeWithTopic + 10 castVote + queue + execute',
+        },
+        {
+            metric: 'Total Gas',
+            gas: result.aggregates.totalGas.gas,
+            usd: result.aggregates.totalGas.usd,
+            note: 'activation + governance cycle',
+        },
+        {
+            metric: 'Per-Member Activation Estimate',
+            gas: result.aggregates.perMemberEstimates.activation.gas,
+            usd: result.aggregates.perMemberEstimates.activation.usd,
+            note: 'activation / 10 members',
+        },
+        {
+            metric: 'Per-Member Cycle Share Estimate',
+            gas: result.aggregates.perMemberEstimates.cycleShare.gas,
+            usd: result.aggregates.perMemberEstimates.cycleShare.usd,
+            note: 'governance cycle / 10 members',
+        },
+        {
+            metric: 'Per-Member Total Estimate',
+            gas: result.aggregates.perMemberEstimates.total.gas,
+            usd: result.aggregates.perMemberEstimates.total.usd,
+            note: 'total gas / 10 members',
+        },
+    ];
+
+    fs.writeFileSync(
+        path.join(outDir, 'gas-flow.csv'),
+        toCsv(result.flow, ['operation', 'gasUsed', 'costEth', 'costUsd']),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(outDir, 'gas-flow-summary.csv'),
+        toCsv(flowSummary, ['phase', 'calls', 'minGas', 'avgGas', 'maxGas', 'totalGas', 'totalUsd']),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(outDir, 'gas-aggregates.csv'),
+        toCsv(aggregateRows, ['metric', 'gas', 'usd', 'note']),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(outDir, 'gas-scalability.csv'),
+        toCsv(result.scalability.map(row => ({
+            skillCount: row.skillCount,
+            skills: row.skills.join(' + '),
+            upgradeGas: row.upgradeGas,
+            costEth: row.costEth,
+            costUsd: row.costUsd,
+        })), ['skillCount', 'skills', 'upgradeGas', 'costEth', 'costUsd']),
+        'utf8',
+    );
+
+    const report = `# Misurazioni gas - V3 Topic-Based DAO
+
+## Experimental setup
+
+Le misurazioni sono eseguite su Hardhat Network leggendo \`gasUsed\` dalle receipt delle transazioni. Per rendere i costi economici riproducibili nella tesi, la conversione usa valori fissi:
+
+- gas price: ${result.gasPriceGwei} Gwei;
+- ETH price: $${result.ethPriceUsd};
+- membri: ${result.scenario.members};
+- stake per membro: ${result.scenario.stakeEth} ETH;
+- pesi: ${result.scenario.weightStakeBp / 100}% stake / ${result.scenario.weightSkillBp / 100}% skill;
+- proposta: ${result.scenario.proposalAmountEth} ETH, topic ${result.scenario.proposalTopic}.
+
+## Flow principale
+
+${markdownTable(flowSummary, ['phase', 'calls', 'minGas', 'avgGas', 'maxGas', 'totalGas', 'totalUsd'])}
+
+## Costi aggregati
+
+${markdownTable(aggregateRows, ['metric', 'gas', 'usd', 'note'])}
+
+## Scalabilita' upgradeSkillWithVC
+
+${markdownTable(result.scalability.map(row => ({
+        skillCount: String(row.skillCount),
+        skills: row.skills.join(' + '),
+        upgradeGas: row.upgradeGas,
+        costUsd: row.costUsd,
+    })), ['skillCount', 'skills', 'upgradeGas', 'costUsd'])}
+
+## Interpretazione sintetica
+
+Il costo di attivazione include le operazioni necessarie affinche' un membro entri nella DAO, attivi il voto ERC20Votes, registri il DID e ottenga il voting power da competenze tramite VC. Il costo del ciclo di governance misura invece la vita di una proposta topic-based: creazione con \`topicId\`, voto dei 10 membri, queue nel Timelock ed execute.
+
+Il micro-benchmark di scalabilita' isola \`upgradeSkillWithVC\` al variare del numero di skill nella credential. L'aumento e' contenuto perche' i checkpoint vengono mantenuti per i 4 topic, mentre il costo marginale deriva soprattutto dal parsing/hashing delle skill presenti nella VC.
+
+## File prodotti
+
+- \`gas-flow.csv\`
+- \`gas-flow-summary.csv\`
+- \`gas-aggregates.csv\`
+- \`gas-scalability.csv\`
+- \`gas-grafici.html\`
+`;
+    fs.writeFileSync(path.join(outDir, 'report.md'), report, 'utf8');
+    fs.writeFileSync(path.join(outDir, 'gas-grafici.html'), gasChartsHtml(flowSummary, aggregateRows, result.scalability), 'utf8');
+}
+function gasChartsHtml(
+    flowSummary: ReturnType<typeof summarizeFlow>,
+    aggregateRows: { metric: string; gas: string; usd: string; note: string }[],
+    scalability: ExportScalabilityRow[],
+) {
+    return `<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Misurazioni gas V3</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #17202a; }
+    h1, h2 { margin: 0 0 16px; }
+    section { margin-bottom: 42px; }
+    .chart { width: 100%; max-width: 1040px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; }
+    .bar-label { font-size: 12px; fill: #26323f; }
+    .axis { stroke: #9aa8b5; stroke-width: 1; }
+  </style>
+</head>
+<body>
+  <h1>Misurazioni gas V3 Topic-Based DAO</h1>
+  ${singleBarChart('Gas per fase del flow principale', flowSummary.map(row => ({ label: row.phase, value: Number(row.totalGas), suffix: 'gas' })))}
+  ${singleBarChart('Costi aggregati', aggregateRows.slice(0, 3).map(row => ({ label: row.metric, value: Number(row.gas), suffix: 'gas' })))}
+  ${singleBarChart('Scalabilita upgradeSkillWithVC', scalability.map(row => ({ label: `${row.skillCount} skill`, value: Number(row.upgradeGas), suffix: 'gas' })))}
+</body>
+</html>`;
+}
+function singleBarChart(title: string, rows: { label: string; value: number; suffix: string }[]) {
+    const width = 1040;
+    const height = 70 + rows.length * 38;
+    const labelWidth = 230;
+    const plotWidth = width - labelWidth - 130;
+    const max = Math.max(...rows.map(row => row.value), 1);
+    const bars = rows.map((row, i) => {
+        const y = 42 + i * 38;
+        const barWidth = (row.value / max) * plotWidth;
+        return `
+      <text class="bar-label" x="0" y="${y + 13}">${row.label}</text>
+      <rect x="${labelWidth}" y="${y}" width="${barWidth}" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="${labelWidth + barWidth + 6}" y="${y + 13}">${row.value.toLocaleString('it-IT')} ${row.suffix}</text>`;
+    }).join('');
+
+    return `<section>
+  <h2>${title}</h2>
+  <div class="chart">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">
+      <line class="axis" x1="${labelWidth}" y1="28" x2="${width - 24}" y2="28"></line>
+      ${bars}
+    </svg>
+  </div>
+</section>`;
 }
 
 // ── Fixture di deploy ────────────────────────────────────────────────────────
@@ -687,5 +949,7 @@ describe('V3 — Topic-Based DAO │ Gas Benchmark', function () {
         const outPath = path.resolve(__dirname, '../../benchmark-v3.json');
         fs.writeFileSync(outPath, JSON.stringify(result, null, 2), 'utf8');
         console.log('\n  ✓ JSON written to: ' + outPath + '\n');
+        exportThesisFiles(result);
+        console.log('  ✓ Thesis outputs written to: ' + path.resolve(__dirname, 'results') + '\n');
     });
 });

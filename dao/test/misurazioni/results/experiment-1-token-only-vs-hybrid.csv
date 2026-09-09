@@ -1,0 +1,11 @@
+user,stake,skills,skillScoreAI,skillScoreFinTech,tokenOnlyVP,stake75Skill25VP,hybridVP,stake25Skill75VP,skillOnlyVP,diff
+"U1",100,"blockchain",5,35,100,76.25,52.5,28.75,5,-47.5
+"U2",20,"machineLearning + dataEngineering",75,20,20,33.75,47.5,61.25,75,27.5
+"U3",20,"blockchain + startupFinance",20,75,20,20,20,20,20,0
+"U4",40,"softwareArchitecture + cloudArchitecture",30,40,40,37.5,35,32.5,30,-5
+"U5",30,"cyberSecurity + cloudArchitecture",30,45,30,30,30,30,30,0
+"U6",15,"machineLearning",35,5,15,20,25,30,35,10
+"U7",15,"dataEngineering",30,15,15,18.75,22.5,26.25,30,7.5
+"U8",10,"startupFinance",15,30,10,11.25,12.5,13.75,15,2.5
+"U9",10,"distributedSystems",20,25,10,12.5,15,17.5,20,5
+"U10",5,"nessuna",0,0,5,3.75,2.5,1.25,0,-2.5

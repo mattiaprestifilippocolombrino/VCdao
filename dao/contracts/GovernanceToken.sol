@@ -186,7 +186,9 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
        un indirizzo assegnato, che il deposito effettuato sia superiore a 0 e inferiore al deposito massimo consentito.
        Calcola il numero di token da ricevere in base al deposito effettuato via formula VPC. weightStake × scoreStake, usando le funzioni di utility precedenti.
        Imposta il nuovo membro come attivo, con grado minimo Student e viene registrato il deposito effettuato.
-       I token vengono mintati e inviati al membro. La funzione trasferisce gli ETH ricevuti direttamente al treasury.
+       I token vengono mintati e inviati al membro se weightStake > 0. In una configurazione only-competences
+       il deposito resta obbligatorio e tracciato, ma non vengono mintati token stake.
+       La funzione trasferisce gli ETH ricevuti direttamente al treasury.
 
        Regola anti-bypass: se un utente ha depositato il massimo depositabile (senza tenere conto
        del suo saldo attuale di token, che potrebbe aver trasferito), non può più effettuare minting.
@@ -199,12 +201,12 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         if (stakeDeposited[msg.sender] >= MAX_DEPOSIT) revert MaxDepositReached();
 
         uint256 tokenAmount = _calculateStakeTokens(msg.value, 0);
-        if (tokenAmount == 0) revert DepositTooSmall();
+        if (tokenAmount == 0 && weightStake > 0) revert DepositTooSmall();
 
         isMember[msg.sender] = true;
         stakeDeposited[msg.sender] = msg.value;
 
-        _mint(msg.sender, tokenAmount);
+        if (tokenAmount > 0) _mint(msg.sender, tokenAmount);
         (bool ok, ) = treasury.call{value: msg.value}("");
         if (!ok) revert TreasuryTransferFailed();
         emit MemberJoined(msg.sender, msg.value, tokenAmount);
@@ -216,7 +218,8 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
        Controlla che gli ETH depositati dal membro sommati a quelli che sta per depositare non superino MAX_DEPOSIT.
        Calcola il numero di token da ricevere in base al deposito effettuato via formula VPC, usando le funzioni di utility precedenti.
        Calcola i nuovi token in base solo all'incremento dello score stake e tiene conto degli ETH già depositati.
-       Viene aggiornato il conto degli ETH depositati dall'utente. Vengono mintati i token.
+       Viene aggiornato il conto degli ETH depositati dall'utente. Vengono mintati i token se weightStake > 0.
+       In modalita' only-competences, l'aumento di stake resta registrato come capitale depositato ma non genera token.
        Gli ETH vengono trasferiti direttamente al Treasury.
 
        Regola anti-bypass: se un utente ha depositato il massimo depositabile (senza tenere conto
@@ -230,10 +233,10 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
         if (stakeDeposited[msg.sender] + msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
 
         uint256 newTokens = _calculateStakeTokens(msg.value, stakeDeposited[msg.sender]);
-        if (newTokens == 0) revert DepositTooSmall();
+        if (newTokens == 0 && weightStake > 0) revert DepositTooSmall();
 
         stakeDeposited[msg.sender] += msg.value;
-        _mint(msg.sender, newTokens);
+        if (newTokens > 0) _mint(msg.sender, newTokens);
         (bool ok, ) = treasury.call{value: msg.value}("");
         if (!ok) revert TreasuryTransferFailed();
         emit StakeIncreased(msg.sender, msg.value, newTokens);

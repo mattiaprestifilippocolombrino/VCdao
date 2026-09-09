@@ -1,0 +1,11 @@
+user,stake,skills,skillScoreAI,tokenOnlyVP,stake75Skill25VP,hybridVP,stake25Skill75VP,skillOnlyVP,shareTokenOnly,share75_25,shareHybrid,share25_75,shareSkillOnly
+"Whale",60,"blockchain",5,60,46.25,32.5,18.75,5,59.41,34.71,19.64,9.48,2.17
+"Expert A",10,"machineLearning + dataEngineering",75,10,26.25,42.5,58.75,75,9.9,19.7,25.68,29.71,32.61
+"Expert B",10,"machineLearning",35,10,16.25,22.5,28.75,35,9.9,12.2,13.6,14.54,15.22
+"Expert C",5,"dataEngineering + distributedSystems",50,5,16.25,27.5,38.75,50,4.95,12.2,16.62,19.6,21.74
+"Other 1",5,"softwareArchitecture",15,5,7.5,10,12.5,15,4.95,5.63,6.04,6.32,6.52
+"Other 2",4,"cloudArchitecture",15,4,6.75,9.5,12.25,15,3.96,5.07,5.74,6.19,6.52
+"Other 3",3,"startupFinance",15,3,6,9,12,15,2.97,4.5,5.44,6.07,6.52
+"Other 4",2,"cyberSecurity",15,2,5.25,8.5,11.75,15,1.98,3.94,5.14,5.94,6.52
+"Other 5",1,"nessuna",0,1,0.75,0.5,0.25,0,0.99,0.56,0.3,0.13,0
+"Other 6",1,"blockchain",5,1,2,3,4,5,0.99,1.5,1.81,2.02,2.17

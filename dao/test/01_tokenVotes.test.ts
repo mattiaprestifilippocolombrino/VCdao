@@ -143,6 +143,22 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         ).to.be.revertedWithCustomError(token, "DepositTooSmall");
     });
 
+    it("joinDAO() in modalità only-competences registra il membro senza mintare token", async function () {
+        const Token = await ethers.getContractFactory("GovernanceToken");
+        const tokenOnlyCompetences = await Token.deploy(await timelock.getAddress(), 10000n, 0n);
+        await tokenOnlyCompetences.waitForDeployment();
+        await tokenOnlyCompetences.setTreasury(await treasury.getAddress());
+
+        await expect(
+            tokenOnlyCompetences.connect(alice).joinDAO({ value: ethers.parseEther("1") })
+        ).to.emit(tokenOnlyCompetences, "MemberJoined")
+            .withArgs(alice.address, ethers.parseEther("1"), 0n);
+
+        expect(await tokenOnlyCompetences.isMember(alice.address)).to.be.true;
+        expect(await tokenOnlyCompetences.stakeDeposited(alice.address)).to.equal(ethers.parseEther("1"));
+        expect(await tokenOnlyCompetences.balanceOf(alice.address)).to.equal(0n);
+    });
+
     it("joinDAO() reverta se già membro", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("1") });
         await expect(
@@ -235,6 +251,23 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         await expect(
             token.connect(alice).increaseStake({ value: 1n })
         ).to.be.revertedWithCustomError(token, "DepositTooSmall");
+    });
+
+    it("increaseStake() in modalità only-competences aggiorna lo stake senza mintare token", async function () {
+        const Token = await ethers.getContractFactory("GovernanceToken");
+        const tokenOnlyCompetences = await Token.deploy(await timelock.getAddress(), 10000n, 0n);
+        await tokenOnlyCompetences.waitForDeployment();
+        await tokenOnlyCompetences.setTreasury(await treasury.getAddress());
+
+        await tokenOnlyCompetences.connect(alice).joinDAO({ value: ethers.parseEther("1") });
+
+        await expect(
+            tokenOnlyCompetences.connect(alice).increaseStake({ value: ethers.parseEther("2") })
+        ).to.emit(tokenOnlyCompetences, "StakeIncreased")
+            .withArgs(alice.address, ethers.parseEther("2"), 0n);
+
+        expect(await tokenOnlyCompetences.stakeDeposited(alice.address)).to.equal(ethers.parseEther("3"));
+        expect(await tokenOnlyCompetences.balanceOf(alice.address)).to.equal(0n);
     });
 
     it("increaseStake() invia ETH al Treasury", async function () {
