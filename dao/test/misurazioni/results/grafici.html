@@ -6,315 +6,639 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 32px; color: #17202a; }
     h1, h2 { margin: 0 0 16px; }
+    p { margin: 0 0 10px; line-height: 1.45; }
     section { margin-bottom: 42px; }
-    .chart { width: 100%; max-width: 980px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; }
+    .context, .chart { width: 100%; max-width: 1120px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; box-sizing: border-box; }
+    .context { margin: 0 0 12px; background: #f8fafc; }
+    .context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+    .metric { font-size: 13px; }
+    .metric b { display: inline-block; min-width: 130px; color: #26323f; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 12px; }
+    th, td { border-bottom: 1px solid #d6dde5; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { color: #26323f; background: #eef3f8; }
     .bar-label { font-size: 12px; fill: #26323f; }
     .axis { stroke: #9aa8b5; stroke-width: 1; }
+    .tick { stroke: #c8d2dc; stroke-width: 1; }
+    .axis-title { font-size: 12px; font-weight: 700; fill: #26323f; }
   </style>
 </head>
 <body>
   <h1>Misurazioni voting power</h1>
   <section>
+  <h2>Contesto comune</h2>
+  <div class="context">
+    <div class="context-grid">
+      <div class="metric"><b>Ambiente</b>Hardhat Network, contratti deployati nel test</div>
+      <div class="metric"><b>Unita'</b>Voting power espresso in COMP normalizzati da wei</div>
+      <div class="metric"><b>Formula</b>VP = VP_stake(account) + VP_skill(account, topic)</div>
+      <div class="metric"><b>Skill VP</b>score topic-specifico x weightSkill x 1e18 / 10.000</div>
+      <div class="metric"><b>Stake VP</b>deposito ETH convertito in token voting power secondo weightStake</div>
+      <div class="metric"><b>Scopo</b>Isolare l'effetto di pesi, competenze e topic sul potere di voto</div>
+    </div>
+  </div>
+</section>
+  <section>
   <h2>Grafico 1 - Voting power per configurazione</h2>
+  <div class="context">
+    <h3>Input esperimento 1</h3>
+    <p>Dataset principale con 10 membri, stake eterogenei e skill eterogenee. Topic fissato su AI & Data; varia solo il rapporto weightStake/weightSkill.</p>
+    <div class="context-grid"><div class="metric"><b>Topic</b>AI & Data</div><div class="metric"><b>Pesi confrontati</b>100/0, 75/25, 50/50, 25/75, 0/100</div><div class="metric"><b>Lettura</b>Mostra come il VP individuale si sposta dalla ricchezza depositata alla pertinenza delle competenze.</div></div>
+    <table>
+      <thead><tr><th>Profilo</th><th>Stake ETH</th><th>Skill certificate</th></tr></thead>
+      <tbody>
+      <tr>
+        <td>U1</td>
+        <td>100</td>
+        <td>blockchain</td>
+      </tr>
+      <tr>
+        <td>U2</td>
+        <td>20</td>
+        <td>machineLearning + dataEngineering</td>
+      </tr>
+      <tr>
+        <td>U3</td>
+        <td>20</td>
+        <td>blockchain + startupFinance</td>
+      </tr>
+      <tr>
+        <td>U4</td>
+        <td>40</td>
+        <td>softwareArchitecture + cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>U5</td>
+        <td>30</td>
+        <td>cyberSecurity + cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>U6</td>
+        <td>15</td>
+        <td>machineLearning</td>
+      </tr>
+      <tr>
+        <td>U7</td>
+        <td>15</td>
+        <td>dataEngineering</td>
+      </tr>
+      <tr>
+        <td>U8</td>
+        <td>10</td>
+        <td>startupFinance</td>
+      </tr>
+      <tr>
+        <td>U9</td>
+        <td>10</td>
+        <td>distributedSystems</td>
+      </tr>
+      <tr>
+        <td>U10</td>
+        <td>5</td>
+        <td>nessuna</td>
+      </tr></tbody>
+    </table>
+  </div>
   <div class="chart">
-    <svg viewBox="0 0 1120 972" role="img" aria-label="Grafico 1 - Voting power per configurazione">
+    <svg viewBox="0 0 1120 992" role="img" aria-label="Grafico 1 - Voting power per configurazione">
       <rect x="92" y="10" width="12" height="12" fill="#2f80ed"></rect><text class="bar-label" x="110" y="21">100/0</text><rect x="210" y="10" width="12" height="12" fill="#00a6a6"></rect><text class="bar-label" x="228" y="21">75/25</text><rect x="328" y="10" width="12" height="12" fill="#27ae60"></rect><text class="bar-label" x="346" y="21">50/50</text><rect x="446" y="10" width="12" height="12" fill="#f2994a"></rect><text class="bar-label" x="464" y="21">25/75</text><rect x="564" y="10" width="12" height="12" fill="#9b51e0"></rect><text class="bar-label" x="582" y="21">0/100</text>
-      <line class="axis" x1="92" y1="32" x2="1096" y2="32"></line>
       
-    <text class="bar-label" x="0" y="83">U1</text>
-    <rect x="92" y="48" width="898" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="995" y="58">100.00 VP</text>
-    <rect x="92" y="63" width="684.7249999999999" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="781.7249999999999" y="73">76.25 VP</text>
-    <rect x="92" y="78" width="471.45000000000005" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="568.45" y="88">52.50 VP</text>
-    <rect x="92" y="93" width="258.17499999999995" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="355.17499999999995" y="103">28.75 VP</text>
-    <rect x="92" y="108" width="44.900000000000006" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="141.9" y="118">5.00 VP</text>
-    <text class="bar-label" x="0" y="171">U2</text>
-    <rect x="92" y="136" width="179.60000000000002" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="276.6" y="146">20.00 VP</text>
-    <rect x="92" y="151" width="303.07500000000005" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="400.07500000000005" y="161">33.75 VP</text>
-    <rect x="92" y="166" width="426.54999999999995" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="523.55" y="176">47.50 VP</text>
-    <rect x="92" y="181" width="550.0250000000001" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="647.0250000000001" y="191">61.25 VP</text>
-    <rect x="92" y="196" width="673.5" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="770.5" y="206">75.00 VP</text>
-    <text class="bar-label" x="0" y="259">U3</text>
-    <rect x="92" y="224" width="179.60000000000002" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="276.6" y="234">20.00 VP</text>
-    <rect x="92" y="239" width="179.60000000000002" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="276.6" y="249">20.00 VP</text>
-    <rect x="92" y="254" width="179.60000000000002" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="276.6" y="264">20.00 VP</text>
-    <rect x="92" y="269" width="179.60000000000002" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="276.6" y="279">20.00 VP</text>
-    <rect x="92" y="284" width="179.60000000000002" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="276.6" y="294">20.00 VP</text>
-    <text class="bar-label" x="0" y="347">U4</text>
-    <rect x="92" y="312" width="359.20000000000005" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="456.20000000000005" y="322">40.00 VP</text>
-    <rect x="92" y="327" width="336.75" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="433.75" y="337">37.50 VP</text>
-    <rect x="92" y="342" width="314.29999999999995" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="411.29999999999995" y="352">35.00 VP</text>
-    <rect x="92" y="357" width="291.85" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="388.85" y="367">32.50 VP</text>
-    <rect x="92" y="372" width="269.4" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="366.4" y="382">30.00 VP</text>
-    <text class="bar-label" x="0" y="435">U5</text>
-    <rect x="92" y="400" width="269.4" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="366.4" y="410">30.00 VP</text>
-    <rect x="92" y="415" width="269.4" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="366.4" y="425">30.00 VP</text>
-    <rect x="92" y="430" width="269.4" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="366.4" y="440">30.00 VP</text>
-    <rect x="92" y="445" width="269.4" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="366.4" y="455">30.00 VP</text>
-    <rect x="92" y="460" width="269.4" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="366.4" y="470">30.00 VP</text>
-    <text class="bar-label" x="0" y="523">U6</text>
-    <rect x="92" y="488" width="134.7" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="231.7" y="498">15.00 VP</text>
-    <rect x="92" y="503" width="179.60000000000002" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="276.6" y="513">20.00 VP</text>
-    <rect x="92" y="518" width="224.5" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="321.5" y="528">25.00 VP</text>
-    <rect x="92" y="533" width="269.4" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="366.4" y="543">30.00 VP</text>
-    <rect x="92" y="548" width="314.29999999999995" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="411.29999999999995" y="558">35.00 VP</text>
-    <text class="bar-label" x="0" y="611">U7</text>
-    <rect x="92" y="576" width="134.7" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="231.7" y="586">15.00 VP</text>
-    <rect x="92" y="591" width="168.375" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="265.375" y="601">18.75 VP</text>
-    <rect x="92" y="606" width="202.05" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="299.05" y="616">22.50 VP</text>
-    <rect x="92" y="621" width="235.72500000000002" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="332.725" y="631">26.25 VP</text>
-    <rect x="92" y="636" width="269.4" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="366.4" y="646">30.00 VP</text>
-    <text class="bar-label" x="0" y="699">U8</text>
-    <rect x="92" y="664" width="89.80000000000001" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="186.8" y="674">10.00 VP</text>
-    <rect x="92" y="679" width="101.025" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="198.025" y="689">11.25 VP</text>
-    <rect x="92" y="694" width="112.25" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="209.25" y="704">12.50 VP</text>
-    <rect x="92" y="709" width="123.47500000000001" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="220.47500000000002" y="719">13.75 VP</text>
-    <rect x="92" y="724" width="134.7" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="231.7" y="734">15.00 VP</text>
-    <text class="bar-label" x="0" y="787">U9</text>
-    <rect x="92" y="752" width="89.80000000000001" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="186.8" y="762">10.00 VP</text>
-    <rect x="92" y="767" width="112.25" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="209.25" y="777">12.50 VP</text>
-    <rect x="92" y="782" width="134.7" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="231.7" y="792">15.00 VP</text>
-    <rect x="92" y="797" width="157.14999999999998" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="254.14999999999998" y="807">17.50 VP</text>
-    <rect x="92" y="812" width="179.60000000000002" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="276.6" y="822">20.00 VP</text>
-    <text class="bar-label" x="0" y="875">U10</text>
-    <rect x="92" y="840" width="44.900000000000006" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="141.9" y="850">5.00 VP</text>
-    <rect x="92" y="855" width="33.675" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="130.675" y="865">3.75 VP</text>
-    <rect x="92" y="870" width="22.450000000000003" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="119.45" y="880">2.50 VP</text>
-    <rect x="92" y="885" width="11.225000000000001" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="108.225" y="895">1.25 VP</text>
-    <rect x="92" y="900" width="0" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="97" y="910">0.00 VP</text>
+    <text class="bar-label" x="0" y="69">U1</text>
+    <rect x="92" y="34" width="898" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="995" y="44">100.00 VP</text>
+    <rect x="92" y="49" width="684.7249999999999" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="781.7249999999999" y="59">76.25 VP</text>
+    <rect x="92" y="64" width="471.45000000000005" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="568.45" y="74">52.50 VP</text>
+    <rect x="92" y="79" width="258.17499999999995" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="355.17499999999995" y="89">28.75 VP</text>
+    <rect x="92" y="94" width="44.900000000000006" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="141.9" y="104">5.00 VP</text>
+    <text class="bar-label" x="0" y="157">U2</text>
+    <rect x="92" y="122" width="179.60000000000002" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="276.6" y="132">20.00 VP</text>
+    <rect x="92" y="137" width="303.07500000000005" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="400.07500000000005" y="147">33.75 VP</text>
+    <rect x="92" y="152" width="426.54999999999995" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="523.55" y="162">47.50 VP</text>
+    <rect x="92" y="167" width="550.0250000000001" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="647.0250000000001" y="177">61.25 VP</text>
+    <rect x="92" y="182" width="673.5" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="770.5" y="192">75.00 VP</text>
+    <text class="bar-label" x="0" y="245">U3</text>
+    <rect x="92" y="210" width="179.60000000000002" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="276.6" y="220">20.00 VP</text>
+    <rect x="92" y="225" width="179.60000000000002" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="276.6" y="235">20.00 VP</text>
+    <rect x="92" y="240" width="179.60000000000002" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="276.6" y="250">20.00 VP</text>
+    <rect x="92" y="255" width="179.60000000000002" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="276.6" y="265">20.00 VP</text>
+    <rect x="92" y="270" width="179.60000000000002" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="276.6" y="280">20.00 VP</text>
+    <text class="bar-label" x="0" y="333">U4</text>
+    <rect x="92" y="298" width="359.20000000000005" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="456.20000000000005" y="308">40.00 VP</text>
+    <rect x="92" y="313" width="336.75" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="433.75" y="323">37.50 VP</text>
+    <rect x="92" y="328" width="314.29999999999995" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="411.29999999999995" y="338">35.00 VP</text>
+    <rect x="92" y="343" width="291.85" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="388.85" y="353">32.50 VP</text>
+    <rect x="92" y="358" width="269.4" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="366.4" y="368">30.00 VP</text>
+    <text class="bar-label" x="0" y="421">U5</text>
+    <rect x="92" y="386" width="269.4" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="366.4" y="396">30.00 VP</text>
+    <rect x="92" y="401" width="269.4" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="366.4" y="411">30.00 VP</text>
+    <rect x="92" y="416" width="269.4" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="366.4" y="426">30.00 VP</text>
+    <rect x="92" y="431" width="269.4" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="366.4" y="441">30.00 VP</text>
+    <rect x="92" y="446" width="269.4" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="366.4" y="456">30.00 VP</text>
+    <text class="bar-label" x="0" y="509">U6</text>
+    <rect x="92" y="474" width="134.7" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="231.7" y="484">15.00 VP</text>
+    <rect x="92" y="489" width="179.60000000000002" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="276.6" y="499">20.00 VP</text>
+    <rect x="92" y="504" width="224.5" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="321.5" y="514">25.00 VP</text>
+    <rect x="92" y="519" width="269.4" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="366.4" y="529">30.00 VP</text>
+    <rect x="92" y="534" width="314.29999999999995" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="411.29999999999995" y="544">35.00 VP</text>
+    <text class="bar-label" x="0" y="597">U7</text>
+    <rect x="92" y="562" width="134.7" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="231.7" y="572">15.00 VP</text>
+    <rect x="92" y="577" width="168.375" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="265.375" y="587">18.75 VP</text>
+    <rect x="92" y="592" width="202.05" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="299.05" y="602">22.50 VP</text>
+    <rect x="92" y="607" width="235.72500000000002" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="332.725" y="617">26.25 VP</text>
+    <rect x="92" y="622" width="269.4" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="366.4" y="632">30.00 VP</text>
+    <text class="bar-label" x="0" y="685">U8</text>
+    <rect x="92" y="650" width="89.80000000000001" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="186.8" y="660">10.00 VP</text>
+    <rect x="92" y="665" width="101.025" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="198.025" y="675">11.25 VP</text>
+    <rect x="92" y="680" width="112.25" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="209.25" y="690">12.50 VP</text>
+    <rect x="92" y="695" width="123.47500000000001" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="220.47500000000002" y="705">13.75 VP</text>
+    <rect x="92" y="710" width="134.7" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="231.7" y="720">15.00 VP</text>
+    <text class="bar-label" x="0" y="773">U9</text>
+    <rect x="92" y="738" width="89.80000000000001" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="186.8" y="748">10.00 VP</text>
+    <rect x="92" y="753" width="112.25" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="209.25" y="763">12.50 VP</text>
+    <rect x="92" y="768" width="134.7" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="231.7" y="778">15.00 VP</text>
+    <rect x="92" y="783" width="157.14999999999998" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="254.14999999999998" y="793">17.50 VP</text>
+    <rect x="92" y="798" width="179.60000000000002" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="276.6" y="808">20.00 VP</text>
+    <text class="bar-label" x="0" y="861">U10</text>
+    <rect x="92" y="826" width="44.900000000000006" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="141.9" y="836">5.00 VP</text>
+    <rect x="92" y="841" width="33.675" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="130.675" y="851">3.75 VP</text>
+    <rect x="92" y="856" width="22.450000000000003" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="119.45" y="866">2.50 VP</text>
+    <rect x="92" y="871" width="11.225000000000001" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="108.225" y="881">1.25 VP</text>
+    <rect x="92" y="886" width="0" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="97" y="896">0.00 VP</text>
+      
+      <line class="axis" x1="92" y1="956" x2="990" y2="956"></line>
+      <text class="axis-title" x="990" y="992" text-anchor="end">VP</text>
+      
+      <line class="tick" x1="92" y1="952" x2="92" y2="960"></line>
+      <text class="bar-label" x="92" y="974" text-anchor="start">0</text>
+      <line class="tick" x1="271.6" y1="952" x2="271.6" y2="960"></line>
+      <text class="bar-label" x="271.6" y="974" text-anchor="middle">20</text>
+      <line class="tick" x1="451.20000000000005" y1="952" x2="451.20000000000005" y2="960"></line>
+      <text class="bar-label" x="451.20000000000005" y="974" text-anchor="middle">40</text>
+      <line class="tick" x1="630.8" y1="952" x2="630.8" y2="960"></line>
+      <text class="bar-label" x="630.8" y="974" text-anchor="middle">60</text>
+      <line class="tick" x1="810.4000000000001" y1="952" x2="810.4000000000001" y2="960"></line>
+      <text class="bar-label" x="810.4000000000001" y="974" text-anchor="middle">80</text>
+      <line class="tick" x1="990" y1="952" x2="990" y2="960"></line>
+      <text class="bar-label" x="990" y="974" text-anchor="end">100</text>
     </svg>
   </div>
 </section>
   <section>
   <h2>Grafico 2 - Share del voting power</h2>
+  <div class="context">
+    <h3>Input esperimento 2</h3>
+    <p>Scenario whale vs minoranza esperta: un membro ha molto stake ma bassa pertinenza topic; tre esperti hanno poco stake ma skill AI/Data forti.</p>
+    <div class="context-grid"><div class="metric"><b>Topic</b>AI & Data</div><div class="metric"><b>Whale</b>60 ETH, skill blockchain, score AI/Data basso</div><div class="metric"><b>Expert minority</b>Expert A/B/C, stake aggregato 25 ETH, competenze AI/Data piu' pertinenti</div><div class="metric"><b>Lettura</b>Misura la redistribuzione della quota di potere quando aumenta il peso delle skill.</div></div>
+    <table>
+      <thead><tr><th>Profilo</th><th>Stake ETH</th><th>Skill certificate</th></tr></thead>
+      <tbody>
+      <tr>
+        <td>Whale</td>
+        <td>60</td>
+        <td>blockchain</td>
+      </tr>
+      <tr>
+        <td>Expert A</td>
+        <td>10</td>
+        <td>machineLearning + dataEngineering</td>
+      </tr>
+      <tr>
+        <td>Expert B</td>
+        <td>10</td>
+        <td>machineLearning</td>
+      </tr>
+      <tr>
+        <td>Expert C</td>
+        <td>5</td>
+        <td>dataEngineering + distributedSystems</td>
+      </tr>
+      <tr>
+        <td>Other 1</td>
+        <td>5</td>
+        <td>softwareArchitecture</td>
+      </tr>
+      <tr>
+        <td>Other 2</td>
+        <td>4</td>
+        <td>cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>Other 3</td>
+        <td>3</td>
+        <td>startupFinance</td>
+      </tr>
+      <tr>
+        <td>Other 4</td>
+        <td>2</td>
+        <td>cyberSecurity</td>
+      </tr>
+      <tr>
+        <td>Other 5</td>
+        <td>1</td>
+        <td>nessuna</td>
+      </tr>
+      <tr>
+        <td>Other 6</td>
+        <td>1</td>
+        <td>blockchain</td>
+      </tr></tbody>
+    </table>
+  </div>
   <div class="chart">
-    <svg viewBox="0 0 1120 972" role="img" aria-label="Grafico 2 - Share del voting power">
+    <svg viewBox="0 0 1120 992" role="img" aria-label="Grafico 2 - Share del voting power">
       <rect x="92" y="10" width="12" height="12" fill="#2f80ed"></rect><text class="bar-label" x="110" y="21">100/0</text><rect x="210" y="10" width="12" height="12" fill="#00a6a6"></rect><text class="bar-label" x="228" y="21">75/25</text><rect x="328" y="10" width="12" height="12" fill="#27ae60"></rect><text class="bar-label" x="346" y="21">50/50</text><rect x="446" y="10" width="12" height="12" fill="#f2994a"></rect><text class="bar-label" x="464" y="21">25/75</text><rect x="564" y="10" width="12" height="12" fill="#9b51e0"></rect><text class="bar-label" x="582" y="21">0/100</text>
-      <line class="axis" x1="92" y1="32" x2="1096" y2="32"></line>
       
-    <text class="bar-label" x="0" y="83">Whale</text>
-    <rect x="92" y="48" width="898" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="995" y="58">59.41 %</text>
-    <rect x="92" y="63" width="524.6520787746172" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="621.6520787746172" y="73">34.71 %</text>
-    <rect x="92" y="78" width="296.8645009257701" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="393.8645009257701" y="88">19.64 %</text>
-    <rect x="92" y="93" width="143.2930483083656" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="240.2930483083656" y="103">9.48 %</text>
-    <rect x="92" y="108" width="32.800201986197614" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="129.8002019861976" y="118">2.17 %</text>
-    <text class="bar-label" x="0" y="171">Expert A</text>
-    <rect x="92" y="136" width="149.64147449924255" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="246.64147449924255" y="146">9.90 %</text>
-    <rect x="92" y="151" width="297.7714189530382" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="394.7714189530382" y="161">19.70 %</text>
-    <rect x="92" y="166" width="388.1609156707625" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="485.1609156707625" y="176">25.68 %</text>
-    <rect x="92" y="181" width="449.0755765022723" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="546.0755765022723" y="191">29.71 %</text>
-    <rect x="92" y="196" width="492.90994782023233" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="589.9099478202323" y="206">32.61 %</text>
-    <text class="bar-label" x="0" y="259">Expert B</text>
-    <rect x="92" y="224" width="149.64147449924255" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="246.64147449924255" y="234">9.90 %</text>
-    <rect x="92" y="239" width="184.40666554452113" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="281.40666554452116" y="249">12.20 %</text>
-    <rect x="92" y="254" width="205.56808618077767" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="302.56808618077764" y="264">13.60 %</text>
-    <rect x="92" y="269" width="219.77646860797844" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="316.7764686079785" y="279">14.54 %</text>
-    <rect x="92" y="284" width="230.05487291701735" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="327.05487291701735" y="294">15.22 %</text>
-    <text class="bar-label" x="0" y="347">Expert C</text>
-    <rect x="92" y="312" width="74.82073724962127" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="171.8207372496213" y="322">4.95 %</text>
-    <rect x="92" y="327" width="184.40666554452113" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="281.40666554452116" y="337">12.20 %</text>
-    <rect x="92" y="342" width="251.2162935532739" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="348.2162935532739" y="352">16.62 %</text>
-    <rect x="92" y="357" width="296.2598889075914" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="393.2598889075914" y="367">19.60 %</text>
-    <rect x="92" y="372" width="328.60663188015485" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="425.60663188015485" y="382">21.74 %</text>
-    <text class="bar-label" x="0" y="435">Other 1</text>
-    <rect x="92" y="400" width="74.82073724962127" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="171.8207372496213" y="410">4.95 %</text>
-    <rect x="92" y="415" width="85.09914155866015" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="182.09914155866016" y="425">5.63 %</text>
-    <rect x="92" y="430" width="91.29641474499243" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="188.29641474499243" y="440">6.04 %</text>
-    <rect x="92" y="445" width="95.52869887224375" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="192.52869887224375" y="455">6.32 %</text>
-    <rect x="92" y="460" width="98.55175896313752" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="195.5517589631375" y="470">6.52 %</text>
-    <text class="bar-label" x="0" y="523">Other 2</text>
-    <rect x="92" y="488" width="59.856589799697026" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="156.85658979969702" y="498">3.96 %</text>
-    <rect x="92" y="503" width="76.63457330415757" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="173.63457330415758" y="513">5.07 %</text>
-    <rect x="92" y="518" width="86.76182460865175" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="183.76182460865175" y="528">5.74 %</text>
-    <rect x="92" y="533" width="93.56370981316277" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="190.56370981316277" y="543">6.19 %</text>
-    <rect x="92" y="548" width="98.55175896313752" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="195.5517589631375" y="558">6.52 %</text>
-    <text class="bar-label" x="0" y="611">Other 3</text>
-    <rect x="92" y="576" width="44.89244234977277" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="141.89244234977278" y="586">2.97 %</text>
-    <rect x="92" y="591" width="68.01885204511026" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="165.01885204511026" y="601">4.50 %</text>
-    <rect x="92" y="606" width="82.22723447231107" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="179.22723447231107" y="616">5.44 %</text>
-    <rect x="92" y="621" width="91.7498737586265" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="188.7498737586265" y="631">6.07 %</text>
-    <rect x="92" y="636" width="98.55175896313752" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="195.5517589631375" y="646">6.52 %</text>
-    <text class="bar-label" x="0" y="699">Other 4</text>
-    <rect x="92" y="664" width="29.928294899848513" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="126.92829489984851" y="674">1.98 %</text>
-    <rect x="92" y="679" width="59.55428379060764" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="156.55428379060766" y="689">3.94 %</text>
-    <rect x="92" y="694" width="77.69264433597037" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="174.69264433597039" y="704">5.14 %</text>
-    <rect x="92" y="709" width="89.78488469954554" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="186.78488469954556" y="719">5.94 %</text>
-    <rect x="92" y="724" width="98.55175896313752" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="195.5517589631375" y="734">6.52 %</text>
-    <text class="bar-label" x="0" y="787">Other 5</text>
-    <rect x="92" y="752" width="14.964147449924257" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="111.96414744992425" y="762">0.99 %</text>
-    <rect x="92" y="767" width="8.46456825450261" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="105.46456825450261" y="777">0.56 %</text>
-    <rect x="92" y="782" width="4.534590136340683" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="101.53459013634068" y="792">0.30 %</text>
-    <rect x="92" y="797" width="1.964989059080963" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="98.96498905908096" y="807">0.13 %</text>
-    <rect x="92" y="812" width="0" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="97" y="822">0.00 %</text>
-    <text class="bar-label" x="0" y="875">Other 6</text>
-    <rect x="92" y="840" width="14.964147449924257" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="111.96414744992425" y="850">0.99 %</text>
-    <rect x="92" y="855" width="22.672950681703416" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="119.67295068170341" y="865">1.50 %</text>
-    <rect x="92" y="870" width="27.35869382258879" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="124.35869382258879" y="880">1.81 %</text>
-    <rect x="92" y="885" width="30.53290691802727" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="127.53290691802727" y="895">2.02 %</text>
-    <rect x="92" y="900" width="32.800201986197614" height="11" fill="#9b51e0"></rect>
-    <text class="bar-label" x="129.8002019861976" y="910">2.17 %</text>
+    <text class="bar-label" x="0" y="69">Whale</text>
+    <rect x="92" y="34" width="889.1696666666667" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="986.1696666666667" y="44">59.41 %</text>
+    <rect x="92" y="49" width="519.493" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="616.493" y="59">34.71 %</text>
+    <rect x="92" y="64" width="293.94533333333334" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="390.94533333333334" y="74">19.64 %</text>
+    <rect x="92" y="79" width="141.88400000000001" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="238.88400000000001" y="89">9.48 %</text>
+    <rect x="92" y="94" width="32.477666666666664" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="129.47766666666666" y="104">2.17 %</text>
+    <text class="bar-label" x="0" y="157">Expert A</text>
+    <rect x="92" y="122" width="148.17000000000002" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="245.17000000000002" y="132">9.90 %</text>
+    <rect x="92" y="137" width="294.8433333333333" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="391.8433333333333" y="147">19.70 %</text>
+    <rect x="92" y="152" width="384.344" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="481.344" y="162">25.68 %</text>
+    <rect x="92" y="167" width="444.6596666666667" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="541.6596666666667" y="177">29.71 %</text>
+    <rect x="92" y="182" width="488.063" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="585.063" y="192">32.61 %</text>
+    <text class="bar-label" x="0" y="245">Expert B</text>
+    <rect x="92" y="210" width="148.17000000000002" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="245.17000000000002" y="220">9.90 %</text>
+    <rect x="92" y="225" width="182.5933333333333" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="279.5933333333333" y="235">12.20 %</text>
+    <rect x="92" y="240" width="203.54666666666665" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="300.5466666666666" y="250">13.60 %</text>
+    <rect x="92" y="255" width="217.61533333333333" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="314.6153333333333" y="265">14.54 %</text>
+    <rect x="92" y="270" width="227.79266666666666" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="324.79266666666666" y="280">15.22 %</text>
+    <text class="bar-label" x="0" y="333">Expert C</text>
+    <rect x="92" y="298" width="74.08500000000001" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="171.085" y="308">4.95 %</text>
+    <rect x="92" y="313" width="182.5933333333333" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="279.5933333333333" y="323">12.20 %</text>
+    <rect x="92" y="328" width="248.746" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="345.746" y="338">16.62 %</text>
+    <rect x="92" y="343" width="293.3466666666667" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="390.3466666666667" y="353">19.60 %</text>
+    <rect x="92" y="358" width="325.3753333333333" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="422.3753333333333" y="368">21.74 %</text>
+    <text class="bar-label" x="0" y="421">Other 1</text>
+    <rect x="92" y="386" width="74.08500000000001" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="171.085" y="396">4.95 %</text>
+    <rect x="92" y="401" width="84.26233333333333" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="181.26233333333334" y="411">5.63 %</text>
+    <rect x="92" y="416" width="90.39866666666667" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="187.39866666666666" y="426">6.04 %</text>
+    <rect x="92" y="431" width="94.58933333333333" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="191.58933333333334" y="441">6.32 %</text>
+    <rect x="92" y="446" width="97.58266666666667" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="194.58266666666668" y="456">6.52 %</text>
+    <text class="bar-label" x="0" y="509">Other 2</text>
+    <rect x="92" y="474" width="59.268" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="156.268" y="484">3.96 %</text>
+    <rect x="92" y="489" width="75.881" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="172.881" y="499">5.07 %</text>
+    <rect x="92" y="504" width="85.90866666666666" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="182.90866666666665" y="514">5.74 %</text>
+    <rect x="92" y="519" width="92.64366666666668" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="189.64366666666666" y="529">6.19 %</text>
+    <rect x="92" y="534" width="97.58266666666667" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="194.58266666666668" y="544">6.52 %</text>
+    <text class="bar-label" x="0" y="597">Other 3</text>
+    <rect x="92" y="562" width="44.451" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="141.451" y="572">2.97 %</text>
+    <rect x="92" y="577" width="67.35" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="164.35" y="587">4.50 %</text>
+    <rect x="92" y="592" width="81.41866666666667" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="178.41866666666667" y="602">5.44 %</text>
+    <rect x="92" y="607" width="90.84766666666667" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="187.84766666666667" y="617">6.07 %</text>
+    <rect x="92" y="622" width="97.58266666666667" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="194.58266666666668" y="632">6.52 %</text>
+    <text class="bar-label" x="0" y="685">Other 4</text>
+    <rect x="92" y="650" width="29.634" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="126.634" y="660">1.98 %</text>
+    <rect x="92" y="665" width="58.968666666666664" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="155.96866666666665" y="675">3.94 %</text>
+    <rect x="92" y="680" width="76.92866666666666" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="173.92866666666666" y="690">5.14 %</text>
+    <rect x="92" y="695" width="88.902" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="185.902" y="705">5.94 %</text>
+    <rect x="92" y="710" width="97.58266666666667" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="194.58266666666668" y="720">6.52 %</text>
+    <text class="bar-label" x="0" y="773">Other 5</text>
+    <rect x="92" y="738" width="14.817" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="111.81700000000001" y="748">0.99 %</text>
+    <rect x="92" y="753" width="8.381333333333334" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="105.38133333333333" y="763">0.56 %</text>
+    <rect x="92" y="768" width="4.49" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="101.49" y="778">0.30 %</text>
+    <rect x="92" y="783" width="1.9456666666666667" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="98.94566666666667" y="793">0.13 %</text>
+    <rect x="92" y="798" width="0" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="97" y="808">0.00 %</text>
+    <text class="bar-label" x="0" y="861">Other 6</text>
+    <rect x="92" y="826" width="14.817" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="111.81700000000001" y="836">0.99 %</text>
+    <rect x="92" y="841" width="22.450000000000003" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="119.45" y="851">1.50 %</text>
+    <rect x="92" y="856" width="27.089666666666666" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="124.08966666666666" y="866">1.81 %</text>
+    <rect x="92" y="871" width="30.232666666666663" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="127.23266666666666" y="881">2.02 %</text>
+    <rect x="92" y="886" width="32.477666666666664" height="11" fill="#9b51e0"></rect>
+    <text class="bar-label" x="129.47766666666666" y="896">2.17 %</text>
+      
+      <line class="axis" x1="92" y1="956" x2="990" y2="956"></line>
+      <text class="axis-title" x="990" y="992" text-anchor="end">%</text>
+      
+      <line class="tick" x1="92" y1="952" x2="92" y2="960"></line>
+      <text class="bar-label" x="92" y="974" text-anchor="start">0</text>
+      <line class="tick" x1="391.3333333333333" y1="952" x2="391.3333333333333" y2="960"></line>
+      <text class="bar-label" x="391.3333333333333" y="974" text-anchor="middle">20</text>
+      <line class="tick" x1="690.6666666666666" y1="952" x2="690.6666666666666" y2="960"></line>
+      <text class="bar-label" x="690.6666666666666" y="974" text-anchor="middle">40</text>
+      <line class="tick" x1="990" y1="952" x2="990" y2="960"></line>
+      <text class="bar-label" x="990" y="974" text-anchor="end">60</text>
     </svg>
   </div>
 </section>
   <section>
   <h2>Grafico 3 - Sensitivity al topic</h2>
+  <div class="context">
+    <h3>Input esperimento 3</h3>
+    <p>Profili con stesso stake e competenze specialistiche. Il peso resta 50/50; cambia solo il topic letto dal Governor.</p>
+    <div class="context-grid"><div class="metric"><b>Stake</b>40 ETH per tutti i profili</div><div class="metric"><b>Pesi</b>50% stake / 50% skill</div><div class="metric"><b>Topic confrontati</b>AI & Data, Cloud & Cybersecurity, FinTech & Blockchain, Enterprise Software</div><div class="metric"><b>Controllo</b>Il profilo senza skill resta a 20 VP su tutti i topic, pari alla sola componente stake al 50%.</div></div>
+    <table>
+      <thead><tr><th>Profilo</th><th>Stake ETH</th><th>Skill certificate</th></tr></thead>
+      <tbody>
+      <tr>
+        <td>AI/Data expert</td>
+        <td>40</td>
+        <td>machineLearning + dataEngineering</td>
+      </tr>
+      <tr>
+        <td>Cloud/Security expert</td>
+        <td>40</td>
+        <td>cyberSecurity + cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>FinTech/Web3 expert</td>
+        <td>40</td>
+        <td>blockchain + startupFinance</td>
+      </tr>
+      <tr>
+        <td>Enterprise architect</td>
+        <td>40</td>
+        <td>softwareArchitecture + cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>Cross-domain engineer</td>
+        <td>40</td>
+        <td>distributedSystems + cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>No certified skill</td>
+        <td>40</td>
+        <td>nessuna</td>
+      </tr></tbody>
+    </table>
+  </div>
   <div class="chart">
-    <svg viewBox="0 0 1120 620" role="img" aria-label="Grafico 3 - Sensitivity al topic">
+    <svg viewBox="0 0 1120 640" role="img" aria-label="Grafico 3 - Sensitivity al topic">
       <rect x="92" y="10" width="12" height="12" fill="#2f80ed"></rect><text class="bar-label" x="110" y="21">AI & Data</text><rect x="210" y="10" width="12" height="12" fill="#00a6a6"></rect><text class="bar-label" x="228" y="21">Cloud & Cyber</text><rect x="328" y="10" width="12" height="12" fill="#27ae60"></rect><text class="bar-label" x="346" y="21">FinTech & Blockchain</text><rect x="446" y="10" width="12" height="12" fill="#f2994a"></rect><text class="bar-label" x="464" y="21">Enterprise Software</text>
-      <line class="axis" x1="92" y1="32" x2="1096" y2="32"></line>
       
-    <text class="bar-label" x="0" y="83">AI/Data expert</text>
-    <rect x="92" y="48" width="898" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="995" y="58">57.50 VP</text>
-    <rect x="92" y="63" width="507.5652173913043" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="604.5652173913043" y="73">32.50 VP</text>
-    <rect x="92" y="78" width="468.52173913043475" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="565.5217391304348" y="88">30.00 VP</text>
-    <rect x="92" y="93" width="585.6521739130435" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="682.6521739130435" y="103">37.50 VP</text>
-    <text class="bar-label" x="0" y="171">Cloud/Security expert</text>
-    <rect x="92" y="136" width="546.608695652174" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="643.608695652174" y="146">35.00 VP</text>
-    <rect x="92" y="151" width="898" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="995" y="161">57.50 VP</text>
-    <rect x="92" y="166" width="663.7391304347825" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="760.7391304347825" y="176">42.50 VP</text>
-    <rect x="92" y="181" width="702.7826086956522" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="799.7826086956522" y="191">45.00 VP</text>
-    <text class="bar-label" x="0" y="259">FinTech/Web3 expert</text>
-    <rect x="92" y="224" width="468.52173913043475" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="565.5217391304348" y="234">30.00 VP</text>
-    <rect x="92" y="239" width="507.5652173913043" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="604.5652173913043" y="249">32.50 VP</text>
-    <rect x="92" y="254" width="898" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="995" y="264">57.50 VP</text>
-    <rect x="92" y="269" width="624.695652173913" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="721.695652173913" y="279">40.00 VP</text>
-    <text class="bar-label" x="0" y="347">Enterprise architect</text>
-    <rect x="92" y="312" width="546.608695652174" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="643.608695652174" y="322">35.00 VP</text>
-    <rect x="92" y="327" width="741.8260869565217" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="838.8260869565217" y="337">47.50 VP</text>
-    <rect x="92" y="342" width="624.695652173913" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="721.695652173913" y="352">40.00 VP</text>
-    <rect x="92" y="357" width="898" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="995" y="367">57.50 VP</text>
-    <text class="bar-label" x="0" y="435">Cross-domain engineer</text>
-    <rect x="92" y="400" width="585.6521739130435" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="682.6521739130435" y="410">37.50 VP</text>
-    <rect x="92" y="415" width="780.8695652173913" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="877.8695652173913" y="425">50.00 VP</text>
-    <rect x="92" y="430" width="663.7391304347825" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="760.7391304347825" y="440">42.50 VP</text>
-    <rect x="92" y="445" width="780.8695652173913" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="877.8695652173913" y="455">50.00 VP</text>
-    <text class="bar-label" x="0" y="523">No certified skill</text>
-    <rect x="92" y="488" width="312.3478260869565" height="11" fill="#2f80ed"></rect>
-    <text class="bar-label" x="409.3478260869565" y="498">20.00 VP</text>
-    <rect x="92" y="503" width="312.3478260869565" height="11" fill="#00a6a6"></rect>
-    <text class="bar-label" x="409.3478260869565" y="513">20.00 VP</text>
-    <rect x="92" y="518" width="312.3478260869565" height="11" fill="#27ae60"></rect>
-    <text class="bar-label" x="409.3478260869565" y="528">20.00 VP</text>
-    <rect x="92" y="533" width="312.3478260869565" height="11" fill="#f2994a"></rect>
-    <text class="bar-label" x="409.3478260869565" y="543">20.00 VP</text>
+    <text class="bar-label" x="0" y="69">AI/Data expert</text>
+    <rect x="92" y="34" width="860.5833333333334" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="957.5833333333334" y="44">57.50 VP</text>
+    <rect x="92" y="49" width="486.41666666666663" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="583.4166666666666" y="59">32.50 VP</text>
+    <rect x="92" y="64" width="449" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="546" y="74">30.00 VP</text>
+    <rect x="92" y="79" width="561.25" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="658.25" y="89">37.50 VP</text>
+    <text class="bar-label" x="0" y="157">Cloud/Security expert</text>
+    <rect x="92" y="122" width="523.8333333333334" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="620.8333333333334" y="132">35.00 VP</text>
+    <rect x="92" y="137" width="860.5833333333334" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="957.5833333333334" y="147">57.50 VP</text>
+    <rect x="92" y="152" width="636.0833333333334" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="733.0833333333334" y="162">42.50 VP</text>
+    <rect x="92" y="167" width="673.5" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="770.5" y="177">45.00 VP</text>
+    <text class="bar-label" x="0" y="245">FinTech/Web3 expert</text>
+    <rect x="92" y="210" width="449" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="546" y="220">30.00 VP</text>
+    <rect x="92" y="225" width="486.41666666666663" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="583.4166666666666" y="235">32.50 VP</text>
+    <rect x="92" y="240" width="860.5833333333334" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="957.5833333333334" y="250">57.50 VP</text>
+    <rect x="92" y="255" width="598.6666666666666" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="695.6666666666666" y="265">40.00 VP</text>
+    <text class="bar-label" x="0" y="333">Enterprise architect</text>
+    <rect x="92" y="298" width="523.8333333333334" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="620.8333333333334" y="308">35.00 VP</text>
+    <rect x="92" y="313" width="710.9166666666666" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="807.9166666666666" y="323">47.50 VP</text>
+    <rect x="92" y="328" width="598.6666666666666" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="695.6666666666666" y="338">40.00 VP</text>
+    <rect x="92" y="343" width="860.5833333333334" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="957.5833333333334" y="353">57.50 VP</text>
+    <text class="bar-label" x="0" y="421">Cross-domain engineer</text>
+    <rect x="92" y="386" width="561.25" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="658.25" y="396">37.50 VP</text>
+    <rect x="92" y="401" width="748.3333333333334" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="845.3333333333334" y="411">50.00 VP</text>
+    <rect x="92" y="416" width="636.0833333333334" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="733.0833333333334" y="426">42.50 VP</text>
+    <rect x="92" y="431" width="748.3333333333334" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="845.3333333333334" y="441">50.00 VP</text>
+    <text class="bar-label" x="0" y="509">No certified skill</text>
+    <rect x="92" y="474" width="299.3333333333333" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="396.3333333333333" y="484">20.00 VP</text>
+    <rect x="92" y="489" width="299.3333333333333" height="11" fill="#00a6a6"></rect>
+    <text class="bar-label" x="396.3333333333333" y="499">20.00 VP</text>
+    <rect x="92" y="504" width="299.3333333333333" height="11" fill="#27ae60"></rect>
+    <text class="bar-label" x="396.3333333333333" y="514">20.00 VP</text>
+    <rect x="92" y="519" width="299.3333333333333" height="11" fill="#f2994a"></rect>
+    <text class="bar-label" x="396.3333333333333" y="529">20.00 VP</text>
+      
+      <line class="axis" x1="92" y1="604" x2="990" y2="604"></line>
+      <text class="axis-title" x="990" y="640" text-anchor="end">VP</text>
+      
+      <line class="tick" x1="92" y1="600" x2="92" y2="608"></line>
+      <text class="bar-label" x="92" y="622" text-anchor="start">0</text>
+      <line class="tick" x1="391.3333333333333" y1="600" x2="391.3333333333333" y2="608"></line>
+      <text class="bar-label" x="391.3333333333333" y="622" text-anchor="middle">20</text>
+      <line class="tick" x1="690.6666666666666" y1="600" x2="690.6666666666666" y2="608"></line>
+      <text class="bar-label" x="690.6666666666666" y="622" text-anchor="middle">40</text>
+      <line class="tick" x1="990" y1="600" x2="990" y2="608"></line>
+      <text class="bar-label" x="990" y="622" text-anchor="end">60</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Grafico 4 - Sensitivity dei pesi: whale vs esperti</h2>
+  <div class="context">
+    <h3>Input sensitivity analysis</h3>
+    <p>Stesso dataset whale/expert e stesso topic AI & Data. Il grafico condensa la quota del whale e la quota aggregata dei tre esperti al variare dei pesi.</p>
+    <div class="context-grid"><div class="metric"><b>Topic</b>AI & Data</div><div class="metric"><b>Pesi</b>100/0, 75/25, 50/50, 25/75, 0/100</div><div class="metric"><b>Output</b>Quota percentuale sul voting power totale del gruppo.</div></div>
+    <table>
+      <thead><tr><th>Profilo</th><th>Stake ETH</th><th>Skill certificate</th></tr></thead>
+      <tbody>
+      <tr>
+        <td>Whale</td>
+        <td>60</td>
+        <td>blockchain</td>
+      </tr>
+      <tr>
+        <td>Expert A</td>
+        <td>10</td>
+        <td>machineLearning + dataEngineering</td>
+      </tr>
+      <tr>
+        <td>Expert B</td>
+        <td>10</td>
+        <td>machineLearning</td>
+      </tr>
+      <tr>
+        <td>Expert C</td>
+        <td>5</td>
+        <td>dataEngineering + distributedSystems</td>
+      </tr>
+      <tr>
+        <td>Other 1</td>
+        <td>5</td>
+        <td>softwareArchitecture</td>
+      </tr>
+      <tr>
+        <td>Other 2</td>
+        <td>4</td>
+        <td>cloudArchitecture</td>
+      </tr>
+      <tr>
+        <td>Other 3</td>
+        <td>3</td>
+        <td>startupFinance</td>
+      </tr>
+      <tr>
+        <td>Other 4</td>
+        <td>2</td>
+        <td>cyberSecurity</td>
+      </tr>
+      <tr>
+        <td>Other 5</td>
+        <td>1</td>
+        <td>nessuna</td>
+      </tr>
+      <tr>
+        <td>Other 6</td>
+        <td>1</td>
+        <td>blockchain</td>
+      </tr></tbody>
+    </table>
+  </div>
+  <div class="chart">
+    <svg viewBox="0 0 1120 552" role="img" aria-label="Grafico 4 - Sensitivity dei pesi: whale vs esperti">
+      <rect x="92" y="10" width="12" height="12" fill="#c7522a"></rect><text class="bar-label" x="110" y="21">Whale</text><rect x="210" y="10" width="12" height="12" fill="#2f80ed"></rect><text class="bar-label" x="228" y="21">Expert A+B+C</text>
+      
+    <text class="bar-label" x="0" y="69">100%/0%</text>
+    <rect x="92" y="34" width="666.87725" height="11" fill="#c7522a"></rect>
+    <text class="bar-label" x="763.87725" y="44">59.41 %</text>
+    <rect x="92" y="49" width="277.81875" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="374.81875" y="59">24.75 %</text>
+    <text class="bar-label" x="0" y="157">75%/25%</text>
+    <rect x="92" y="122" width="389.61975" height="11" fill="#c7522a"></rect>
+    <text class="bar-label" x="486.61975" y="132">34.71 %</text>
+    <rect x="92" y="137" width="495.02250000000004" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="592.0225" y="147">44.10 %</text>
+    <text class="bar-label" x="0" y="245">50%/50%</text>
+    <rect x="92" y="210" width="220.459" height="11" fill="#c7522a"></rect>
+    <text class="bar-label" x="317.459" y="220">19.64 %</text>
+    <rect x="92" y="225" width="627.4775" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="724.4775" y="235">55.90 %</text>
+    <text class="bar-label" x="0" y="333">25%/75%</text>
+    <rect x="92" y="298" width="106.41300000000001" height="11" fill="#c7522a"></rect>
+    <text class="bar-label" x="203.413" y="308">9.48 %</text>
+    <rect x="92" y="313" width="716.71625" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="813.71625" y="323">63.85 %</text>
+    <text class="bar-label" x="0" y="421">0%/100%</text>
+    <rect x="92" y="386" width="24.358249999999998" height="11" fill="#c7522a"></rect>
+    <text class="bar-label" x="121.35825" y="396">2.17 %</text>
+    <rect x="92" y="401" width="780.9232499999999" height="11" fill="#2f80ed"></rect>
+    <text class="bar-label" x="877.9232499999999" y="411">69.57 %</text>
+      
+      <line class="axis" x1="92" y1="516" x2="990" y2="516"></line>
+      <text class="axis-title" x="990" y="552" text-anchor="end">%</text>
+      
+      <line class="tick" x1="92" y1="512" x2="92" y2="520"></line>
+      <text class="bar-label" x="92" y="534" text-anchor="start">0</text>
+      <line class="tick" x1="316.5" y1="512" x2="316.5" y2="520"></line>
+      <text class="bar-label" x="316.5" y="534" text-anchor="middle">20</text>
+      <line class="tick" x1="541" y1="512" x2="541" y2="520"></line>
+      <text class="bar-label" x="541" y="534" text-anchor="middle">40</text>
+      <line class="tick" x1="765.5" y1="512" x2="765.5" y2="520"></line>
+      <text class="bar-label" x="765.5" y="534" text-anchor="middle">60</text>
+      <line class="tick" x1="990" y1="512" x2="990" y2="520"></line>
+      <text class="bar-label" x="990" y="534" text-anchor="end">80</text>
     </svg>
   </div>
 </section>

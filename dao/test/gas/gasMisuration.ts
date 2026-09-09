@@ -402,40 +402,96 @@ function gasChartsHtml(
     .chart { width: 100%; max-width: 1040px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; }
     .bar-label { font-size: 12px; fill: #26323f; }
     .axis { stroke: #9aa8b5; stroke-width: 1; }
+    .tick { stroke: #c8d2dc; stroke-width: 1; }
+    .grid { stroke: #edf1f5; stroke-width: 1; }
+    .axis-title { font-size: 12px; font-weight: 700; fill: #26323f; }
   </style>
 </head>
 <body>
   <h1>Misurazioni gas V3 Topic-Based DAO</h1>
-  ${singleBarChart('Gas per fase del flow principale', flowSummary.map(row => ({ label: row.phase, value: Number(row.totalGas), suffix: 'gas' })))}
-  ${singleBarChart('Costi aggregati', aggregateRows.slice(0, 3).map(row => ({ label: row.metric, value: Number(row.gas), suffix: 'gas' })))}
-  ${singleBarChart('Scalabilita upgradeSkillWithVC', scalability.map(row => ({ label: `${row.skillCount} skill`, value: Number(row.upgradeGas), suffix: 'gas' })))}
+  ${singleBarChart('Gas per fase del flow principale', flowSummary.map(row => ({ label: row.phase, value: Number(row.totalGas), suffix: 'gas' })), '#2f80ed')}
+  ${singleBarChart('Costo USD per fase del flow principale', flowSummary.map(row => ({ label: row.phase, value: usdNumber(row.totalUsd), suffix: 'USD' })), '#5b8e7d')}
+  ${singleBarChart('Costi aggregati', aggregateRows.slice(0, 3).map(row => ({ label: row.metric, value: Number(row.gas), suffix: 'gas' })), '#2f80ed')}
+  ${singleBarChart('Costo USD aggregato', aggregateRows.slice(0, 3).map(row => ({ label: row.metric, value: usdNumber(row.usd), suffix: 'USD' })), '#5b8e7d')}
+  ${singleBarChart('Scalabilita reale upgradeSkillWithVC', scalability.map(row => ({ label: `${row.skillCount} skill`, value: Number(row.upgradeGas), suffix: 'gas' })), '#2f80ed')}
+  ${singleBarChart('Incremento marginale gas rispetto al caso precedente', marginalRows(scalability).map(row => ({ label: row.label, value: row.value, suffix: 'gas' })), '#c7522a')}
 </body>
 </html>`;
 }
-function singleBarChart(title: string, rows: { label: string; value: number; suffix: string }[]) {
+function usdNumber(value: string): number {
+    return Number(value.replace('$', '').replace('< .0001', '0.0001'));
+}
+function marginalRows(scalability: ExportScalabilityRow[]) {
+    return scalability.map((row, i) => {
+        if (i === 0) return { label: `${row.skillCount} skill`, value: 0 };
+        const previous = BigInt(scalability[i - 1].upgradeGas);
+        return {
+            label: `${scalability[i - 1].skillCount}->${row.skillCount} skill`,
+            value: Number(BigInt(row.upgradeGas) - previous),
+        };
+    }).filter(row => row.value > 0);
+}
+function singleBarChart(title: string, rows: { label: string; value: number; suffix: string }[], color: string) {
     const width = 1040;
-    const height = 70 + rows.length * 38;
+    const height = 88 + rows.length * 38;
     const labelWidth = 230;
     const plotWidth = width - labelWidth - 130;
-    const max = Math.max(...rows.map(row => row.value), 1);
+    const scaleMax = niceAxisMax(Math.max(...rows.map(row => row.value), 1));
+    const axisY = 44 + rows.length * 38;
     const bars = rows.map((row, i) => {
-        const y = 42 + i * 38;
-        const barWidth = (row.value / max) * plotWidth;
+        const y = 24 + i * 38;
+        const barWidth = (row.value / scaleMax) * plotWidth;
         return `
       <text class="bar-label" x="0" y="${y + 13}">${row.label}</text>
-      <rect x="${labelWidth}" y="${y}" width="${barWidth}" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="${labelWidth + barWidth + 6}" y="${y + 13}">${row.value.toLocaleString('it-IT')} ${row.suffix}</text>`;
+      <rect x="${labelWidth}" y="${y}" width="${barWidth}" height="16" fill="${color}"></rect>
+      <text class="bar-label" x="${labelWidth + barWidth + 6}" y="${y + 13}">${formatChartValue(row.value)} ${row.suffix}</text>`;
     }).join('');
 
     return `<section>
   <h2>${title}</h2>
   <div class="chart">
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">
-      <line class="axis" x1="${labelWidth}" y1="28" x2="${width - 24}" y2="28"></line>
       ${bars}
+      ${chartAxis(labelWidth, axisY, plotWidth, scaleMax, rows[0]?.suffix ?? '')}
     </svg>
   </div>
 </section>`;
+}
+function formatChartValue(value: number): string {
+    if (!Number.isInteger(value)) return value.toLocaleString('it-IT', { maximumFractionDigits: 2 });
+    return value.toLocaleString('it-IT');
+}
+function chartAxis(x: number, y: number, width: number, max: number, suffix: string) {
+    const step = niceTickStep(max);
+    const ticks = Math.ceil(max / step);
+    const lines = Array.from({ length: ticks + 1 }, (_, i) => {
+        const value = step * i;
+        const tx = x + (value / max) * width;
+        return `
+      <line class="tick" x1="${tx}" y1="${y - 4}" x2="${tx}" y2="${y + 4}"></line>
+      <text class="bar-label" x="${tx}" y="${y + 18}" text-anchor="${i === 0 ? 'start' : i === ticks ? 'end' : 'middle'}">${formatAxisValue(value)}</text>`;
+    }).join('');
+    return `
+      <line class="axis" x1="${x}" y1="${y}" x2="${x + width}" y2="${y}"></line>
+      <text class="axis-title" x="${x + width}" y="${y + 36}" text-anchor="end">${suffix}</text>
+      ${lines}`;
+}
+function niceAxisMax(max: number) {
+    const step = niceTickStep(max);
+    return step * Math.ceil(max / step);
+}
+function niceTickStep(max: number) {
+    const rough = max / 5;
+    const magnitude = 10 ** Math.floor(Math.log10(rough));
+    const normalized = rough / magnitude;
+    const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+    return nice * magnitude;
+}
+function formatAxisValue(value: number): string {
+    if (value >= 1_000_000) return (value / 1_000_000).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + 'M';
+    if (value >= 1_000) return Math.round(value / 1_000).toLocaleString('it-IT') + 'k';
+    if (value >= 100) return Math.round(value).toLocaleString('it-IT');
+    return value.toLocaleString('it-IT', { maximumFractionDigits: 2 });
 }
 
 // ── Fixture di deploy ────────────────────────────────────────────────────────

@@ -10,6 +10,9 @@
     .chart { width: 100%; max-width: 1040px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; }
     .bar-label { font-size: 12px; fill: #26323f; }
     .axis { stroke: #9aa8b5; stroke-width: 1; }
+    .tick { stroke: #c8d2dc; stroke-width: 1; }
+    .grid { stroke: #edf1f5; stroke-width: 1; }
+    .axis-title { font-size: 12px; font-weight: 700; fill: #26323f; }
   </style>
 </head>
 <body>
@@ -17,75 +20,233 @@
   <section>
   <h2>Gas per fase del flow principale</h2>
   <div class="chart">
-    <svg viewBox="0 0 1040 374" role="img" aria-label="Gas per fase del flow principale">
-      <line class="axis" x1="230" y1="28" x2="1016" y2="28"></line>
+    <svg viewBox="0 0 1040 392" role="img" aria-label="Gas per fase del flow principale">
       
-      <text class="bar-label" x="0" y="55">Join DAO</text>
-      <rect x="230" y="42" width="252.56235569252723" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="488.56235569252726" y="55">1.499.225 gas</text>
-      <text class="bar-label" x="0" y="93">Delegate</text>
-      <rect x="230" y="80" width="161.08634170027648" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="397.0863417002765" y="93">956.218 gas</text>
-      <text class="bar-label" x="0" y="131">Register DID</text>
-      <rect x="230" y="118" width="125.73359230228019" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="361.73359230228016" y="131">746.362 gas</text>
-      <text class="bar-label" x="0" y="169">Upgrade skill with VC</text>
-      <rect x="230" y="156" width="680" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="916" y="169">4.036.520 gas</text>
-      <text class="bar-label" x="0" y="207">Propose with topic</text>
-      <rect x="230" y="194" width="16.271739022722542" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="252.27173902272256" y="207">96.590 gas</text>
-      <text class="bar-label" x="0" y="245">Cast vote</text>
-      <rect x="230" y="232" width="194.74773319592123" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="430.7477331959212" y="245">1.156.034 gas</text>
-      <text class="bar-label" x="0" y="283">Queue</text>
-      <rect x="230" y="270" width="29.422383637390624" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="265.4223836373906" y="283">174.653 gas</text>
-      <text class="bar-label" x="0" y="321">Execute</text>
-      <rect x="230" y="308" width="36.64299941533796" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="272.64299941533795" y="321">217.515 gas</text>
+      <text class="bar-label" x="0" y="37">Join DAO</text>
+      <rect x="230" y="24" width="203.94764" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="439.94764" y="37">1.499.615 gas</text>
+      <text class="bar-label" x="0" y="75">Delegate</text>
+      <rect x="230" y="62" width="130.045648" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="366.045648" y="75">956.218 gas</text>
+      <text class="bar-label" x="0" y="113">Register DID</text>
+      <rect x="230" y="100" width="101.505232" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="337.505232" y="113">746.362 gas</text>
+      <text class="bar-label" x="0" y="151">Upgrade skill with VC</text>
+      <rect x="230" y="138" width="548.96672" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="784.96672" y="151">4.036.520 gas</text>
+      <text class="bar-label" x="0" y="189">Propose with topic</text>
+      <rect x="230" y="176" width="13.136239999999999" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="249.13624" y="189">96.590 gas</text>
+      <text class="bar-label" x="0" y="227">Cast vote</text>
+      <rect x="230" y="214" width="157.220624" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="393.220624" y="227">1.156.034 gas</text>
+      <text class="bar-label" x="0" y="265">Queue</text>
+      <rect x="230" y="252" width="23.752807999999998" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="259.75280799999996" y="265">174.653 gas</text>
+      <text class="bar-label" x="0" y="303">Execute</text>
+      <rect x="230" y="290" width="29.58204" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="265.58204" y="303">217.515 gas</text>
+      
+      <line class="axis" x1="230" y1="348" x2="910" y2="348"></line>
+      <text class="axis-title" x="910" y="384" text-anchor="end">gas</text>
+      
+      <line class="tick" x1="230" y1="344" x2="230" y2="352"></line>
+      <text class="bar-label" x="230" y="366" text-anchor="start">0</text>
+      <line class="tick" x1="366" y1="344" x2="366" y2="352"></line>
+      <text class="bar-label" x="366" y="366" text-anchor="middle">1M</text>
+      <line class="tick" x1="502" y1="344" x2="502" y2="352"></line>
+      <text class="bar-label" x="502" y="366" text-anchor="middle">2M</text>
+      <line class="tick" x1="638" y1="344" x2="638" y2="352"></line>
+      <text class="bar-label" x="638" y="366" text-anchor="middle">3M</text>
+      <line class="tick" x1="774" y1="344" x2="774" y2="352"></line>
+      <text class="bar-label" x="774" y="366" text-anchor="middle">4M</text>
+      <line class="tick" x1="910" y1="344" x2="910" y2="352"></line>
+      <text class="bar-label" x="910" y="366" text-anchor="end">5M</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Costo USD per fase del flow principale</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1040 392" role="img" aria-label="Costo USD per fase del flow principale">
+      
+      <text class="bar-label" x="0" y="37">Join DAO</text>
+      <rect x="230" y="24" width="185.41333333333333" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="421.4133333333333" y="37">4,09 USD</text>
+      <text class="bar-label" x="0" y="75">Delegate</text>
+      <rect x="230" y="62" width="117.86666666666667" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="353.8666666666667" y="75">2,6 USD</text>
+      <text class="bar-label" x="0" y="113">Register DID</text>
+      <rect x="230" y="100" width="92.02666666666667" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="328.02666666666664" y="113">2,03 USD</text>
+      <text class="bar-label" x="0" y="151">Upgrade skill with VC</text>
+      <rect x="230" y="138" width="498.66666666666663" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="734.6666666666666" y="151">11 USD</text>
+      <text class="bar-label" x="0" y="189">Propose with topic</text>
+      <rect x="230" y="176" width="11.9272" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="247.9272" y="189">0,26 USD</text>
+      <text class="bar-label" x="0" y="227">Cast vote</text>
+      <rect x="230" y="214" width="142.79999999999998" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="378.79999999999995" y="227">3,15 USD</text>
+      <text class="bar-label" x="0" y="265">Queue</text>
+      <rect x="230" y="252" width="21.569599999999998" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="257.56960000000004" y="265">0,48 USD</text>
+      <text class="bar-label" x="0" y="303">Execute</text>
+      <rect x="230" y="290" width="26.86" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="262.86" y="303">0,59 USD</text>
+      
+      <line class="axis" x1="230" y1="348" x2="910" y2="348"></line>
+      <text class="axis-title" x="910" y="384" text-anchor="end">USD</text>
+      
+      <line class="tick" x1="230" y1="344" x2="230" y2="352"></line>
+      <text class="bar-label" x="230" y="366" text-anchor="start">0</text>
+      <line class="tick" x1="456.66666666666663" y1="344" x2="456.66666666666663" y2="352"></line>
+      <text class="bar-label" x="456.66666666666663" y="366" text-anchor="middle">5</text>
+      <line class="tick" x1="683.3333333333333" y1="344" x2="683.3333333333333" y2="352"></line>
+      <text class="bar-label" x="683.3333333333333" y="366" text-anchor="middle">10</text>
+      <line class="tick" x1="910" y1="344" x2="910" y2="352"></line>
+      <text class="bar-label" x="910" y="366" text-anchor="end">15</text>
     </svg>
   </div>
 </section>
   <section>
   <h2>Costi aggregati</h2>
   <div class="chart">
-    <svg viewBox="0 0 1040 184" role="img" aria-label="Costi aggregati">
-      <line class="axis" x1="230" y1="28" x2="1016" y2="28"></line>
+    <svg viewBox="0 0 1040 202" role="img" aria-label="Costi aggregati">
       
-      <text class="bar-label" x="0" y="55">10 Member Activation Cost</text>
-      <rect x="230" y="42" width="554.0916549900221" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="790.0916549900221" y="55">7.238.325 gas</text>
-      <text class="bar-label" x="0" y="93">Governance Cycle Cost</text>
-      <rect x="230" y="80" width="125.90834500997792" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="361.9083450099779" y="93">1.644.792 gas</text>
-      <text class="bar-label" x="0" y="131">Total Gas</text>
-      <rect x="230" y="118" width="680" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="916" y="131">8.883.117 gas</text>
+      <text class="bar-label" x="0" y="37">10 Member Activation Cost</text>
+      <rect x="230" y="24" width="492.23262" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="728.23262" y="37">7.238.715 gas</text>
+      <text class="bar-label" x="0" y="75">Governance Cycle Cost</text>
+      <rect x="230" y="62" width="111.845856" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="347.845856" y="75">1.644.792 gas</text>
+      <text class="bar-label" x="0" y="113">Total Gas</text>
+      <rect x="230" y="100" width="604.078476" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="840.078476" y="113">8.883.507 gas</text>
+      
+      <line class="axis" x1="230" y1="158" x2="910" y2="158"></line>
+      <text class="axis-title" x="910" y="194" text-anchor="end">gas</text>
+      
+      <line class="tick" x1="230" y1="154" x2="230" y2="162"></line>
+      <text class="bar-label" x="230" y="176" text-anchor="start">0</text>
+      <line class="tick" x1="366" y1="154" x2="366" y2="162"></line>
+      <text class="bar-label" x="366" y="176" text-anchor="middle">2M</text>
+      <line class="tick" x1="502" y1="154" x2="502" y2="162"></line>
+      <text class="bar-label" x="502" y="176" text-anchor="middle">4M</text>
+      <line class="tick" x1="638" y1="154" x2="638" y2="162"></line>
+      <text class="bar-label" x="638" y="176" text-anchor="middle">6M</text>
+      <line class="tick" x1="774" y1="154" x2="774" y2="162"></line>
+      <text class="bar-label" x="774" y="176" text-anchor="middle">8M</text>
+      <line class="tick" x1="910" y1="154" x2="910" y2="162"></line>
+      <text class="bar-label" x="910" y="176" text-anchor="end">10M</text>
     </svg>
   </div>
 </section>
   <section>
-  <h2>Scalabilita upgradeSkillWithVC</h2>
+  <h2>Costo USD aggregato</h2>
   <div class="chart">
-    <svg viewBox="0 0 1040 260" role="img" aria-label="Scalabilita upgradeSkillWithVC">
-      <line class="axis" x1="230" y1="28" x2="1016" y2="28"></line>
+    <svg viewBox="0 0 1040 202" role="img" aria-label="Costo USD aggregato">
       
-      <text class="bar-label" x="0" y="55">1 skill</text>
-      <rect x="230" y="42" width="642.9729542984805" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="878.9729542984805" y="55">451.593 gas</text>
-      <text class="bar-label" x="0" y="93">2 skill</text>
-      <rect x="230" y="80" width="648.178325331502" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="884.178325331502" y="93">455.249 gas</text>
-      <text class="bar-label" x="0" y="131">4 skill</text>
-      <rect x="230" y="118" width="658.799788106759" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="894.799788106759" y="131">462.709 gas</text>
-      <text class="bar-label" x="0" y="169">6 skill</text>
-      <rect x="230" y="156" width="668.4075134160666" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="904.4075134160666" y="169">469.457 gas</text>
-      <text class="bar-label" x="0" y="207">8 skill</text>
-      <rect x="230" y="194" width="680" height="16" fill="#2f80ed"></rect>
-      <text class="bar-label" x="916" y="207">477.599 gas</text>
+      <text class="bar-label" x="0" y="37">10 Member Activation Cost</text>
+      <rect x="230" y="24" width="536.384" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="772.384" y="37">19,72 USD</text>
+      <text class="bar-label" x="0" y="75">Governance Cycle Cost</text>
+      <rect x="230" y="62" width="121.85600000000002" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="357.856" y="75">4,48 USD</text>
+      <text class="bar-label" x="0" y="113">Total Gas</text>
+      <rect x="230" y="100" width="658.24" height="16" fill="#5b8e7d"></rect>
+      <text class="bar-label" x="894.24" y="113">24,2 USD</text>
+      
+      <line class="axis" x1="230" y1="158" x2="910" y2="158"></line>
+      <text class="axis-title" x="910" y="194" text-anchor="end">USD</text>
+      
+      <line class="tick" x1="230" y1="154" x2="230" y2="162"></line>
+      <text class="bar-label" x="230" y="176" text-anchor="start">0</text>
+      <line class="tick" x1="366" y1="154" x2="366" y2="162"></line>
+      <text class="bar-label" x="366" y="176" text-anchor="middle">5</text>
+      <line class="tick" x1="502" y1="154" x2="502" y2="162"></line>
+      <text class="bar-label" x="502" y="176" text-anchor="middle">10</text>
+      <line class="tick" x1="638" y1="154" x2="638" y2="162"></line>
+      <text class="bar-label" x="638" y="176" text-anchor="middle">15</text>
+      <line class="tick" x1="774" y1="154" x2="774" y2="162"></line>
+      <text class="bar-label" x="774" y="176" text-anchor="middle">20</text>
+      <line class="tick" x1="910" y1="154" x2="910" y2="162"></line>
+      <text class="bar-label" x="910" y="176" text-anchor="end">25</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Scalabilita reale upgradeSkillWithVC</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1040 278" role="img" aria-label="Scalabilita reale upgradeSkillWithVC">
+      
+      <text class="bar-label" x="0" y="37">1 skill</text>
+      <rect x="230" y="24" width="614.16648" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="850.16648" y="37">451.593 gas</text>
+      <text class="bar-label" x="0" y="75">2 skill</text>
+      <rect x="230" y="62" width="619.13864" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="855.13864" y="75">455.249 gas</text>
+      <text class="bar-label" x="0" y="113">4 skill</text>
+      <rect x="230" y="100" width="629.28424" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="865.28424" y="113">462.709 gas</text>
+      <text class="bar-label" x="0" y="151">6 skill</text>
+      <rect x="230" y="138" width="638.4615200000001" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="874.4615200000001" y="151">469.457 gas</text>
+      <text class="bar-label" x="0" y="189">8 skill</text>
+      <rect x="230" y="176" width="649.53464" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="885.53464" y="189">477.599 gas</text>
+      
+      <line class="axis" x1="230" y1="234" x2="910" y2="234"></line>
+      <text class="axis-title" x="910" y="270" text-anchor="end">gas</text>
+      
+      <line class="tick" x1="230" y1="230" x2="230" y2="238"></line>
+      <text class="bar-label" x="230" y="252" text-anchor="start">0</text>
+      <line class="tick" x1="366" y1="230" x2="366" y2="238"></line>
+      <text class="bar-label" x="366" y="252" text-anchor="middle">100k</text>
+      <line class="tick" x1="502" y1="230" x2="502" y2="238"></line>
+      <text class="bar-label" x="502" y="252" text-anchor="middle">200k</text>
+      <line class="tick" x1="638" y1="230" x2="638" y2="238"></line>
+      <text class="bar-label" x="638" y="252" text-anchor="middle">300k</text>
+      <line class="tick" x1="774" y1="230" x2="774" y2="238"></line>
+      <text class="bar-label" x="774" y="252" text-anchor="middle">400k</text>
+      <line class="tick" x1="910" y1="230" x2="910" y2="238"></line>
+      <text class="bar-label" x="910" y="252" text-anchor="end">500k</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Incremento marginale gas rispetto al caso precedente</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1040 240" role="img" aria-label="Incremento marginale gas rispetto al caso precedente">
+      
+      <text class="bar-label" x="0" y="37">1->2 skill</text>
+      <rect x="230" y="24" width="248.60799999999998" height="16" fill="#c7522a"></rect>
+      <text class="bar-label" x="484.60799999999995" y="37">3656 gas</text>
+      <text class="bar-label" x="0" y="75">2->4 skill</text>
+      <rect x="230" y="62" width="507.28" height="16" fill="#c7522a"></rect>
+      <text class="bar-label" x="743.28" y="75">7460 gas</text>
+      <text class="bar-label" x="0" y="113">4->6 skill</text>
+      <rect x="230" y="100" width="458.864" height="16" fill="#c7522a"></rect>
+      <text class="bar-label" x="694.864" y="113">6748 gas</text>
+      <text class="bar-label" x="0" y="151">6->8 skill</text>
+      <rect x="230" y="138" width="553.6560000000001" height="16" fill="#c7522a"></rect>
+      <text class="bar-label" x="789.6560000000001" y="151">8142 gas</text>
+      
+      <line class="axis" x1="230" y1="196" x2="910" y2="196"></line>
+      <text class="axis-title" x="910" y="232" text-anchor="end">gas</text>
+      
+      <line class="tick" x1="230" y1="192" x2="230" y2="200"></line>
+      <text class="bar-label" x="230" y="214" text-anchor="start">0</text>
+      <line class="tick" x1="366" y1="192" x2="366" y2="200"></line>
+      <text class="bar-label" x="366" y="214" text-anchor="middle">2k</text>
+      <line class="tick" x1="502" y1="192" x2="502" y2="200"></line>
+      <text class="bar-label" x="502" y="214" text-anchor="middle">4k</text>
+      <line class="tick" x1="638" y1="192" x2="638" y2="200"></line>
+      <text class="bar-label" x="638" y="214" text-anchor="middle">6k</text>
+      <line class="tick" x1="774" y1="192" x2="774" y2="200"></line>
+      <text class="bar-label" x="774" y="214" text-anchor="middle">8k</text>
+      <line class="tick" x1="910" y1="192" x2="910" y2="200"></line>
+      <text class="bar-label" x="910" y="214" text-anchor="end">10k</text>
     </svg>
   </div>
 </section>

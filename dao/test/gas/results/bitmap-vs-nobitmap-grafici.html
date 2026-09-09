@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Bitmap vs no-bitmap - scalabilita gas</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #17202a; }
+    h1, h2 { margin: 0 0 16px; }
+    section { margin-bottom: 42px; }
+    .chart { width: 100%; max-width: 1120px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; overflow-x: auto; }
+    .label { font-size: 12px; fill: #26323f; }
+    .axis { stroke: #9aa8b5; stroke-width: 1; }
+    .tick { stroke: #c8d2dc; stroke-width: 1; }
+    .grid { stroke: #edf1f5; stroke-width: 1; }
+    .axis-title { font-size: 12px; font-weight: 700; fill: #26323f; }
+    .legend { display: flex; gap: 18px; margin: 0 0 12px; font-size: 13px; }
+    .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+  </style>
+</head>
+<body>
+  <h1>Bitmap vs no-bitmap - scalabilita gas</h1>
+  <section>
+  <h2>Gas per numero di skill</h2>
+  <div class="legend"><span><span class="swatch" style="background:#2f80ed"></span>Bitmap</span><span><span class="swatch" style="background:#c7522a"></span>No-bitmap</span></div>
+  <div class="chart">
+    <svg viewBox="0 0 1120 414" role="img" aria-label="Gas per numero di skill">
+      
+      <line class="axis" x1="150" y1="374" x2="960" y2="374"></line>
+      <text class="axis-title" x="960" y="410" text-anchor="end">gas</text>
+      
+      <line class="grid" x1="150" y1="18" x2="150" y2="374"></line>
+      <line class="tick" x1="150" y1="370" x2="150" y2="378"></line>
+      <text class="label" x="150" y="392" text-anchor="start">0</text>
+      <line class="grid" x1="352.5" y1="18" x2="352.5" y2="374"></line>
+      <line class="tick" x1="352.5" y1="370" x2="352.5" y2="378"></line>
+      <text class="label" x="352.5" y="392" text-anchor="middle">1M</text>
+      <line class="grid" x1="555" y1="18" x2="555" y2="374"></line>
+      <line class="tick" x1="555" y1="370" x2="555" y2="378"></line>
+      <text class="label" x="555" y="392" text-anchor="middle">2M</text>
+      <line class="grid" x1="757.5" y1="18" x2="757.5" y2="374"></line>
+      <line class="tick" x1="757.5" y1="370" x2="757.5" y2="378"></line>
+      <text class="label" x="757.5" y="392" text-anchor="middle">3M</text>
+      <line class="grid" x1="960" y1="18" x2="960" y2="374"></line>
+      <line class="tick" x1="960" y1="370" x2="960" y2="378"></line>
+      <text class="label" x="960" y="392" text-anchor="end">4M</text>
+      
+      <text class="label" x="0" y="48">1 skill</text>
+      <rect x="150" y="28" width="91.27161000000001" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="46" width="100.17918" height="14" fill="#c7522a"></rect>
+      <text class="label" x="247.27161" y="39">450.724 gas</text>
+      <text class="label" x="256.17918" y="57">494.712 gas</text>
+      <text class="label" x="0" y="94">2 skill</text>
+      <rect x="150" y="74" width="91.94411249999999" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="92" width="109.70559" height="14" fill="#c7522a"></rect>
+      <text class="label" x="247.9441125" y="85">454.045 gas</text>
+      <text class="label" x="265.70559000000003" y="103">541.756 gas</text>
+      <text class="label" x="0" y="140">4 skill</text>
+      <rect x="150" y="120" width="93.29418" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="138" width="128.761245" height="14" fill="#c7522a"></rect>
+      <text class="label" x="249.29417999999998" y="131">460.712 gas</text>
+      <text class="label" x="284.76124500000003" y="149">635.858 gas</text>
+      <text class="label" x="0" y="186">8 skill</text>
+      <rect x="150" y="166" width="96.0115275" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="184" width="166.88025000000002" height="14" fill="#c7522a"></rect>
+      <text class="label" x="252.0115275" y="177">474.131 gas</text>
+      <text class="label" x="322.88025000000005" y="195">824.100 gas</text>
+      <text class="label" x="0" y="232">16 skill</text>
+      <rect x="150" y="212" width="102.11892750000001" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="230" width="243.12575249999998" height="14" fill="#c7522a"></rect>
+      <text class="label" x="258.11892750000004" y="223">504.291 gas</text>
+      <text class="label" x="399.1257525" y="241">1.200.621 gas</text>
+      <text class="label" x="0" y="278">32 skill</text>
+      <rect x="150" y="258" width="114.79866750000001" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="276" width="395.6422725" height="14" fill="#c7522a"></rect>
+      <text class="label" x="270.7986675" y="269">566.907 gas</text>
+      <text class="label" x="551.6422725" y="287">1.953.789 gas</text>
+      <text class="label" x="0" y="324">64 skill</text>
+      <rect x="150" y="304" width="140.19540750000002" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="322" width="700.7388975" height="14" fill="#c7522a"></rect>
+      <text class="label" x="296.1954075" y="315">692.323 gas</text>
+      <text class="label" x="856.7388975" y="333">3.460.439 gas</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Costo USD per numero di skill</h2>
+  <div class="legend"><span><span class="swatch" style="background:#2f80ed"></span>Bitmap</span><span><span class="swatch" style="background:#c7522a"></span>No-bitmap</span></div>
+  <div class="chart">
+    <svg viewBox="0 0 1120 414" role="img" aria-label="Costo USD per numero di skill">
+      
+      <line class="axis" x1="150" y1="374" x2="960" y2="374"></line>
+      <text class="axis-title" x="960" y="410" text-anchor="end">USD</text>
+      
+      <line class="grid" x1="150" y1="18" x2="150" y2="374"></line>
+      <line class="tick" x1="150" y1="370" x2="150" y2="378"></line>
+      <text class="label" x="150" y="392" text-anchor="start">0</text>
+      <line class="grid" x1="312" y1="18" x2="312" y2="374"></line>
+      <line class="tick" x1="312" y1="370" x2="312" y2="378"></line>
+      <text class="label" x="312" y="392" text-anchor="middle">2</text>
+      <line class="grid" x1="474" y1="18" x2="474" y2="374"></line>
+      <line class="tick" x1="474" y1="370" x2="474" y2="378"></line>
+      <text class="label" x="474" y="392" text-anchor="middle">4</text>
+      <line class="grid" x1="636" y1="18" x2="636" y2="374"></line>
+      <line class="tick" x1="636" y1="370" x2="636" y2="378"></line>
+      <text class="label" x="636" y="392" text-anchor="middle">6</text>
+      <line class="grid" x1="798" y1="18" x2="798" y2="374"></line>
+      <line class="tick" x1="798" y1="370" x2="798" y2="378"></line>
+      <text class="label" x="798" y="392" text-anchor="middle">8</text>
+      <line class="grid" x1="960" y1="18" x2="960" y2="374"></line>
+      <line class="tick" x1="960" y1="370" x2="960" y2="378"></line>
+      <text class="label" x="960" y="392" text-anchor="end">10</text>
+      
+      <text class="label" x="0" y="48">1 skill</text>
+      <rect x="150" y="28" width="99.63" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="46" width="109.35000000000001" height="14" fill="#c7522a"></rect>
+      <text class="label" x="255.63" y="39">1,23 USD</text>
+      <text class="label" x="265.35" y="57">1,35 USD</text>
+      <text class="label" x="0" y="94">2 skill</text>
+      <rect x="150" y="74" width="100.44" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="92" width="119.88" height="14" fill="#c7522a"></rect>
+      <text class="label" x="256.44" y="85">1,24 USD</text>
+      <text class="label" x="275.88" y="103">1,48 USD</text>
+      <text class="label" x="0" y="140">4 skill</text>
+      <rect x="150" y="120" width="102.06" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="138" width="140.13" height="14" fill="#c7522a"></rect>
+      <text class="label" x="258.06" y="131">1,26 USD</text>
+      <text class="label" x="296.13" y="149">1,73 USD</text>
+      <text class="label" x="0" y="186">8 skill</text>
+      <rect x="150" y="166" width="104.49000000000001" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="184" width="181.44000000000003" height="14" fill="#c7522a"></rect>
+      <text class="label" x="260.49" y="177">1,29 USD</text>
+      <text class="label" x="337.44000000000005" y="195">2,24 USD</text>
+      <text class="label" x="0" y="232">16 skill</text>
+      <rect x="150" y="212" width="110.97000000000001" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="230" width="264.87" height="14" fill="#c7522a"></rect>
+      <text class="label" x="266.97" y="223">1,37 USD</text>
+      <text class="label" x="420.87" y="241">3,27 USD</text>
+      <text class="label" x="0" y="278">32 skill</text>
+      <rect x="150" y="258" width="124.74" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="276" width="430.92" height="14" fill="#c7522a"></rect>
+      <text class="label" x="280.74" y="269">1,54 USD</text>
+      <text class="label" x="586.9200000000001" y="287">5,32 USD</text>
+      <text class="label" x="0" y="324">64 skill</text>
+      <rect x="150" y="304" width="153.09" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="322" width="763.8299999999999" height="14" fill="#c7522a"></rect>
+      <text class="label" x="309.09000000000003" y="315">1,89 USD</text>
+      <text class="label" x="919.8299999999999" y="333">9,43 USD</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Delta no-bitmap vs bitmap per numero di skill</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1120 354" role="img" aria-label="Delta no-bitmap vs bitmap per numero di skill">
+      
+      <text class="label" x="0" y="37">1 skill</text>
+      <rect x="150" y="24" width="11.876759999999999" height="16" fill="#c7522a"></rect>
+      <text class="label" x="167.87676" y="37">43.988 gas</text>
+      <text class="label" x="0" y="75">2 skill</text>
+      <rect x="150" y="62" width="23.68197" height="16" fill="#c7522a"></rect>
+      <text class="label" x="179.68197" y="75">87.711 gas</text>
+      <text class="label" x="0" y="113">4 skill</text>
+      <rect x="150" y="100" width="47.28942" height="16" fill="#c7522a"></rect>
+      <text class="label" x="203.28942" y="113">175.146 gas</text>
+      <text class="label" x="0" y="151">8 skill</text>
+      <rect x="150" y="138" width="94.49163" height="16" fill="#c7522a"></rect>
+      <text class="label" x="250.49163" y="151">349.969 gas</text>
+      <text class="label" x="0" y="189">16 skill</text>
+      <rect x="150" y="176" width="188.00910000000002" height="16" fill="#c7522a"></rect>
+      <text class="label" x="344.0091" y="189">696.330 gas</text>
+      <text class="label" x="0" y="227">32 skill</text>
+      <rect x="150" y="214" width="374.45813999999996" height="16" fill="#c7522a"></rect>
+      <text class="label" x="530.45814" y="227">1.386.882 gas</text>
+      <text class="label" x="0" y="265">64 skill</text>
+      <rect x="150" y="252" width="747.3913200000001" height="16" fill="#c7522a"></rect>
+      <text class="label" x="903.3913200000001" y="265">2.768.116 gas</text>
+      
+      <line class="axis" x1="150" y1="310" x2="960" y2="310"></line>
+      <text class="axis-title" x="960" y="346" text-anchor="end">gas</text>
+      
+      <line class="grid" x1="150" y1="18" x2="150" y2="310"></line>
+      <line class="tick" x1="150" y1="306" x2="150" y2="314"></line>
+      <text class="label" x="150" y="328" text-anchor="start">0</text>
+      <line class="grid" x1="420" y1="18" x2="420" y2="310"></line>
+      <line class="tick" x1="420" y1="306" x2="420" y2="314"></line>
+      <text class="label" x="420" y="328" text-anchor="middle">1M</text>
+      <line class="grid" x1="690" y1="18" x2="690" y2="310"></line>
+      <line class="tick" x1="690" y1="306" x2="690" y2="314"></line>
+      <text class="label" x="690" y="328" text-anchor="middle">2M</text>
+      <line class="grid" x1="960" y1="18" x2="960" y2="310"></line>
+      <line class="tick" x1="960" y1="306" x2="960" y2="314"></line>
+      <text class="label" x="960" y="328" text-anchor="end">3M</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Gas totale cumulativo per numero di utenti (8 skill/utente)</h2>
+  <div class="legend"><span><span class="swatch" style="background:#2f80ed"></span>Bitmap</span><span><span class="swatch" style="background:#c7522a"></span>No-bitmap</span></div>
+  <div class="chart">
+    <svg viewBox="0 0 1120 414" role="img" aria-label="Gas totale cumulativo per numero di utenti (8 skill/utente)">
+      
+      <line class="axis" x1="150" y1="374" x2="960" y2="374"></line>
+      <text class="axis-title" x="960" y="410" text-anchor="end">gas</text>
+      
+      <line class="grid" x1="150" y1="18" x2="150" y2="374"></line>
+      <line class="tick" x1="150" y1="370" x2="150" y2="378"></line>
+      <text class="label" x="150" y="392" text-anchor="start">0</text>
+      <line class="grid" x1="312" y1="18" x2="312" y2="374"></line>
+      <line class="tick" x1="312" y1="370" x2="312" y2="378"></line>
+      <text class="label" x="312" y="392" text-anchor="middle">10M</text>
+      <line class="grid" x1="474" y1="18" x2="474" y2="374"></line>
+      <line class="tick" x1="474" y1="370" x2="474" y2="378"></line>
+      <text class="label" x="474" y="392" text-anchor="middle">20M</text>
+      <line class="grid" x1="636" y1="18" x2="636" y2="374"></line>
+      <line class="tick" x1="636" y1="370" x2="636" y2="378"></line>
+      <text class="label" x="636" y="392" text-anchor="middle">30M</text>
+      <line class="grid" x1="798" y1="18" x2="798" y2="374"></line>
+      <line class="tick" x1="798" y1="370" x2="798" y2="378"></line>
+      <text class="label" x="798" y="392" text-anchor="middle">40M</text>
+      <line class="grid" x1="960" y1="18" x2="960" y2="374"></line>
+      <line class="tick" x1="960" y1="370" x2="960" y2="378"></line>
+      <text class="label" x="960" y="392" text-anchor="end">50M</text>
+      
+      <text class="label" x="0" y="48">1 utenti</text>
+      <rect x="150" y="28" width="7.6809222" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="46" width="13.35042" height="14" fill="#c7522a"></rect>
+      <text class="label" x="163.6809222" y="39">474.131 gas</text>
+      <text class="label" x="169.35041999999999" y="57">824.100 gas</text>
+      <text class="label" x="0" y="94">2 utenti</text>
+      <rect x="150" y="74" width="14.4276876" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="92" width="25.7666832" height="14" fill="#c7522a"></rect>
+      <text class="label" x="170.4276876" y="85">890.598 gas</text>
+      <text class="label" x="181.7666832" y="103">1.590.536 gas</text>
+      <text class="label" x="0" y="140">4 utenti</text>
+      <rect x="150" y="120" width="27.921024" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="138" width="50.599015200000004" height="14" fill="#c7522a"></rect>
+      <text class="label" x="183.921024" y="131">1.723.520 gas</text>
+      <text class="label" x="206.5990152" y="149">3.123.396 gas</text>
+      <text class="label" x="0" y="186">8 utenti</text>
+      <rect x="150" y="166" width="54.907696800000004" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="184" width="100.2636792" height="14" fill="#c7522a"></rect>
+      <text class="label" x="210.9076968" y="177">3.389.364 gas</text>
+      <text class="label" x="256.2636792" y="195">6.189.116 gas</text>
+      <text class="label" x="0" y="232">16 utenti</text>
+      <rect x="150" y="212" width="108.8806536" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="230" width="199.59359039999998" height="14" fill="#c7522a"></rect>
+      <text class="label" x="264.8806536" y="223">6.721.028 gas</text>
+      <text class="label" x="355.5935904" y="241">12.320.592 gas</text>
+      <text class="label" x="0" y="278">32 utenti</text>
+      <rect x="150" y="258" width="216.82889999999998" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="276" width="398.25360720000003" height="14" fill="#c7522a"></rect>
+      <text class="label" x="372.8289" y="269">13.384.500 gas</text>
+      <text class="label" x="554.2536072" y="287">24.583.556 gas</text>
+      <text class="label" x="0" y="324">64 utenti</text>
+      <rect x="150" y="304" width="432.7228656" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="322" width="795.5707248" height="14" fill="#c7522a"></rect>
+      <text class="label" x="588.7228656" y="315">26.711.288 gas</text>
+      <text class="label" x="951.5707248" y="333">49.109.304 gas</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Gas per utente: totale / N (8 skill/utente)</h2>
+  <div class="legend"><span><span class="swatch" style="background:#2f80ed"></span>Bitmap</span><span><span class="swatch" style="background:#c7522a"></span>No-bitmap</span></div>
+  <div class="chart">
+    <svg viewBox="0 0 1120 414" role="img" aria-label="Gas per utente: totale / N (8 skill/utente)">
+      
+      <line class="axis" x1="150" y1="374" x2="960" y2="374"></line>
+      <text class="axis-title" x="960" y="410" text-anchor="end">gas</text>
+      
+      <line class="grid" x1="150" y1="18" x2="150" y2="374"></line>
+      <line class="tick" x1="150" y1="370" x2="150" y2="378"></line>
+      <text class="label" x="150" y="392" text-anchor="start">0</text>
+      <line class="grid" x1="312" y1="18" x2="312" y2="374"></line>
+      <line class="tick" x1="312" y1="370" x2="312" y2="378"></line>
+      <text class="label" x="312" y="392" text-anchor="middle">200k</text>
+      <line class="grid" x1="474" y1="18" x2="474" y2="374"></line>
+      <line class="tick" x1="474" y1="370" x2="474" y2="378"></line>
+      <text class="label" x="474" y="392" text-anchor="middle">400k</text>
+      <line class="grid" x1="636" y1="18" x2="636" y2="374"></line>
+      <line class="tick" x1="636" y1="370" x2="636" y2="378"></line>
+      <text class="label" x="636" y="392" text-anchor="middle">600k</text>
+      <line class="grid" x1="798" y1="18" x2="798" y2="374"></line>
+      <line class="tick" x1="798" y1="370" x2="798" y2="378"></line>
+      <text class="label" x="798" y="392" text-anchor="middle">800k</text>
+      <line class="grid" x1="960" y1="18" x2="960" y2="374"></line>
+      <line class="tick" x1="960" y1="370" x2="960" y2="378"></line>
+      <text class="label" x="960" y="392" text-anchor="end">1M</text>
+      
+      <text class="label" x="0" y="48">1 utenti</text>
+      <rect x="150" y="28" width="384.04611" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="46" width="667.5210000000001" height="14" fill="#c7522a"></rect>
+      <text class="label" x="540.04611" y="39">474.131 gas</text>
+      <text class="label" x="823.5210000000001" y="57">824.100 gas</text>
+      <text class="label" x="0" y="94">2 utenti</text>
+      <rect x="150" y="74" width="360.69219" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="92" width="644.1670799999999" height="14" fill="#c7522a"></rect>
+      <text class="label" x="516.69219" y="85">445.299 gas</text>
+      <text class="label" x="800.1670799999999" y="103">795.268 gas</text>
+      <text class="label" x="0" y="140">4 utenti</text>
+      <rect x="150" y="120" width="349.01279999999997" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="138" width="632.48769" height="14" fill="#c7522a"></rect>
+      <text class="label" x="505.01279999999997" y="131">430.880 gas</text>
+      <text class="label" x="788.48769" y="149">780.849 gas</text>
+      <text class="label" x="0" y="186">8 utenti</text>
+      <rect x="150" y="166" width="343.1727" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="184" width="626.6475899999999" height="14" fill="#c7522a"></rect>
+      <text class="label" x="499.1727" y="177">423.670 gas</text>
+      <text class="label" x="782.6475899999999" y="195">773.639 gas</text>
+      <text class="label" x="0" y="232">16 utenti</text>
+      <rect x="150" y="212" width="340.25184" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="230" width="623.72997" height="14" fill="#c7522a"></rect>
+      <text class="label" x="496.25184" y="223">420.064 gas</text>
+      <text class="label" x="779.72997" y="241">770.037 gas</text>
+      <text class="label" x="0" y="278">32 utenti</text>
+      <rect x="150" y="258" width="338.79465" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="276" width="622.27116" height="14" fill="#c7522a"></rect>
+      <text class="label" x="494.79465" y="269">418.265 gas</text>
+      <text class="label" x="778.27116" y="287">768.236 gas</text>
+      <text class="label" x="0" y="324">64 utenti</text>
+      <rect x="150" y="304" width="338.06403" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="322" width="621.53892" height="14" fill="#c7522a"></rect>
+      <text class="label" x="494.06403" y="315">417.363 gas</text>
+      <text class="label" x="777.53892" y="333">767.332 gas</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Costo totale cumulativo in USD (8 skill/utente)</h2>
+  <div class="legend"><span><span class="swatch" style="background:#2f80ed"></span>Bitmap</span><span><span class="swatch" style="background:#c7522a"></span>No-bitmap</span></div>
+  <div class="chart">
+    <svg viewBox="0 0 1120 414" role="img" aria-label="Costo totale cumulativo in USD (8 skill/utente)">
+      
+      <line class="axis" x1="150" y1="374" x2="960" y2="374"></line>
+      <text class="axis-title" x="960" y="410" text-anchor="end">USD</text>
+      
+      <line class="grid" x1="150" y1="18" x2="150" y2="374"></line>
+      <line class="tick" x1="150" y1="370" x2="150" y2="378"></line>
+      <text class="label" x="150" y="392" text-anchor="start">0</text>
+      <line class="grid" x1="420" y1="18" x2="420" y2="374"></line>
+      <line class="tick" x1="420" y1="370" x2="420" y2="378"></line>
+      <text class="label" x="420" y="392" text-anchor="middle">50</text>
+      <line class="grid" x1="690" y1="18" x2="690" y2="374"></line>
+      <line class="tick" x1="690" y1="370" x2="690" y2="378"></line>
+      <text class="label" x="690" y="392" text-anchor="middle">100</text>
+      <line class="grid" x1="960" y1="18" x2="960" y2="374"></line>
+      <line class="tick" x1="960" y1="370" x2="960" y2="378"></line>
+      <text class="label" x="960" y="392" text-anchor="end">150</text>
+      
+      <text class="label" x="0" y="48">1 utenti</text>
+      <rect x="150" y="28" width="6.966" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="46" width="12.096000000000002" height="14" fill="#c7522a"></rect>
+      <text class="label" x="162.966" y="39">1,29 USD</text>
+      <text class="label" x="168.096" y="57">2,24 USD</text>
+      <text class="label" x="0" y="94">2 utenti</text>
+      <rect x="150" y="74" width="13.122000000000002" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="92" width="23.381999999999998" height="14" fill="#c7522a"></rect>
+      <text class="label" x="169.122" y="85">2,43 USD</text>
+      <text class="label" x="179.382" y="103">4,33 USD</text>
+      <text class="label" x="0" y="140">4 utenti</text>
+      <rect x="150" y="120" width="25.326000000000004" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="138" width="45.954" height="14" fill="#c7522a"></rect>
+      <text class="label" x="181.326" y="131">4,69 USD</text>
+      <text class="label" x="201.954" y="149">8,51 USD</text>
+      <text class="label" x="0" y="186">8 utenti</text>
+      <rect x="150" y="166" width="49.842" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="184" width="91.044" height="14" fill="#c7522a"></rect>
+      <text class="label" x="205.84199999999998" y="177">9,23 USD</text>
+      <text class="label" x="247.04399999999998" y="195">16,86 USD</text>
+      <text class="label" x="0" y="232">16 utenti</text>
+      <rect x="150" y="212" width="98.874" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="230" width="181.22400000000002" height="14" fill="#c7522a"></rect>
+      <text class="label" x="254.874" y="223">18,31 USD</text>
+      <text class="label" x="337.22400000000005" y="241">33,56 USD</text>
+      <text class="label" x="0" y="278">32 utenti</text>
+      <rect x="150" y="258" width="196.88400000000001" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="276" width="361.63800000000003" height="14" fill="#c7522a"></rect>
+      <text class="label" x="352.884" y="269">36,46 USD</text>
+      <text class="label" x="517.638" y="287">66,97 USD</text>
+      <text class="label" x="0" y="324">64 utenti</text>
+      <rect x="150" y="304" width="392.90400000000005" height="14" fill="#2f80ed"></rect>
+      <rect x="150" y="322" width="722.412" height="14" fill="#c7522a"></rect>
+      <text class="label" x="548.904" y="315">72,76 USD</text>
+      <text class="label" x="878.412" y="333">133,78 USD</text>
+    </svg>
+  </div>
+</section>
+</body>
+</html>
