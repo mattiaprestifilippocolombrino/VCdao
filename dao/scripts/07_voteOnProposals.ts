@@ -22,8 +22,12 @@ Le VC assegnano le otto skill riconosciute definite in SkillDefinitions.
 
 import { ethers } from "hardhat";
 import { mine }   from "@nomicfoundation/hardhat-network-helpers";
-import * as fs    from "fs";
-import * as path  from "path";
+import {
+    assertContractsDeployed,
+    assertSufficientSigners,
+    loadDeployedAddresses,
+    loadProposalState,
+} from "./helpers";
 import { TOPIC_LABELS } from "../../veramo/types/credentials";
 
 const FOR     = 1;  // Voto favorevole
@@ -38,25 +42,23 @@ const STATES: Record<number, string> = {
 
 async function main() {
     const signers = await ethers.getSigners();
+    assertSufficientSigners(signers, 12);
 
     console.log("══════════════════════════════════════════════════════════");
     console.log("  CompetenceDAO — Votazione + Queue proposte multi-topic");
     console.log("══════════════════════════════════════════════════════════\n");
 
     // Carica gli indirizzi e lo stato delle proposte.
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
-    if (!addresses.skillModule) {
-        throw new Error("deployedAddresses.json non contiene skillModule. Riesegui 01_deploy.ts dopo l'upgrade architetturale.");
-    }
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["governor", "treasury", "token", "skillModule"]);
     const governor  = await ethers.getContractAt("MyGovernor",      addresses.governor);
     const treasury  = await ethers.getContractAt("Treasury",        addresses.treasury);
     const token     = await ethers.getContractAt("GovernanceToken", addresses.token);
     const skillModule = await ethers.getContractAt("GovernanceSkill", addresses.skillModule);
-    const pState    = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8")
-    );
+    const pState    = loadProposalState();
+    if (pState.proposals.length < 4) {
+        throw new Error("proposalState.json deve contenere le 4 proposte create da scripts/06_createProposals.ts.");
+    }
     const startupId = BigInt(addresses.mockStartupId ?? 0);
     const [pA, pB, pC, pD] = pState.proposals;
 
@@ -123,6 +125,7 @@ async function main() {
     await governor.connect(signers[10]).castVote(pC.id, FOR);    // startup finance analyst
     await governor.connect(signers[0]).castVote(pC.id, AGAINST); // AI & Data lead
     await governor.connect(signers[1]).castVote(pC.id, AGAINST); // cloud security lead
+    await governor.connect(signers[3]).castVote(pC.id, AGAINST); // enterprise architect
     await printProposalStatus("Proposta C", pC);
 
     // ══════════════════════════════════════════════════════════════════════════

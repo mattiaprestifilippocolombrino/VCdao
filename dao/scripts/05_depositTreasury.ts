@@ -12,11 +12,11 @@ SCOPO:
 */
 
 import { ethers } from "hardhat";
-import * as fs   from "fs";
-import * as path from "path";
+import { assertContractsDeployed, assertSufficientSigners, loadDeployedAddresses } from "./helpers";
 
 async function main() {
     const signers = await ethers.getSigners();
+    assertSufficientSigners(signers, 20);
     // Usiamo l'ultimo account disponibile (19) come "Sponsor esterno"
     const sponsor = signers[19]; 
 
@@ -24,9 +24,8 @@ async function main() {
     console.log("  CompetenceDAO — Deposito aggiuntivo nel Treasury");
     console.log("══════════════════════════════════════════════════════════\n");
 
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["treasury"]);
     const treasury = await ethers.getContractAt("Treasury", addresses.treasury);
 
     const balBefore = await treasury.getBalance();

@@ -32,11 +32,11 @@ DISTRIBUZIONE DIDATTICA (le label anticipano le VC dello script 04):
 */
 
 import { ethers } from "hardhat";
-import * as fs   from "fs";
-import * as path from "path";
+import { assertContractsDeployed, assertSufficientSigners, loadDeployedAddresses } from "./helpers";
 
 async function main() {
     const signers = await ethers.getSigners();
+    assertSufficientSigners(signers, 15);
 
     console.log("══════════════════════════════════════════════════════════");
     console.log("  CompetenceDAO — 14 nuovi membri entrano nella DAO");
@@ -44,9 +44,8 @@ async function main() {
 
     // Carica gli indirizzi salvati dallo script 01_deploy.ts.
     // Questo evita di dover rideploy i contratti a ogni script.
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["token", "treasury"]);
 
     // Riconnessione al GovernanceToken già deployato tramite il suo ABI e indirizzo.
     const token = await ethers.getContractAt("GovernanceToken", addresses.token);
@@ -79,8 +78,8 @@ async function main() {
     let totalMinted = 0n;
 
     for (const m of members) {
-        // joinDAO() verifica che il membro non esista, invia gli ETH al Treasury,
-        // minta i token COMP e applica l'auto-delega per attivare il VP.
+        // joinDAO() verifica che il membro non esista, invia gli ETH al Treasury
+        // e minta i token COMP. La delega del VP avviene nello script 03.
         await token.connect(m.signer).joinDAO({ value: ethers.parseEther(m.eth) });
 
         // Legge il balance COMP dell'account appena entrato.
@@ -99,6 +98,7 @@ async function main() {
 
     console.log("\n📊 Riepilogo post-join:");
     console.log(`   Supply totale:       ${ethers.formatEther(totalSupply)} COMP`);
+    console.log(`   Mint nuovi membri:   ${ethers.formatEther(totalMinted)} COMP`);
     console.log(`   Treasury balance:    ${ethers.formatEther(
         treasuryBal
     )} ETH`);

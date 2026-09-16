@@ -20,6 +20,7 @@
 //  8. MockStartup — nessuna dipendenza
 //
 //  SETUP RUOLI (post-deploy):
+//  - trustedIssuer  → primo issuer fidato per le VC EIP-712
 //  - PROPOSER_ROLE  → Governor (propone operazioni al Timelock)
 //  - EXECUTOR_ROLE  → address(0) (chiunque può eseguire dopo il delay)
 //  - CANCELLER_ROLE → Governor (può cancellare operazioni in coda)
@@ -74,6 +75,13 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
     // Gestisce issuer fidati, upgrade skill e checkpoint VP multi-topic.
     const skillModule = m.contract("GovernanceSkill", [token, timelock, 5000, calculator]);
 
+    // Primo issuer fidato per le credenziali EIP-712.
+    // Esempio parametro: { "InvestmentDAOModule": { "trustedIssuer": "0x..." } }
+    const trustedIssuer = m.getParameter("trustedIssuer");
+    const setTrustedIssuer = m.call(skillModule, "setTrustedIssuer", [trustedIssuer], {
+        id: "setTrustedIssuer",
+    });
+
     // ── 3. MyGovernor ──
     // Il "cervello" della DAO: proposte, voti, quorum, superquorum, timelock.
     const governor = m.contract("MyGovernor", [
@@ -125,7 +133,7 @@ const InvestmentDAOModule = buildModule("InvestmentDAOModule", (m) => {
     // IMPORTANTE: facciamo questo PER ULTIMO, dopo aver concesso tutti i ruoli!
     m.call(timelock, "revokeRole", [ADMIN_ROLE, deployer], {
         id: "revokeAdminRole",
-        after: [grantProposer, grantExecutor, grantCanceller],
+        after: [grantProposer, grantExecutor, grantCanceller, setTrustedIssuer],
     });
 
     return {

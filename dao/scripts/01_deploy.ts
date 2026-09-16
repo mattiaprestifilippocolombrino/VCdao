@@ -30,8 +30,7 @@ FORMULA VP (con pesi 50/50):
 */
 
 import { ethers } from "hardhat";
-import * as fs   from "fs";
-import * as path from "path";
+import { DEPLOYED_ADDRESSES_FILE, writeJsonFile } from "./helpers";
 
 async function main() {
     // ── Account ──────────────────────────────────────────────────────────────
@@ -271,10 +270,7 @@ async function main() {
         weightSkill:  WEIGHT_SKILL,
         weightStake:  WEIGHT_STAKE,
     };
-    fs.writeFileSync(
-        path.join(__dirname, "..", "deployedAddresses.json"),
-        JSON.stringify(addresses, null, 2)
-    );
+    writeJsonFile(DEPLOYED_ADDRESSES_FILE, addresses);
 
     // ── Riepilogo ────────────────────────────────────────────────────────────
     const treasuryBal = await treasury.getBalance();

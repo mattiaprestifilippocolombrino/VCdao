@@ -19,20 +19,19 @@ PERCHÉ È NECESSARIA LA DELEGA:
 */
 
 import { ethers } from "hardhat";
-import * as fs   from "fs";
-import * as path from "path";
+import { assertContractsDeployed, assertSufficientSigners, loadDeployedAddresses } from "./helpers";
 
 async function main() {
     const signers = await ethers.getSigners();
+    assertSufficientSigners(signers, 15);
 
     console.log("══════════════════════════════════════════════════════════");
     console.log("  CompetenceDAO — Verifica e delega voting power");
     console.log("══════════════════════════════════════════════════════════\n");
 
     // Carica gli indirizzi dal deploy precedente.
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["token"]);
     const token = await ethers.getContractAt("GovernanceToken", addresses.token);
 
     // Verifica e delega per i primi 15 signers (0..14): il fondatore + i 14 membri.

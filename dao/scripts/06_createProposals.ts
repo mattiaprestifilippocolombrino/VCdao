@@ -22,8 +22,12 @@ per essere letti dagli script 07 e 08.
 */
 
 import { ethers } from "hardhat";
-import * as fs   from "fs";
-import * as path from "path";
+import {
+    PROPOSAL_STATE_FILE,
+    assertContractsDeployed,
+    loadDeployedAddresses,
+    writeJsonFile,
+} from "./helpers";
 import {
     TOPIC_AI_DATA,
     TOPIC_CLOUD_CYBERSECURITY,
@@ -38,9 +42,8 @@ async function main() {
     console.log("══════════════════════════════════════════════════════════\n");
 
     // Carica gli indirizzi persistiti dal deploy.
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["treasury", "governor"]);
     const treasury  = await ethers.getContractAt("Treasury",   addresses.treasury);
     const governor  = await ethers.getContractAt("MyGovernor", addresses.governor);
     const startupId = BigInt(addresses.mockStartupId ?? 0);
@@ -97,11 +100,15 @@ async function main() {
         const receipt = await tx.wait();
 
         // Estrae il proposalId dall'evento ProposalCreated emesso dal Governor.
-        const proposalId = receipt!.logs
+        const proposalId = receipt?.logs
             .map((log: any) => {
                 try { return governor.interface.parseLog(log); } catch { return null; }
             })
             .find((pr: any) => pr?.name === "ProposalCreated")?.args?.proposalId;
+
+        if (proposalId === undefined) {
+            throw new Error(`Evento ProposalCreated non trovato per: ${p.desc}`);
+        }
 
         proposalIds.push(proposalId.toString());
 
@@ -118,10 +125,7 @@ async function main() {
             id: proposalIds[i],
         })),
     };
-    fs.writeFileSync(
-        path.join(__dirname, "..", "proposalState.json"),
-        JSON.stringify(state, null, 2)
-    );
+    writeJsonFile(PROPOSAL_STATE_FILE, state);
 
     console.log("══════════════════════════════════════════════════════════");
     console.log("  ✅ 4 proposte create! Prossimo: 07_voteOnProposals.ts");

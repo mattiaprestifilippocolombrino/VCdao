@@ -28,6 +28,7 @@ BOOST COMBINAZIONALI:
 import { ethers } from "hardhat";
 import * as fs   from "fs";
 import * as path from "path";
+import { assertContractsDeployed, loadDeployedAddresses } from "./helpers";
 import { RECOGNIZED_SKILLS, TOPIC_LABELS } from "../../veramo/types/credentials";
 
 // Skill valide per validazione client-side
@@ -49,7 +50,20 @@ function addressFromDid(did: string): string {
 }
 
 // Helper: legge e valida una VC JSON con skills[]
-function parseCredential(filePath: string) {
+interface ParsedCredential {
+    file: string;
+    issuerDid: string;
+    issuanceDate: string;
+    credentialSubject: {
+        id: string;
+        organization: string;
+        unit: string;
+        skills: string[];
+    };
+    signature: string;
+}
+
+function parseCredential(filePath: string): ParsedCredential {
     const c = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     if (!c.issuer?.id)                          throw new Error("VC manca issuer.id");
     if (!c.credentialSubject?.id)               throw new Error("VC manca credentialSubject.id");
@@ -85,16 +99,10 @@ async function main() {
     console.log("  CompetenceDAO — Upgrade skill bitmap via VC EIP-712");
     console.log("══════════════════════════════════════════════════════════\n");
 
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
-    if (!addresses.skillModule) {
-        throw new Error("deployedAddresses.json non contiene skillModule. Riesegui 01_deploy.ts dopo l'upgrade architetturale.");
-    }
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["skillModule"]);
     const skillModule = await ethers.getContractAt("GovernanceSkill", addresses.skillModule);
-    const trustedIssuerAddresses = (addresses.trustedIssuers ?? [addresses.issuer]).map((issuer: string) =>
-        ethers.getAddress(issuer)
-    );
+    const trustedIssuerAddresses = addresses.trustedIssuers;
     const trustedIssuerDids = new Set(
         trustedIssuerAddresses.map((issuer: string) => `did:ethr:sepolia:${issuer}`.toLowerCase())
     );
@@ -113,7 +121,7 @@ async function main() {
 
     // Filtriamo solo quelle firmate da uno degli issuer fidati
     const trustedCreds = parsedCreds.filter(
-        (c: any) => trustedIssuerDids.has(c.issuerDid.toLowerCase())
+        (c) => trustedIssuerDids.has(c.issuerDid.toLowerCase())
     );
     if (trustedCreds.length === 0) {
         throw new Error(`Nessuna VC trovata con issuer fidato`);
@@ -122,7 +130,7 @@ async function main() {
 
     // Mappa ogni VC al signer che possiede davvero il DID.
     // Evitiamo di affidarci all'ordine dei file, che è comodo ma fragile.
-    const toUpgrade = trustedCreds.map((cred: any) => {
+    const toUpgrade = trustedCreds.map((cred) => {
         const holderAddress = addressFromDid(cred.credentialSubject.id);
         const signerIdx = signers.findIndex((s) => s.address === holderAddress);
         if (signerIdx === -1) {

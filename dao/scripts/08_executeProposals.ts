@@ -26,8 +26,7 @@ RISULTATO ATTESO:
 
 import { ethers } from "hardhat";
 import { time }   from "@nomicfoundation/hardhat-network-helpers";
-import * as fs    from "fs";
-import * as path  from "path";
+import { assertContractsDeployed, loadDeployedAddresses, loadProposalState } from "./helpers";
 import { TOPIC_LABELS } from "../../veramo/types/credentials";
 
 // Mappa degli stati interi del Governor agli stati testuali.
@@ -43,15 +42,15 @@ async function main() {
     console.log("══════════════════════════════════════════════════════════\n");
 
     // Carica indirizzi e stato proposte dai file JSON persistiti.
-    const addresses = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "deployedAddresses.json"), "utf8")
-    );
+    const addresses = loadDeployedAddresses();
+    await assertContractsDeployed(addresses, ["governor", "treasury", "mockStartup"]);
     const governor   = await ethers.getContractAt("MyGovernor",   addresses.governor);
     const treasury   = await ethers.getContractAt("Treasury",     addresses.treasury);
     const mockStartup = await ethers.getContractAt("MockStartup", addresses.mockStartup);
-    const pState     = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "proposalState.json"), "utf8")
-    );
+    const pState     = loadProposalState();
+    if (pState.proposals.length < 4) {
+        throw new Error("proposalState.json deve contenere le 4 proposte create da scripts/06_createProposals.ts.");
+    }
     const startupId  = BigInt(addresses.mockStartupId ?? 0);
     const LABELS     = ["A", "B", "C", "D"];
 
