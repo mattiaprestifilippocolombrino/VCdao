@@ -12,6 +12,8 @@ database.sqlite-journal
 # Credenziali generate (contengono dati sensibili)
 credentials/*.json
 !credentials/.gitkeep
+presentations/*.json
+!presentations/.gitkeep
 
 # Variabili d'ambiente (contengono segreti!)
 .env
@@ -20,3 +22,5 @@ credentials/*.json
 # File di sistema
 .DS_Store
 Thumbs.db
+
+shared-credentials/

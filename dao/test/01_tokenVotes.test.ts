@@ -178,6 +178,71 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(await token.getVotes(alice.address)).to.equal(await token.balanceOf(alice.address));
     });
 
+    it("impedisce trasferimenti verso non membri", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
+
+        await expect(
+            token.connect(alice).transfer(bob.address, ethers.parseEther("1"))
+        ).to.be.revertedWithCustomError(token, "TokenRecipientNotMember").withArgs(bob.address);
+    });
+
+    it("impedisce transferFrom verso non membri", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
+        await token.connect(alice).approve(deployer.address, ethers.parseEther("1"));
+
+        await expect(
+            token.transferFrom(alice.address, bob.address, ethers.parseEther("1"))
+        ).to.be.revertedWithCustomError(token, "TokenRecipientNotMember").withArgs(bob.address);
+    });
+
+    it("impedisce ai non membri di delegare e ai membri di delegare a non membri", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
+
+        await expect(
+            token.connect(bob).delegate(alice.address)
+        ).to.be.revertedWithCustomError(token, "DelegatorNotMember").withArgs(bob.address);
+
+        await expect(
+            token.connect(alice).delegate(bob.address)
+        ).to.be.revertedWithCustomError(token, "DelegateeNotMember").withArgs(bob.address);
+    });
+
+    it("impedisce anche delegateBySig verso un non membro", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
+        const nonce = await token.nonces(alice.address);
+        const expiry = ethers.MaxUint256;
+        const network = await ethers.provider.getNetwork();
+        const signature = ethers.Signature.from(await alice.signTypedData(
+            {
+                name: "CompetenceDAO Token",
+                version: "1",
+                chainId: network.chainId,
+                verifyingContract: await token.getAddress(),
+            },
+            {
+                Delegation: [
+                    { name: "delegatee", type: "address" },
+                    { name: "nonce", type: "uint256" },
+                    { name: "expiry", type: "uint256" },
+                ],
+            },
+            { delegatee: bob.address, nonce, expiry },
+        ));
+
+        await expect(
+            token.delegateBySig(bob.address, nonce, expiry, signature.v, signature.r, signature.s)
+        ).to.be.revertedWithCustomError(token, "DelegateeNotMember").withArgs(bob.address);
+    });
+
+    it("consente a un membro di rimuovere la propria delega", async function () {
+        await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
+        await token.connect(alice).delegate(alice.address);
+
+        await token.connect(alice).delegate(ethers.ZeroAddress);
+        expect(await token.delegates(alice.address)).to.equal(ethers.ZeroAddress);
+        expect(await token.getVotes(alice.address)).to.equal(0n);
+    });
+
     it("trasferimento aggiorna i checkpoint (con delega attiva)", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
         await token.connect(bob).joinDAO({ value: ethers.parseEther("5") });
@@ -194,6 +259,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
 
     it("getPastVotes restituisce snapshot storici (con delega attiva)", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("10") });
+        await token.connect(bob).joinDAO({ value: ethers.parseEther("1") });
         await token.connect(alice).delegate(alice.address);
         const blockBefore = await ethers.provider.getBlockNumber();
         await mine(1);
@@ -280,6 +346,7 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
 
     it("increaseStake() reverta se l'utente supera il MAX_DEPOSIT (anti-bypass)", async function () {
         await token.connect(alice).joinDAO({ value: ethers.parseEther("50") });
+        await token.connect(bob).joinDAO({ value: ethers.parseEther("1") });
         // Alice trasferisce i token a Bob per "svuotare" il saldo ERC20
         await token.connect(alice).transfer(bob.address, ethers.parseEther("25"));
         // Alice prova a versare altri 60 ETH.

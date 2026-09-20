@@ -1,37 +1,33 @@
 /*
-=============================================================================
-  SCRIPT: issue-for-dao.ts
-  SCOPO: Emettere Verifiable Credentials (VC) in formato EIP-712, 
-         perfettamente allineate con gli Smart Contract `GovernanceSkill.sol`
-         e `VPVerifier.sol` del progetto CompetenceDAO.
-=============================================================================
-*/
+ * Flusso SSI di CompetenceDAO:
+ * 1. importa nell'agent Veramo l'issuer e i wallet holder di Hardhat;
+ * 2. emette e salva le VC EIP-712 tramite Veramo;
+ * 3. crea e salva una VP firmata dal relativo holder;
+ * 4. esporta VC e VP per gli script e i test della DAO.
+ */
 
 import "dotenv/config";
 import { ethers } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
-
-// ── Modelli di dati condivisi ──────────────────────────────────────────────
+import { createDaoVeramoAgent, importEthereumWallet } from "../agent";
+import { DAO_EIP712_PROOF } from "../providers/DaoEip712CredentialProvider";
 import {
   CREDENTIAL_CONTEXT,
   CREDENTIAL_TYPE,
-  EIP712_DOMAIN,
-  VC_TYPES,
   CREDENTIALS_DIR,
   DAO_SHARED_CREDENTIALS_DIR,
-  HOLDERS,
+  DAO_SHARED_PRESENTATIONS_DIR,
   DEFAULT_ORGANIZATION,
-  toDid,
+  HOLDERS,
+  PRESENTATIONS_DIR,
+  addressFromEthrDid,
 } from "../types/credentials";
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
 function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value || value.trim().length === 0) {
-    throw new Error(`[ERRORE FATALE] Variabile d'ambiente ${name} mancante nel file .env`);
-  }
-  return value.trim();
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`[ERRORE FATALE] Variabile ${name} mancante nel file .env`);
+  return value;
 }
 
 function prepareDir(dirPath: string): void {
@@ -41,123 +37,171 @@ function prepareDir(dirPath: string): void {
   }
 }
 
-function credentialFileName(index: number, alias: string): string {
+function outputName(index: number, alias: string): string {
   return `${String(index + 1).padStart(2, "0")}_${alias}.json`;
 }
 
-// ── Core Logic ──────────────────────────────────────────────────────────────
-export async function issueDaoCompatibleCredentials(): Promise<void> {
-  console.log("==========================================================");
-  console.log("  Generazione VC EIP-712 per CompetenceDAO (Self-Sovereign)");
-  console.log("==========================================================\n");
+async function verifyHardhatWallets(
+  rpcUrl: string,
+  mnemonic: string,
+): Promise<Map<number, ethers.HDNodeWallet>> {
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const rpcAccounts = (await provider.send("eth_accounts", []) as string[])
+    .map((address) => ethers.getAddress(address));
+  const wallets = new Map<number, ethers.HDNodeWallet>();
 
-  // 1. Inizializzazione Issuer Wallet
-  const issuerPrivateKey = requireEnv("DAO_ISSUER_PRIVATE_KEY");
-  if (!ethers.isHexString(issuerPrivateKey, 32)) {
-    throw new Error("DAO_ISSUER_PRIVATE_KEY deve essere una stringa hex da 32 byte.");
+  for (const holder of HOLDERS) {
+    const wallet = ethers.HDNodeWallet.fromPhrase(
+      mnemonic,
+      undefined,
+      `m/44'/60'/0'/0/${holder.signerIndex}`,
+    );
+    if (rpcAccounts[holder.signerIndex] !== wallet.address) {
+      throw new Error(
+        `Hardhat signer[${holder.signerIndex}] è ${rpcAccounts[holder.signerIndex] ?? "assente"}, ` +
+        `ma il mnemonic Veramo deriva ${wallet.address}`,
+      );
+    }
+    wallets.set(holder.signerIndex, wallet);
   }
-  const hardhatMnemonic = requireEnv("DAO_HARDHAT_MNEMONIC");
-  const issuerWallet = new ethers.Wallet(issuerPrivateKey);
-  const issuerDid = toDid(issuerWallet.address);
 
-  console.log(`🏛️  Issuer Wallet configurato: ${issuerWallet.address}`);
-  console.log(`🆔 Issuer DID: ${issuerDid}\n`);
+  return wallets;
+}
 
-  // 2. Controllo coerenza con il Deploy della DAO
+function assertTrustedIssuer(issuerAddress: string): void {
   const deployedPath = path.join(__dirname, "../../dao/deployedAddresses.json");
   if (!fs.existsSync(deployedPath)) {
-    console.warn("⚠️  ATTENZIONE: deployedAddresses.json non trovato. La DAO non sembra deployata.");
-    console.warn("Le credenziali verranno generate, ma potrebbero non essere valide on-chain.\n");
-  } else {
-    const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf-8"));
-    const deployedIssuers = (deployed.trustedIssuers ?? (deployed.issuer ? [deployed.issuer] : []))
-      .map((issuer: string) => ethers.getAddress(issuer));
-    
-    if (deployedIssuers.length > 0 && !deployedIssuers.includes(issuerWallet.address)) {
-      console.error("❌ ERRORE CRITICO DI COERENZA (MISTMATCH ISSUER) ❌");
-      console.error(`   Il contratto GovernanceSkill si fida di: ${deployedIssuers.join(", ")}`);
-      console.error(`   Ma questo script sta firmando le VC con il wallet:           ${issuerWallet.address}`);
-      console.error("");
-      console.error("💡 SOLUZIONE OBBLIGATORIA:");
-      console.error("   Devi rifare il deploy della DAO indicando l'indirizzo corretto dell'issuer.");
-      console.error("   Esegui questo comando nel terminale della cartella 'dao/':");
-      console.error(`   export DAO_TRUSTED_ISSUER=${issuerWallet.address} && npx hardhat run scripts/01_deploy.ts --network localhost\n`);
-      throw new Error("Esecuzione interrotta per proteggere la consistenza del sistema DAO.");
-    } else {
-      console.log("✅ Coerenza Issuer verificata: GovernanceSkill riconoscerà queste VC.\n");
+    throw new Error("dao/deployedAddresses.json non trovato: eseguire prima il deploy Hardhat");
+  }
+
+  const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf8"));
+  const trusted = (deployed.trustedIssuers ?? (deployed.issuer ? [deployed.issuer] : []))
+    .map((address: string) => ethers.getAddress(address));
+  if (!trusted.includes(ethers.getAddress(issuerAddress))) {
+    throw new Error(
+      `GovernanceSkill considera trusted [${trusted.join(", ")}], ` +
+      `ma l'agent Veramo usa ${issuerAddress}`,
+    );
+  }
+}
+
+export async function issueDaoCompatibleCredentials(): Promise<void> {
+  console.log("══════════════════════════════════════════════════════════");
+  console.log("  CompetenceDAO — emissione SSI tramite agent Veramo");
+  console.log("══════════════════════════════════════════════════════════\n");
+
+  const issuerPrivateKey = requireEnv("DAO_ISSUER_PRIVATE_KEY");
+  const hardhatMnemonic = requireEnv("DAO_HARDHAT_MNEMONIC");
+  const kmsSecretKey = requireEnv("KMS_SECRET_KEY");
+  const rpcUrl = process.env.DAO_HARDHAT_RPC_URL?.trim() || "http://127.0.0.1:8545";
+  if (!ethers.isHexString(issuerPrivateKey, 32)) {
+    throw new Error("DAO_ISSUER_PRIVATE_KEY deve contenere 32 byte esadecimali");
+  }
+  if (!/^(0x)?[0-9a-fA-F]{64}$/.test(kmsSecretKey)) {
+    throw new Error("KMS_SECRET_KEY deve contenere 32 byte esadecimali");
+  }
+
+  const issuerWallet = new ethers.Wallet(issuerPrivateKey);
+  assertTrustedIssuer(issuerWallet.address);
+  const hardhatWallets = await verifyHardhatWallets(rpcUrl, hardhatMnemonic);
+
+  const localCredentials = path.join(__dirname, "..", CREDENTIALS_DIR);
+  const sharedCredentials = path.join(__dirname, "..", "..", DAO_SHARED_CREDENTIALS_DIR);
+  const localPresentations = path.join(__dirname, "..", PRESENTATIONS_DIR);
+  const sharedPresentations = path.join(__dirname, "..", "..", DAO_SHARED_PRESENTATIONS_DIR);
+  for (const directory of [localCredentials, sharedCredentials, localPresentations, sharedPresentations]) {
+    prepareDir(directory);
+  }
+
+  // Ogni esecuzione rappresenta una nuova sessione demo SSI riproducibile.
+  const databasePath = path.join(__dirname, "..", "database.sqlite");
+  if (fs.existsSync(databasePath)) fs.unlinkSync(databasePath);
+  const { agent, dataSource } = await createDaoVeramoAgent(
+    databasePath,
+    kmsSecretKey.replace(/^0x/, ""),
+    rpcUrl,
+  );
+
+  try {
+    const managedWallets = new Map<string, { did: string; keyId: string }>();
+    const issuerIdentity = await importEthereumWallet(agent, issuerWallet, "dao-issuer");
+    managedWallets.set(issuerWallet.address, issuerIdentity);
+
+    console.log(`Issuer Veramo: ${issuerIdentity.did}`);
+    console.log("DID holder verificati sugli account esposti dal nodo Hardhat.\n");
+
+    for (const [index, holder] of HOLDERS.entries()) {
+      const holderWallet = hardhatWallets.get(holder.signerIndex)!;
+      let holderIdentity = managedWallets.get(holderWallet.address);
+      if (!holderIdentity) {
+        holderIdentity = await importEthereumWallet(agent, holderWallet, holder.alias);
+        managedWallets.set(holderWallet.address, holderIdentity);
+      }
+      if (addressFromEthrDid(holderIdentity.did) !== holderWallet.address) {
+        throw new Error(`DID holder non coerente con signer[${holder.signerIndex}]`);
+      }
+
+      const issuanceDate = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      const credential = await agent.createVerifiableCredential({
+        credential: {
+          "@context": [...CREDENTIAL_CONTEXT],
+          type: [...CREDENTIAL_TYPE],
+          issuer: { id: issuerIdentity.did },
+          issuanceDate,
+          credentialSubject: {
+            id: holderIdentity.did,
+            organization: DEFAULT_ORGANIZATION.name,
+            unit: holder.unit,
+            skills: holder.skills,
+          },
+        },
+        proofFormat: DAO_EIP712_PROOF,
+        keyRef: issuerIdentity.keyId,
+        save: true,
+      });
+      const vcVerification = await agent.verifyCredential({ credential });
+      if (!vcVerification.verified) throw new Error(`VC ${holder.alias} non verificabile da Veramo`);
+
+      const challenge = `competencedao:onboarding:${holderWallet.address.toLowerCase()}`;
+      const presentation = await agent.createVerifiablePresentation({
+        presentation: {
+          "@context": [...CREDENTIAL_CONTEXT],
+          type: ["VerifiablePresentation", "SkillCredentialPresentation"],
+          holder: holderIdentity.did,
+          issuanceDate,
+          verifiableCredential: [credential],
+        },
+        challenge,
+        proofFormat: DAO_EIP712_PROOF,
+        keyRef: holderIdentity.keyId,
+        save: true,
+      });
+      const vpVerification = await agent.verifyPresentation({ presentation, challenge });
+      if (!vpVerification.verified) throw new Error(`VP ${holder.alias} non verificabile da Veramo`);
+
+      const fileName = outputName(index, holder.alias);
+      fs.writeFileSync(path.join(localCredentials, `${holder.alias}.json`), JSON.stringify(credential, null, 2));
+      fs.writeFileSync(path.join(sharedCredentials, fileName), JSON.stringify(credential, null, 2));
+      fs.writeFileSync(path.join(localPresentations, `${holder.alias}.json`), JSON.stringify(presentation, null, 2));
+      fs.writeFileSync(path.join(sharedPresentations, fileName), JSON.stringify(presentation, null, 2));
+
+      console.log(
+        `[${String(index + 1).padStart(2, "0")}/${HOLDERS.length}] ` +
+        `${holderIdentity.did} → VC emessa, salvata e presentata da Veramo`,
+      );
     }
+
+    console.log(`\nDatastore Veramo: ${databasePath}`);
+    console.log(`VC per la DAO:     ${sharedCredentials}`);
+    console.log(`VP per la DAO:     ${sharedPresentations}`);
+  } finally {
+    if (dataSource.isInitialized) await dataSource.destroy();
   }
-
-  // 3. Preparazione directory
-  const localDir = path.join(__dirname, "..", CREDENTIALS_DIR);
-  const sharedDir = path.join(__dirname, "..", "..", DAO_SHARED_CREDENTIALS_DIR);
-  prepareDir(localDir);
-  prepareDir(sharedDir);
-
-  // 4. Generazione firme e file JSON per tutti gli holder
-  console.log("📝 Generazione firme crittografiche EIP-712 in corso...\n");
-
-  for (const [i, holder] of HOLDERS.entries()) {
-    const holderWallet = ethers.HDNodeWallet.fromPhrase(
-      hardhatMnemonic,
-      undefined,
-      `m/44'/60'/0'/0/${holder.signerIndex}`
-    );
-    const holderDid = toDid(holderWallet.address);
-    const issuanceDate = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-
-    // Payload EIP-712 perfettamente mappato alla struct VerifiableCredential di VPVerifier.sol
-    const vcForSigning = {
-      issuer: { id: issuerDid },
-      issuanceDate,
-      credentialSubject: {
-        id: holderDid,
-        organization: DEFAULT_ORGANIZATION.name,
-        unit: holder.unit,
-        skills: holder.skills,
-      },
-    };
-
-    // La firma tramite ethers genererà un signTypedData che VPVerifier.recoverIssuer decodificherà
-    const proofValue = await issuerWallet.signTypedData(EIP712_DOMAIN, VC_TYPES, vcForSigning);
-
-    // Costruzione oggetto JSON W3C standard
-    const credentialJson = {
-      "@context": [...CREDENTIAL_CONTEXT],
-      type: [...CREDENTIAL_TYPE],
-      issuer: vcForSigning.issuer,
-      issuanceDate: vcForSigning.issuanceDate,
-      credentialSubject: vcForSigning.credentialSubject,
-      proof: {
-        type: "EthereumEip712Signature2021",
-        created: issuanceDate,
-        proofPurpose: "assertionMethod",
-        verificationMethod: `${issuerDid}#controller`,
-        proofValue, // Iniezione della firma EIP-712 nel JSON
-      },
-    };
-
-    const localPath = path.join(localDir, `${holder.alias}.json`);
-    const sharedPath = path.join(sharedDir, credentialFileName(i, holder.alias));
-
-    fs.writeFileSync(localPath, JSON.stringify(credentialJson, null, 2), "utf-8");
-    fs.writeFileSync(sharedPath, JSON.stringify(credentialJson, null, 2), "utf-8");
-
-    console.log(
-      `   [${String(i + 1).padStart(2, "0")}/${HOLDERS.length}] ` +
-      `✔️  ${holder.skills.join(", ")} per ${holderDid}`
-    );
-  }
-
-  console.log("\n==========================================================");
-  console.log("  🎉 Operazione completata con successo!");
-  console.log(`  Cartella condivisa: ${sharedDir}`);
-  console.log("==========================================================");
 }
 
 if (require.main === module) {
   issueDaoCompatibleCredentials().catch((error) => {
-    console.error("\n" + error.message);
-    process.exit(1);
+    console.error(`\n${error instanceof Error ? error.message : error}`);
+    process.exitCode = 1;
   });
 }

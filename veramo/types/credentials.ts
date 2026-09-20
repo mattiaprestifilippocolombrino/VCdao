@@ -1,3 +1,5 @@
+import { ethers } from "ethers";
+
 /**
  * Single source of truth per il modello VC usato da tutto il progetto:
  * - Veramo emette credenziali EIP-712 con `skills: string[]`
@@ -165,6 +167,19 @@ export const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
   ],
 };
 
+export const PRESENTATION_EIP712_DOMAIN = {
+  name: "CompetenceDAO Verifiable Presentation",
+  version: "1",
+} as const;
+
+export const PRESENTATION_EIP712_TYPES = {
+  VerifiablePresentation: [
+    { name: "holder", type: "string" },
+    { name: "verifiableCredential", type: "string" },
+    { name: "challenge", type: "string" },
+  ],
+};
+
 export interface CredentialSubject {
   id: string;
   organization: string;
@@ -184,12 +199,25 @@ export interface DaoCompatibleVc {
     proofPurpose: "assertionMethod";
     verificationMethod: string;
     proofValue: string;
+    eip712?: {
+      domain: typeof EIP712_DOMAIN;
+      types: typeof VC_TYPES;
+      primaryType: "VerifiableCredential";
+    };
   };
 }
 
 export const CREDENTIALS_DIR = "./credentials";
 export const DAO_SHARED_CREDENTIALS_DIR = "shared-credentials";
+export const PRESENTATIONS_DIR = "./presentations";
+export const DAO_SHARED_PRESENTATIONS_DIR = "shared-presentations";
 
 export function toDid(address: string): string {
-  return `did:ethr:sepolia:0x${address.slice(2)}`;
+  return `did:ethr:${ethers.getAddress(address)}`;
+}
+
+export function addressFromEthrDid(did: string): string {
+  const match = /^did:ethr:(0x[0-9a-fA-F]{40})$/.exec(did);
+  if (!match) throw new Error(`DID did:ethr non supportato: ${did}`);
+  return ethers.getAddress(match[1]);
 }

@@ -352,22 +352,15 @@ describe("MyGovernor — Ciclo vita proposte, VP composito, Quorum, SuperQuorum"
             expect(forVotes).to.equal(ethers.parseEther("20"));
         });
 
-        it("il VP stake trasferito non è votabile da un destinatario non membro", async function () {
+        it("il VP stake non può essere trasferito o delegato a un non membro", async function () {
             await token.connect(alice).joinDAO({ value: ethers.parseEther("20") });
-            await token.connect(alice).transfer(bob.address, ethers.parseEther("10"));
-            await token.connect(bob).delegate(bob.address);
-            await mine(1);
 
-            const tx = await governor.proposeWithTopic(
-                [ethers.ZeroAddress], [0n], ["0x"], "Transferable stake VP", 0
-            );
-            const pid = await getProposalId(governor, tx);
-
-            await mine(VOTING_DELAY + 1);
-            await governor.connect(bob).castVote(pid, 1);
-
-            const { forVotes } = await governor.proposalVotes(pid);
-            expect(forVotes).to.equal(0n);
+            await expect(
+                token.connect(alice).transfer(bob.address, ethers.parseEther("10"))
+            ).to.be.revertedWithCustomError(token, "TokenRecipientNotMember").withArgs(bob.address);
+            await expect(
+                token.connect(alice).delegate(bob.address)
+            ).to.be.revertedWithCustomError(token, "DelegateeNotMember").withArgs(bob.address);
         });
 
         it("il VP stake trasferito resta votabile se il destinatario è membro", async function () {

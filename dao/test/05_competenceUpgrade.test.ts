@@ -457,7 +457,29 @@ describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
         await skillModule.connect(member).registerDID(holderDid);
         await expect(
             skillModule.connect(deployer).registerDID(holderDid)
-        ).to.be.revertedWithCustomError(skillModule, "DIDAlreadyBound");
+        ).to.be.revertedWithCustomError(skillModule, "DIDControllerMismatch");
+    });
+
+    it("registerDID richiede che il controller del DID coincida con il chiamante", async function () {
+        await expect(
+            skillModule.connect(member).registerDID(
+                `did:ethr:${deployer.address}`
+            )
+        ).to.be.revertedWithCustomError(skillModule, "DIDControllerMismatch");
+    });
+
+    it("registerDID rifiuta DID non ethr o address malformati", async function () {
+        await expect(
+            skillModule.connect(member).registerDID(`did:example:${member.address}`)
+        ).to.be.revertedWithCustomError(skillModule, "UnsupportedDID");
+
+        await expect(
+            skillModule.connect(member).registerDID("did:ethr:0x1234")
+        ).to.be.revertedWithCustomError(skillModule, "UnsupportedDID");
+
+        await expect(
+            skillModule.connect(member).registerDID(`did:ethr:mainnet:${member.address}`)
+        ).to.be.revertedWithCustomError(skillModule, "UnsupportedDID");
     });
 
     // =========================================================================
@@ -547,7 +569,7 @@ describe("Competence Upgrade — skill bitmap + SkillCalculator", function () {
     });
 
     it("rifiuta VC con DID mismatch", async function () {
-        await skillModule.connect(member).registerDID("did:example:wrong-holder");
+        await skillModule.connect(member).registerDID(`did:ethr:${member.address.toLowerCase()}`);
         await expect(
             upgradeWithSharedCredential(member, memberCredential, false)
         ).to.be.revertedWithCustomError(skillModule, "DIDMismatch");

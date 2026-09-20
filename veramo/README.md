@@ -1,66 +1,66 @@
-# VC EIP-712 per CompetenceDAO
+# Agent SSI Veramo per CompetenceDAO
 
-Questo modulo contiene un solo flusso: genera le VC EIP-712 consumate dalla DAO.
-Le definizioni condivise sono in `types/credentials.ts`; lo script
-`scripts/issue-for-dao.ts` produce le credenziali in due cartelle:
+Questo modulo implementa l'intero flusso SSI usato dalla DAO tramite un agent
+Veramo:
 
-- `veramo/credentials` (copia locale)
-- `shared-credentials` (input diretto per la governance DAO)
+1. importa l'issuer e gli holder come DID `did:ethr` gestiti dal
+   `DIDManager`;
+2. custodisce le chiavi nel KMS locale Veramo, cifrate nel database SQLite;
+3. emette le Verifiable Credential tramite `createVerifiableCredential`;
+4. salva VC e Verifiable Presentation tramite il `DataStore` Veramo;
+5. crea una VP firmata dal wallet holder tramite
+   `createVerifiablePresentation`;
+6. esporta VC e VP per lo script Hardhat di onboarding.
 
-## Modello VC (unico)
+Il provider EIP-712 in `providers/DaoEip712CredentialProvider.ts` è un provider
+Veramo specifico per CompetenceDAO. È necessario perché il provider EIP-712
+generico usa uno schema dinamico, mentre `VPVerifier.sol` richiede il type-hash
+stabile definito in `types/credentials.ts`.
 
-Top-level:
+## Coerenza tra DID e wallet Hardhat
 
-- `@context`
-- `type`
-- `issuer`
-- `issuanceDate`
-- `credentialSubject`
-- `proof`
+Ogni DID è costruito nella forma:
 
-`credentialSubject`:
+`did:ethr:<address Ethereum checksum>`
 
-- `id`
-- `organization` (universita', azienda, DAO o training provider)
-- `unit` (facolta', dipartimento, team o sezione)
-- `skills` (array di skill supportate dalla DAO)
+Prima dell'emissione, lo script deriva i wallet dal mnemonic e confronta ogni
+address con `eth_accounts` restituito dal nodo Hardhat. L'esecuzione viene
+interrotta se un DID, una chiave Veramo e il relativo account Hardhat non
+coincidono.
 
-Note:
-
-- La firma EIP-712 copre i soli claim semantici richiesti dal PoC.
-- Il contratto salva solo l'hash del DID holder e verifica che la VC firmata riporti lo stesso `credentialSubject.id`; non richiede un formato DID legato all'address Ethereum.
-- Nel flusso DAO, il membro registra questo DID on-chain prima di presentare la VC.
-
-## Script
-
-- `issue-for-dao.ts`: genera e firma tutte le VC compatibili con
-  `GovernanceSkill.sol` e `VPVerifier.sol`.
-
-## Installazione
-
-```bash
-npm install
-```
+La VP è firmata dalla chiave dell'holder. Lo script
+`dao/scripts/04_upgradeCompetences.ts` verifica questa firma, controlla che il
+subject della VC coincida con l'holder della VP e usa lo stesso signer Hardhat
+per `registerDID` e `upgradeSkillWithVC`.
 
 ## Configurazione
 
-Servono esclusivamente:
+Copiare `.env.example` in `.env` e configurare:
 
-- `DAO_ISSUER_PRIVATE_KEY`
-- `DAO_HARDHAT_MNEMONIC`
-
-e il file `dao/deployedAddresses.json` già popolato dal deploy DAO.
+- `DAO_ISSUER_PRIVATE_KEY`: chiave del trusted issuer della DAO;
+- `DAO_HARDHAT_MNEMONIC`: mnemonic usato dal nodo Hardhat;
+- `KMS_SECRET_KEY`: 32 byte esadecimali per cifrare il KMS locale;
+- `DAO_HARDHAT_RPC_URL`: endpoint del nodo, normalmente
+  `http://127.0.0.1:8545`.
 
 ## Esecuzione
 
+Con il nodo Hardhat e la DAO già avviati:
+
 ```bash
+cd veramo
+npm install
 npm run issue-for-dao
 ```
 
-Lo script sostituisce i file JSON precedenti. Dopo una modifica a topic, skill o
-schema EIP-712, le credenziali devono sempre essere rigenerate prima dei test DAO:
+Output prodotti:
 
-```bash
-cd ../dao
-npx hardhat test
-```
+- `veramo/database.sqlite`: datastore Veramo di DID, chiavi cifrate, VC e VP;
+- `veramo/credentials`: esportazione locale delle VC;
+- `veramo/presentations`: esportazione locale delle VP;
+- `shared-credentials`: VC usate dai test Solidity;
+- `shared-presentations`: VP consumate dallo script Hardhat di onboarding.
+
+Il database e gli output vengono rigenerati a ogni esecuzione, rendendo la demo
+riproducibile. Non devono essere pubblicati perché contengono identità e chiavi
+di sviluppo.

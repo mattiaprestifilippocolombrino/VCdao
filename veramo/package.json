@@ -1,7 +1,7 @@
 {
   "name": "competencedao-vc-issuer",
   "version": "2.0.0",
-  "description": "Generatore di Verifiable Credentials EIP-712 per CompetenceDAO",
+  "description": "Agent Veramo per DID, VC e VP EIP-712 di CompetenceDAO",
   "scripts": {
     "issue-for-dao": "ts-node scripts/issue-for-dao.ts",
     "typecheck": "tsc --noEmit"
@@ -21,7 +21,18 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@veramo/core": "^7.0.0",
+    "@veramo/core-types": "^7.0.0",
+    "@veramo/credential-w3c": "^7.0.0",
+    "@veramo/data-store": "^7.0.0",
+    "@veramo/did-manager": "^7.0.0",
+    "@veramo/did-provider-ethr": "^7.0.0",
+    "@veramo/key-manager": "^7.0.0",
+    "@veramo/kms-local": "^7.0.0",
     "dotenv": "^16.4.7",
-    "ethers": "^6.15.0"
+    "ethers": "^6.15.0",
+    "reflect-metadata": "^0.2.2",
+    "sqlite3": "^5.1.7",
+    "typeorm": "^0.3.28"
   }
 }

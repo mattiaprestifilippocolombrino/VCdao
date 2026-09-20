@@ -96,6 +96,9 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     error InvalidWeights();
     error DepositTooSmall();
     error MaxDepositReached();
+    error TokenRecipientNotMember(address recipient);
+    error DelegatorNotMember(address delegator);
+    error DelegateeNotMember(address delegatee);
 
     /// Decorator che obbliga la funzione interna ad essere eseguita solo dal TimeLockController.
     modifier onlyTimelock() {
@@ -252,8 +255,19 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
     // =========================================================================
 
     // Hook richiesto da ERC20Votes per aggiornare i checkpoint dei token stake.
+    // address(0) identifica un burn; ogni altro destinatario deve appartenere alla DAO.
+    // joinDAO imposta la membership prima del mint, quindi anche il mint segue la stessa regola.
     function _update(address from, address to, uint256 amount) internal override(ERC20, ERC20Votes) {
+        if (to != address(0) && !isMember[to]) revert TokenRecipientNotMember(to);
         super._update(from, to, amount);
+    }
+
+    // Punto unico usato sia da delegate() sia da delegateBySig().
+    function _delegate(address account, address delegatee) internal override {
+        if (!isMember[account]) revert DelegatorNotMember(account);
+        // address(0) resta consentito per rimuovere una delega esistente.
+        if (delegatee != address(0) && !isMember[delegatee]) revert DelegateeNotMember(delegatee);
+        super._delegate(account, delegatee);
     }
 
     // Risolve il conflitto di ereditarieta' tra ERC20Permit e Nonces.

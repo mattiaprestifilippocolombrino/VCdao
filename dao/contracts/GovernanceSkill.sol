@@ -12,6 +12,7 @@ contract GovernanceSkill {
 
     uint256 public constant BASIS_POINTS = 10_000;      /// Denominatore basis points per effettuare i calcoli in %, che rappresenta il 100% = 10.000 bp.
     bytes32 public constant VC_PROOF_TYPEHASH = keccak256("VCProof(bytes32 credentialSubjectHash)");
+    bytes9 private constant DID_ETHR_PREFIX = "did:ethr:";
 
     /// Domain separator canonico definito in VPVerifier e usato anche dall'emittente off-chain.
     bytes32 public constant UNIVERSAL_DOMAIN_SEPARATOR = VPVerifier.UNIVERSAL_DOMAIN_SEPARATOR;
@@ -65,6 +66,8 @@ contract GovernanceSkill {
     error DIDAlreadyBound();
     error NoDIDRegistered();
     error EmptyDID();
+    error UnsupportedDID();
+    error DIDControllerMismatch();
     error UntrustedIssuer();
     error TrustedIssuerNotSet();
     error TrustedIssuerAlreadySet();
@@ -208,6 +211,10 @@ contract GovernanceSkill {
     function registerDID(string calldata _did) external {
         if (!governanceToken.isMember(msg.sender)) revert NotMember();
         if (bytes(_did).length == 0) revert EmptyDID();
+
+        address holderAddress = _parseSupportedEthrDID(_did);
+        if (holderAddress != msg.sender) revert DIDControllerMismatch();
+
         if (memberDID[msg.sender] != bytes32(0)) revert DIDAlreadyRegistered();
 
         bytes32 didHash = keccak256(bytes(_did));
@@ -217,6 +224,42 @@ contract GovernanceSkill {
         didToAddress[didHash] = msg.sender;
 
         emit DIDRegistered(msg.sender, didHash);
+    }
+
+    // Estrae il controller dal formato canonico usato dalla DAO:
+    // did:ethr:0x<address>.
+    function _parseSupportedEthrDID(string calldata _did) private pure returns (address) {
+        bytes calldata did = bytes(_did);
+        if (did.length != 51 || bytes9(did[0:9]) != DID_ETHR_PREFIX) {
+            revert UnsupportedDID();
+        }
+
+        uint256 addressStart = 9;
+        if (did[addressStart] != bytes1("0") || did[addressStart + 1] != bytes1("x")) {
+            revert UnsupportedDID();
+        }
+
+        uint160 parsedAddress;
+        unchecked {
+            for (uint256 i = addressStart + 2; i < did.length; i++) {
+                uint8 character = uint8(did[i]);
+                uint8 nibble;
+
+                if (character >= 48 && character <= 57) {
+                    nibble = character - 48;
+                } else if (character >= 65 && character <= 70) {
+                    nibble = character - 55;
+                } else if (character >= 97 && character <= 102) {
+                    nibble = character - 87;
+                } else {
+                    revert UnsupportedDID();
+                }
+
+                parsedAddress = (parsedAddress << 4) | uint160(nibble);
+            }
+        }
+
+        return address(parsedAddress);
     }
 
 
