@@ -1,7 +1,10 @@
 {
   "name": "competencedao-vc-issuer",
   "version": "2.0.0",
-  "description": "Agent Veramo per DID, VC e VP EIP-712 di CompetenceDAO",
+  "description": "Agent Veramo per DID e VC EIP-712 di CompetenceDAO",
+  "engines": {
+    "node": ">=20.17.0"
+  },
   "scripts": {
     "issue-for-dao": "ts-node scripts/issue-for-dao.ts",
     "typecheck": "tsc --noEmit"
@@ -16,7 +19,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^25.5.0",
+    "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
@@ -32,7 +35,7 @@
     "dotenv": "^16.4.7",
     "ethers": "^6.15.0",
     "reflect-metadata": "^0.2.2",
-    "sqlite3": "^5.1.7",
+    "sqlite3": "^6.0.1",
     "typeorm": "^0.3.28"
   }
 }

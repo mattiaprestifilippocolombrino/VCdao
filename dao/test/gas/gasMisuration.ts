@@ -226,12 +226,12 @@ function csvEscape(value: unknown): string {
     const text = String(value ?? '');
     return `"${text.replace(/"/g, '""')}"`;
 }
-function toCsv<T extends Record<string, unknown>>(rows: T[], columns: (keyof T)[]): string {
+function toCsv<T extends object>(rows: T[], columns: (keyof T)[]): string {
     const header = columns.map(String).join(',');
     const body = rows.map(row => columns.map(column => csvEscape(row[column])).join(','));
     return [header, ...body].join('\n') + '\n';
 }
-function markdownTable<T extends Record<string, unknown>>(rows: T[], columns: (keyof T)[]): string {
+function markdownTable<T extends object>(rows: T[], columns: (keyof T)[]): string {
     const header = `| ${columns.map(String).join(' | ')} |`;
     const divider = `| ${columns.map(() => '---').join(' | ')} |`;
     const body = rows.map(row => `| ${columns.map(column => String(row[column] ?? '')).join(' | ')} |`);

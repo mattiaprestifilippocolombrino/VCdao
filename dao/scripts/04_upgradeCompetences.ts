@@ -4,15 +4,16 @@ ESECUZIONE: npx hardhat run scripts/04_upgradeCompetences.ts --network localhost
 
 PREREQUISITI:
   - Eseguito 03_delegateAll.ts
-  - Eseguito veramo/scripts/issue-for-dao.ts (VP generate in shared-presentations/)
+  - Eseguito veramo/scripts/issue-for-dao.ts (VC generate in shared-credentials/)
 
 FLUSSO:
-  1. Legge le VP JSON generate e salvate dall'agent Veramo.
-  2. Verifica la firma dell'holder e valida la VC contenuta nella VP.
+  1. Legge le VC JSON generate e salvate dall'agent Veramo.
+  2. Abbina credentialSubject.id al wallet Hardhat con lo stesso address.
   3. Registra il DID del membro se non è già stato registrato.
-  4. Ogni membro chiama upgradeSkillWithVC() presentando la propria VC.
-  5. Il contratto verifica DID registrato e firma EIP-712, unisce le skill nella bitmap
-     del membro e aggiorna i checkpoint VP per ogni topic via SkillCalculator.
+  4. Quel wallet chiama upgradeSkillWithVC() presentando la propria VC.
+  5. Il contratto verifica msg.sender, DID registrato e firma EIP-712 dell'issuer,
+     unisce le skill nella bitmap del membro e aggiorna i checkpoint VP per ogni
+     topic via SkillCalculator.
 
 SKILL RICONOSCIUTE (fonte di verità in GovernanceSkill):
   machineLearning | dataEngineering | cyberSecurity | cloudArchitecture
@@ -30,10 +31,10 @@ import * as fs   from "fs";
 import * as path from "path";
 import { assertContractsDeployed, loadDeployedAddresses } from "./helpers";
 import {
-    PRESENTATION_EIP712_DOMAIN,
-    PRESENTATION_EIP712_TYPES,
+    EIP712_DOMAIN,
     RECOGNIZED_SKILLS,
     TOPIC_LABELS,
+    VC_TYPES,
     addressFromEthrDid,
 } from "../../veramo/types/credentials";
 
@@ -89,37 +90,25 @@ function parseCredential(c: any, file: string): ParsedCredential {
     };
 }
 
-function parsePresentation(filePath: string): ParsedCredential {
-    const presentation = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    const credentials = presentation.verifiableCredential;
-    if (!presentation.holder) throw new Error(`${path.basename(filePath)}: VP senza holder`);
-    if (!Array.isArray(credentials) || credentials.length !== 1 || typeof credentials[0] === "string") {
-        throw new Error(`${path.basename(filePath)}: la VP deve contenere una sola VC JSON`);
-    }
-    if (!presentation.proof?.proofValue || !presentation.proof?.challenge) {
-        throw new Error(`${path.basename(filePath)}: proof della VP incompleta`);
-    }
+function readCredential(filePath: string): ParsedCredential {
+    const credential = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return parseCredential(credential, path.basename(filePath));
+}
 
-    const holderAddress = addressFromEthrDid(presentation.holder);
-    const recoveredHolder = ethers.verifyTypedData(
-        PRESENTATION_EIP712_DOMAIN,
-        PRESENTATION_EIP712_TYPES,
+function recoverCredentialIssuer(credential: ParsedCredential): string {
+    // Ricostruiamo esattamente lo stesso typed-data firmato da Veramo e
+    // verificato da GovernanceSkill. In questo modo una VC alterata viene
+    // scartata prima di inviare una transazione destinata a fallire.
+    return ethers.verifyTypedData(
+        EIP712_DOMAIN,
+        VC_TYPES,
         {
-            holder: presentation.holder,
-            verifiableCredential: JSON.stringify(credentials[0]),
-            challenge: presentation.proof.challenge,
+            issuer: { id: credential.issuerDid },
+            issuanceDate: credential.issuanceDate,
+            credentialSubject: credential.credentialSubject,
         },
-        presentation.proof.proofValue,
+        credential.signature,
     );
-    if (recoveredHolder !== holderAddress) {
-        throw new Error(`${path.basename(filePath)}: VP non firmata dal wallet holder`);
-    }
-
-    const credential = parseCredential(credentials[0], path.basename(filePath));
-    if (credential.credentialSubject.id !== presentation.holder) {
-        throw new Error(`${path.basename(filePath)}: holder VP diverso dal subject della VC`);
-    }
-    return credential;
 }
 
 async function main() {
@@ -137,29 +126,39 @@ async function main() {
         trustedIssuerAddresses.map((issuer: string) => `did:ethr:${issuer}`.toLowerCase())
     );
 
-    // Le VP sono create e firmate dai wallet holder tramite l'agent Veramo.
-    const presentationsPath = path.join(__dirname, "..", "..", "shared-presentations");
-    if (!fs.existsSync(presentationsPath)) {
-        throw new Error(`Cartella non trovata: ${presentationsPath}. Esegui prima issue-for-dao.ts in veramo/`);
+    // Veramo esporta direttamente le VC firmate dall'issuer. Non serve una VP:
+    // sarà il subject stesso, tramite il proprio signer, a presentare la VC on-chain.
+    const credentialsPath = path.join(__dirname, "..", "..", "shared-credentials");
+    if (!fs.existsSync(credentialsPath)) {
+        throw new Error(`Cartella non trovata: ${credentialsPath}. Esegui prima issue-for-dao.ts in veramo/`);
     }
 
-    const files = fs.readdirSync(presentationsPath).filter((f: string) => f.endsWith(".json")).sort();
-    if (files.length === 0) throw new Error(`Nessuna VP trovata in ${presentationsPath}`);
+    const files = fs.readdirSync(credentialsPath).filter((f: string) => f.endsWith(".json")).sort();
+    if (files.length === 0) throw new Error(`Nessuna VC trovata in ${credentialsPath}`);
 
-    console.log("📝 Lettura e validazione VP Veramo...");
-    const parsedCreds = files.map((f: string) => parsePresentation(path.join(presentationsPath, f)));
+    console.log("📝 Lettura e validazione VC Veramo...");
+    const parsedCreds = files.map((f: string) => readCredential(path.join(credentialsPath, f)));
 
-    // Filtriamo solo quelle firmate da uno degli issuer fidati
-    const trustedCreds = parsedCreds.filter(
-        (c) => trustedIssuerDids.has(c.issuerDid.toLowerCase())
-    );
+    // Una VC è utilizzabile solo se la firma appartiene al DID issuer dichiarato
+    // e quell'issuer è configurato come trusted nel contratto.
+    const trustedCreds = parsedCreds.filter((credential) => {
+        try {
+            const declaredIssuer = addressFromEthrDid(credential.issuerDid);
+            const recoveredIssuer = recoverCredentialIssuer(credential);
+            return recoveredIssuer === declaredIssuer
+                && trustedIssuerDids.has(credential.issuerDid.toLowerCase());
+        } catch {
+            return false;
+        }
+    });
     if (trustedCreds.length === 0) {
         throw new Error(`Nessuna VC trovata con issuer fidato`);
     }
     console.log(`   Trovate ${trustedCreds.length} VC valide su ${parsedCreds.length} totali.\n`);
 
-    // Mappa ogni VC al signer che possiede davvero il DID.
-    // Evitiamo di affidarci all'ordine dei file, che è comodo ma fragile.
+    // Ricaviamo l'address dal DID del credentialSubject e cerchiamo il signer
+    // Hardhat corrispondente. Non usiamo l'ordine dei file: ogni VC viene così
+    // presentata dal wallet identificato nella credenziale stessa.
     const toUpgrade = trustedCreds.map((cred) => {
         const holderAddress = addressFromEthrDid(cred.credentialSubject.id);
         const signerIdx = signers.findIndex((s) => s.address === holderAddress);
@@ -193,7 +192,10 @@ async function main() {
             continue;
         }
 
-        // Upgrade skill via VC EIP-712
+        // Il legame msg.sender ↔ DID ↔ credentialSubject viene chiuso qui:
+        // - connect(u.signer) determina msg.sender;
+        // - registerDID ha associato a quel sender u.holderDid;
+        // - GovernanceSkill confronta l'hash del DID registrato con l'id nella VC.
         const tx = await skillModule.connect(u.signer).upgradeSkillWithVC(u.vcDataObj, u.signature);
         await tx.wait();
 
