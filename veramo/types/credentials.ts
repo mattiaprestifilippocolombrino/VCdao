@@ -1,4 +1,4 @@
-// ethers viene usato qui soltanto per validare e normalizzare gli address.
+// Modello condiviso tra Veramo, script Hardhat e contratti Solidity.
 import { ethers } from "ethers";
 
 /**
@@ -9,11 +9,11 @@ import { ethers } from "ethers";
  */
 
 // Gli ID devono coincidere con quelli usati da Governor e SkillCalculator.
-export const TOPIC_AI_DATA = 0;                  // Proposte su AI e dati.
-export const TOPIC_CLOUD_CYBERSECURITY = 1;     // Proposte su cloud e sicurezza.
-export const TOPIC_FINTECH_BLOCKCHAIN = 2;      // Proposte fintech e blockchain.
-export const TOPIC_ENTERPRISE_SOFTWARE = 3;     // Proposte software enterprise.
-export const NUM_TOPICS = 4;                    // Numero totale di topic validi.
+export const TOPIC_AI_DATA = 0;
+export const TOPIC_CLOUD_CYBERSECURITY = 1;
+export const TOPIC_FINTECH_BLOCKCHAIN = 2;
+export const TOPIC_ENTERPRISE_SOFTWARE = 3;
+export const NUM_TOPICS = 4;
 
 /** Etichette leggibili associate agli ID numerici usati nei contratti. */
 export const TOPIC_LABELS = [
@@ -35,7 +35,6 @@ export const RECOGNIZED_SKILLS = [
   "startupFinance",
 ] as const;
 
-// Il tipo SkillName può assumere soltanto uno dei valori dell'array precedente.
 export type SkillName = typeof RECOGNIZED_SKILLS[number];
 
 /** Ente che emette le credenziali nell'ambiente dimostrativo. */
@@ -154,27 +153,23 @@ export const HOLDERS: HolderPlan[] = [
   },
 ];
 
-// Metadati W3C presenti in ogni documento VC esportato.
+// Metadati e typed-data firmati in ogni VC esportata.
 export const CREDENTIAL_CONTEXT = ["https://www.w3.org/2018/credentials/v1"] as const;
 export const CREDENTIAL_TYPE = ["VerifiableCredential", "SkillCredential"] as const;
 
-// Deve coincidere con VPVerifier.UNIVERSAL_DOMAIN_SEPARATOR.
 export const EIP712_DOMAIN = {
   name: "Universal VC Protocol",
   version: "1",
 } as const;
 
 export const VC_TYPES: Record<string, Array<{ name: string; type: string }>> = {
-  // L'issuer è rappresentato dal proprio DID did:ethr.
   Issuer: [{ name: "id", type: "string" }],
-  // Il subject contiene identità e competenze che saranno lette dalla DAO.
   CredentialSubject: [
     { name: "id", type: "string" },
     { name: "organization", type: "string" },
     { name: "unit", type: "string" },
     { name: "skills", type: "string[]" },
   ],
-  // La VC lega issuer, data di emissione e subject in un'unica firma.
   VerifiableCredential: [
     { name: "issuer", type: "Issuer" },
     { name: "issuanceDate", type: "string" },
@@ -227,14 +222,12 @@ export interface DaoCompatibleVc {
   };
 }
 
-// Directory locale al modulo Veramo.
+// Percorsi di output usati dallo script di emissione.
 export const CREDENTIALS_DIR = "./credentials";
-// Directory condivisa nella radice del repository.
 export const DAO_SHARED_CREDENTIALS_DIR = "shared-credentials";
 
 /** Costruisce il DID canonico del progetto a partire da un address Ethereum. */
 export function toDid(address: string): string {
-  // getAddress verifica lunghezza/formato e applica il checksum EIP-55.
   return `did:ethr:${ethers.getAddress(address)}`;
 }
 
@@ -243,10 +236,8 @@ export function toDid(address: string): string {
  * Qualsiasi metodo DID o formato diverso viene rifiutato esplicitamente.
  */
 export function addressFromEthrDid(did: string): string {
-  // La regex richiede esattamente prefisso did:ethr e 20 byte esadecimali.
+  // Il progetto accetta solo DID did:ethr semplici, senza rete o parametri extra.
   const match = /^did:ethr:(0x[0-9a-fA-F]{40})$/.exec(did);
-  // Senza match non possiamo collegare in modo sicuro il DID a msg.sender.
   if (!match) throw new Error(`DID did:ethr non supportato: ${did}`);
-  // Normalizza l'address estratto e ne verifica anche l'eventuale checksum.
   return ethers.getAddress(match[1]);
 }
