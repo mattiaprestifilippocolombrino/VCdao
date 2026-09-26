@@ -186,32 +186,19 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
 
     /* Funzione usata dagli utenti per entrare nella DAO, chiamabile da chiunque, senza passare da una proposal.
        Può essere chiamata solo dagli utenti che non sono ancora membri della DAO. Controlla che il treasury abbia
-       un indirizzo assegnato, che il deposito effettuato sia superiore a 0 e inferiore al deposito massimo consentito.
-       Calcola il numero di token da ricevere in base al deposito effettuato via formula VPC. weightStake × scoreStake, usando le funzioni di utility precedenti.
-       Imposta il nuovo membro come attivo, con grado minimo Student e viene registrato il deposito effettuato.
-       I token vengono mintati e inviati al membro se weightStake > 0. In una configurazione only-competences
-       il deposito resta obbligatorio e tracciato, ma non vengono mintati token stake.
-       La funzione trasferisce gli ETH ricevuti direttamente al treasury.
-
-       Regola anti-bypass: se un utente ha depositato il massimo depositabile (senza tenere conto
-       del suo saldo attuale di token, che potrebbe aver trasferito), non può più effettuare minting.
+       un indirizzo assegnato e che il deposito effettuato sia superiore a 0.
+       joinDAO gestisce solo la membership: registra il nuovo membro e poi chiama increaseStake(), che contiene
+       il flusso unico per deposito, calcolo dei token stake, mint e trasferimento degli ETH al Treasury.
+       In questo modo increaseStake() resta chiamabile solo dai membri, inclusi i nuovi membri registrati da joinDAO().
     */
     function joinDAO() external payable {
         if (treasury == address(0)) revert TreasuryNotSet();
         if (isMember[msg.sender]) revert AlreadyMember();
         if (msg.value == 0) revert ZeroDeposit();
-        if (msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
-        if (stakeDeposited[msg.sender] >= MAX_DEPOSIT) revert MaxDepositReached();
-
-        uint256 tokenAmount = _calculateStakeTokens(msg.value, 0);
-        if (tokenAmount == 0 && weightStake > 0) revert DepositTooSmall();
 
         isMember[msg.sender] = true;
-        stakeDeposited[msg.sender] = msg.value;
+        uint256 tokenAmount = increaseStake();
 
-        if (tokenAmount > 0) _mint(msg.sender, tokenAmount);
-        (bool ok, ) = treasury.call{value: msg.value}("");
-        if (!ok) revert TreasuryTransferFailed();
         emit MemberJoined(msg.sender, msg.value, tokenAmount);
     }
 
@@ -228,14 +215,14 @@ contract GovernanceToken is ERC20, ERC20Permit, ERC20Votes {
        Regola anti-bypass: se un utente ha depositato il massimo depositabile (senza tenere conto
        del suo saldo attuale di token, che potrebbe aver trasferito), non può più effettuare minting.
     */
-    function increaseStake() external payable {
+    function increaseStake() public payable returns (uint256 newTokens) {
         if (!isMember[msg.sender]) revert NotMember();
         if (msg.value == 0) revert ZeroDeposit();
         if (treasury == address(0)) revert TreasuryNotSet();
         if (stakeDeposited[msg.sender] >= MAX_DEPOSIT) revert MaxDepositReached();
         if (stakeDeposited[msg.sender] + msg.value > MAX_DEPOSIT) revert ExceedsMaxDeposit();
 
-        uint256 newTokens = _calculateStakeTokens(msg.value, stakeDeposited[msg.sender]);
+        newTokens = _calculateStakeTokens(msg.value, stakeDeposited[msg.sender]);
         if (newTokens == 0 && weightStake > 0) revert DepositTooSmall();
 
         stakeDeposited[msg.sender] += msg.value;

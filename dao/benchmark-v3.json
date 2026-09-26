@@ -1,6 +1,6 @@
 {
   "version": "V3-TopicBased",
-  "timestamp": "2026-09-21T18:35:30.924Z",
+  "timestamp": "2026-09-26T14:21:06.423Z",
   "gasPriceGwei": 1.03244,
   "ethPriceUsd": 2638.48,
   "scenario": {
@@ -23,63 +23,63 @@
   "flow": [
     {
       "operation": "joinDAO  (member 1)",
-      "gasUsed": "178577",
-      "costEth": "0.00018437003788",
-      "costUsd": "$0.4865"
+      "gasUsed": "181268",
+      "costEth": "0.00018714833392",
+      "costUsd": "$0.4938"
     },
     {
       "operation": "joinDAO  (member 2)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 3)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 4)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 5)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 6)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 7)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 8)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 9)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "joinDAO  (member 10)",
-      "gasUsed": "147062",
-      "costEth": "0.00015183269128",
-      "costUsd": "$0.4006"
+      "gasUsed": "149753",
+      "costEth": "0.00015461098732",
+      "costUsd": "$0.4079"
     },
     {
       "operation": "delegate (member 1)",
@@ -342,29 +342,29 @@
   ],
   "aggregates": {
     "memberActivationCost": {
-      "gas": "7396044",
-      "usd": "$20.15"
+      "gas": "7422954",
+      "usd": "$20.22"
     },
     "governanceCycleCost": {
       "gas": "1644792",
       "usd": "$4.48"
     },
     "totalGas": {
-      "gas": "9040836",
-      "usd": "$24.63"
+      "gas": "9067746",
+      "usd": "$24.70"
     },
     "perMemberEstimates": {
       "activation": {
-        "gas": "739604",
-        "usd": "$2.01"
+        "gas": "742295",
+        "usd": "$2.02"
       },
       "cycleShare": {
         "gas": "164479",
         "usd": "$0.4481"
       },
       "total": {
-        "gas": "904083",
-        "usd": "$2.46"
+        "gas": "906774",
+        "usd": "$2.47"
       }
     }
   },

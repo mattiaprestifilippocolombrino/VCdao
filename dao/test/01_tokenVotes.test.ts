@@ -125,6 +125,24 @@ describe("GovernanceToken — joinDAO + ERC20Votes", function () {
         expect(await token.stakeDeposited(alice.address)).to.equal(ethers.parseEther("10"));
     });
 
+    it("joinDAO() registra il membro e delega la logica stake a increaseStake()", async function () {
+        const deposit = ethers.parseEther("10");
+        const expectedTokens = ethers.parseEther("5");
+
+        const tx = token.connect(alice).joinDAO({ value: deposit });
+
+        await expect(tx)
+            .to.emit(token, "StakeIncreased")
+            .withArgs(alice.address, deposit, expectedTokens);
+        await expect(tx)
+            .to.emit(token, "MemberJoined")
+            .withArgs(alice.address, deposit, expectedTokens);
+
+        expect(await token.isMember(alice.address)).to.be.true;
+        expect(await token.stakeDeposited(alice.address)).to.equal(deposit);
+        expect(await token.balanceOf(alice.address)).to.equal(expectedTokens);
+    });
+
     it("joinDAO() reverta senza ETH", async function () {
         await expect(
             token.connect(alice).joinDAO({ value: 0 })

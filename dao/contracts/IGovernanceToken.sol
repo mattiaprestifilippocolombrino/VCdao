@@ -11,6 +11,6 @@ interface IGovernanceToken is IERC5805 {
 
     /// @dev Flusso utente minimo per entrare nella DAO e aumentare lo stake.
     function joinDAO() external payable;
-    function increaseStake() external payable;
+    function increaseStake() external payable returns (uint256 newTokens);
     function getStakeScore(address _member) external view returns (uint256);
 }
