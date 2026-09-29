@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Misurazioni gas V3</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #17202a; }
+    h1, h2 { margin: 0 0 16px; }
+    section { margin-bottom: 42px; }
+    .chart { width: 100%; max-width: 1040px; border: 1px solid #d6dde5; border-radius: 8px; padding: 16px; }
+    .bar-label { font-size: 12px; fill: #26323f; }
+    .axis { stroke: #9aa8b5; stroke-width: 1; }
+  </style>
+</head>
+<body>
+  <h1>Misurazioni gas V3 Topic-Based DAO</h1>
+  <section>
+  <h2>Gas per fase del flow principale</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1040 374" role="img" aria-label="Gas per fase del flow principale">
+      <line class="axis" x1="230" y1="28" x2="1016" y2="28"></line>
+      
+      <text class="bar-label" x="0" y="55">Join DAO</text>
+      <rect x="230" y="42" width="257.61039766747206" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="493.61039766747206" y="55">1.529.045 gas</text>
+      <text class="bar-label" x="0" y="93">Delegate</text>
+      <rect x="230" y="80" width="165.30519288745472" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="401.3051928874547" y="93">981.168 gas</text>
+      <text class="bar-label" x="0" y="131">Register DID</text>
+      <rect x="230" y="118" width="147.68863090837377" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="383.68863090837374" y="131">876.605 gas</text>
+      <text class="bar-label" x="0" y="169">Upgrade skill with VC</text>
+      <rect x="230" y="156" width="680" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="916" y="169">4.036.136 gas</text>
+      <text class="bar-label" x="0" y="207">Propose with topic</text>
+      <rect x="230" y="194" width="16.273287124120692" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="252.27328712412069" y="207">96.590 gas</text>
+      <text class="bar-label" x="0" y="245">Cast vote</text>
+      <rect x="230" y="232" width="194.76626159277092" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="430.7662615927709" y="245">1.156.034 gas</text>
+      <text class="bar-label" x="0" y="283">Queue</text>
+      <rect x="230" y="270" width="29.425182897702157" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="265.42518289770214" y="283">174.653 gas</text>
+      <text class="bar-label" x="0" y="321">Execute</text>
+      <rect x="230" y="308" width="36.64648564865009" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="272.64648564865007" y="321">217.515 gas</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Costi aggregati</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1040 184" role="img" aria-label="Costi aggregati">
+      <line class="axis" x1="230" y1="28" x2="1016" y2="28"></line>
+      
+      <text class="bar-label" x="0" y="55">10 Member Activation Cost</text>
+      <rect x="230" y="42" width="556.6552834629466" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="792.6552834629466" y="55">7.422.954 gas</text>
+      <text class="bar-label" x="0" y="93">Governance Cycle Cost</text>
+      <rect x="230" y="80" width="123.34471653705342" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="359.3447165370534" y="93">1.644.792 gas</text>
+      <text class="bar-label" x="0" y="131">Total Gas</text>
+      <rect x="230" y="118" width="680" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="916" y="131">9.067.746 gas</text>
+    </svg>
+  </div>
+</section>
+  <section>
+  <h2>Scalabilita upgradeSkillWithVC</h2>
+  <div class="chart">
+    <svg viewBox="0 0 1040 260" role="img" aria-label="Scalabilita upgradeSkillWithVC">
+      <line class="axis" x1="230" y1="28" x2="1016" y2="28"></line>
+      
+      <text class="bar-label" x="0" y="55">1 skill</text>
+      <rect x="230" y="42" width="642.9729542984805" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="878.9729542984805" y="55">451.593 gas</text>
+      <text class="bar-label" x="0" y="93">2 skill</text>
+      <rect x="230" y="80" width="648.178325331502" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="884.178325331502" y="93">455.249 gas</text>
+      <text class="bar-label" x="0" y="131">4 skill</text>
+      <rect x="230" y="118" width="658.799788106759" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="894.799788106759" y="131">462.709 gas</text>
+      <text class="bar-label" x="0" y="169">6 skill</text>
+      <rect x="230" y="156" width="668.4075134160666" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="904.4075134160666" y="169">469.457 gas</text>
+      <text class="bar-label" x="0" y="207">8 skill</text>
+      <rect x="230" y="194" width="680" height="16" fill="#2f80ed"></rect>
+      <text class="bar-label" x="916" y="207">477.599 gas</text>
+    </svg>
+  </div>
+</section>
+</body>
+</html>

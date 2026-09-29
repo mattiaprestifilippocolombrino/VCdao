@@ -1,0 +1,6 @@
+skillCount,skills,upgradeGas,costEth,costUsd
+"1","cyberSecurity","451593","0.00046624267692","$1.23"
+"2","cyberSecurity + cloudArchitecture","455249","0.00047001727756","$1.24"
+"4","blockchain + cloudArchitecture + cyberSecurity + distributedSystems","462709","0.00047771927996","$1.26"
+"6","blockchain + cloudArchitecture + cyberSecurity + distributedSystems + machineLearning + dataEngineering","469457","0.00048468618508","$1.28"
+"8","machineLearning + dataEngineering + cyberSecurity + cloudArchitecture + distributedSystems + blockchain + softwareArchitecture + startupFinance","477599","0.00049309231156","$1.30"
