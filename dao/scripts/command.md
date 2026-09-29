@@ -55,7 +55,19 @@ npx hardhat test test/gas/gasMisuration.ts
 Misurazioni voting power per la tesi:
 
 ```bash
+npm run test:voting-power
+```
+
+Equivalente esplicito:
+
+```bash
 npx hardhat test test/misurazioni/voting-power.measurement.ts
+```
+
+Entrambe le suite di misurazione, in sequenza:
+
+```bash
+npm run measure
 ```
 
 ## Script sequenziali

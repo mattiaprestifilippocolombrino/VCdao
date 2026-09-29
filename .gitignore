@@ -1,2 +1,44 @@
+# Dependencies and generated build output
+**/node_modules/
+**/dist/
+**/artifacts/
+**/cache/
+**/typechain/
+**/typechain-types/
+**/coverage/
+**/coverage.json
+
+# Environment files and secrets (keep templates)
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
 shared-credentials/
 shared-presentations/
+**/credentials/*.json
+!**/credentials/.gitkeep
+**/presentations/*.json
+!**/presentations/.gitkeep
+
+# Local databases and runtime state
+**/*.sqlite
+**/*.sqlite-journal
+dao/deployedAddresses.json
+dao/proposalState.json
+dao/ignition/deployments/chain-31337/
+
+# Logs and test tooling
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/.nyc_output/
+
+# Editor, OS and temporary files
+.vscode/
+.idea/
+**/.DS_Store
+**/Thumbs.db
+**/*~
+**/*.swp
+**/*.swo
